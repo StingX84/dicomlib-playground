@@ -1,0 +1,8 @@
+[workspace.package]
+version = "0.1.0"
+authors = [ "Alexei Devyatnikov <to@stingx.ru>" ]
+edition = "2021"
+
+[workspace]
+
+members = [ "libs/dpx-dicom-core" ]
