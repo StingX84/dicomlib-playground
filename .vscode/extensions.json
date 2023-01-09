@@ -1,0 +1,12 @@
+{
+	"recommendations": [
+        "panicbit.cargo",
+        "streetsidesoftware.code-spell-checker",
+        "serayuzgur.crates",
+        "usernamehw.errorlens",
+        "tamasfe.even-better-toml",
+        "streetsidesoftware.code-spell-checker-russian",
+        "swellaby.vscode-rust-test-adapter",
+        "rust-lang.rust-analyzer"
+    ]
+}

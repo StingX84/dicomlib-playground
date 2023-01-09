@@ -1,0 +1,37 @@
+[package]
+name = "dpx-dicom-core"
+description = "Core DICOM library component"
+
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+
+[features]
+default = [ "unstable" ]
+serde = [ "dep:serde" ]
+unstable = []
+
+
+[dependencies]
+
+##################
+# Required dependencies
+
+# Error-handling library
+snafu = "0.7.4"
+
+# Allows to statically register different types in the static list
+inventory = "0.3"
+
+bitflags = "1.2"
+
+##################
+# Optional dependencies
+
+# Serialization-deserialization framework. One of the core libraries in the rust ecosystem
+serde = { version = "1.0", optional = true, features = ["derive"] }
+
+
+[dev-dependencies]
+
+#serde_test = { version = "1.0" }

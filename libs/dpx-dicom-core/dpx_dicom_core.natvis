@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
+  <Type Name="dpx_dicom_core::tag::tagkey::TagKey">
+    <DisplayString>({(short)(__0 &gt;&gt; 16),xb},{(short)(__0 &amp; 0xFFFF),xb})</DisplayString>
+    <Expand>
+      <Synthetic Name="[Group]">
+        <DisplayString>{(short)(__0 &gt;&gt; 16),x}</DisplayString>
+      </Synthetic>
+      <Synthetic Name="[Element]">
+        <DisplayString>{(short)(__0 &amp; 0xFFFF),x}</DisplayString>
+      </Synthetic>
+    </Expand>
+  </Type>
+</AutoVisualizer>
