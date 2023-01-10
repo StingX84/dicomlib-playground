@@ -103,3 +103,9 @@ impl Dicom {
             .or_else(|| self.globals.settings_registry.default_value_of(key))
     }
 }
+
+impl Default for Dicom {
+    fn default() -> Self {
+        Self::new()
+    }
+}

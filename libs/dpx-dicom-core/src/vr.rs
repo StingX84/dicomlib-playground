@@ -861,7 +861,7 @@ mod benches {
 
     // Returns a vector of `vr::Meta` for all the known VR's
     fn meta() -> Vec<Meta> {
-        Vr::all().iter().map(|v| v.clone()).collect()
+        Vr::all().to_vec()
     }
 
     // Returns a vector of `vr::Meta2` for all the known VR's
@@ -882,7 +882,7 @@ mod benches {
         Vr::all().iter().map(|v| v.code).collect()
     }
 
-    fn bench_meta_no_binary(needle: [u8; 2], haystack: &Vec<Meta>) -> Result<&Meta, Error> {
+    fn bench_meta_no_binary(needle: [u8; 2], haystack: &[Meta]) -> Result<&Meta, Error> {
         match haystack.iter().find(|v| v.code == needle) {
             Some(v) => Ok(v),
             None => UnknownVrSnafu {
@@ -892,7 +892,7 @@ mod benches {
         }
     }
 
-    fn bench_meta_binary(needle: [u8; 2], haystack: &Vec<Meta>) -> Result<&Meta, Error> {
+    fn bench_meta_binary(needle: [u8; 2], haystack: &[Meta]) -> Result<&Meta, Error> {
         match haystack.binary_search_by(|v| v.code.cmp(&needle)) {
             Ok(idx) => Ok(&haystack[idx]),
             Err(_) => UnknownVrSnafu {
@@ -902,7 +902,7 @@ mod benches {
         }
     }
 
-    fn bench_meta2_no_binary(needle: [u8; 2], haystack: &Vec<Meta2>) -> Result<&Meta2, Error> {
+    fn bench_meta2_no_binary(needle: [u8; 2], haystack: &[Meta2]) -> Result<&Meta2, Error> {
         match haystack.iter().find(|v| v.code.as_bytes() == needle) {
             Some(v) => Ok(v),
             None => UnknownVrSnafu {
@@ -912,7 +912,7 @@ mod benches {
         }
     }
 
-    fn bench_meta2_binary(needle: [u8; 2], haystack: &Vec<Meta2>) -> Result<&Meta2, Error> {
+    fn bench_meta2_binary(needle: [u8; 2], haystack: &[Meta2]) -> Result<&Meta2, Error> {
         match haystack.binary_search_by(|v| v.code.as_bytes().cmp(&needle)) {
             Ok(idx) => Ok(&haystack[idx]),
             Err(_) => UnknownVrSnafu {

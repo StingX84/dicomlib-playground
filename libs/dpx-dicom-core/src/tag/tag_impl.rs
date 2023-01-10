@@ -1,4 +1,4 @@
-use super::tagkey::TagKey;
+use super::TagKey;
 use crate::{ Vr, Cow };
 
 #[derive(Default, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -20,7 +20,7 @@ impl<'a> Tag<'a> {
 
     pub const fn from_key(key: TagKey) -> Self {
         Self {
-            key: key,
+            key,
             creator: None,
             vr: None,
         }
@@ -46,7 +46,7 @@ impl<'a> std::fmt::Display for Tag<'a> {
 
 impl<'a> From<Tag<'a>> for String {
     fn from(value: Tag<'a>) -> Self {
-        format!("{}", value)
+        format!("{value}")
     }
 }
 
@@ -58,7 +58,7 @@ impl<'a> std::fmt::Debug for Tag<'a> {
             write!(f, ",\"{}\"", v.escape_default())?;
         }
         if let Some(v) = &self.vr {
-            write!(f, ",{}", v)?;
+            write!(f, ",{v}")?;
         }
         f.write_str(")")
     }
@@ -127,15 +127,15 @@ mod tests {
 
         // string transformations
         assert_eq!(k.to_string(), "(1234,5678)");
-        assert_eq!(format!("{}", k), "(1234,5678)");
-        assert_eq!(format!("{:?}", k), "Tag(0x12345678)");
+        assert_eq!(format!("{k}"), "(1234,5678)");
+        assert_eq!(format!("{k:?}"), "Tag(0x12345678)");
 
         assert_eq!(Tag::default().to_string(), "(0000,0000)");
         assert_eq!(format!("{}", Tag::default()), "(0000,0000)");
         assert_eq!(format!("{:?}", Tag::default()), "Tag(0x00000000)");
 
         let k = Tag::new(TagKey(0x123456), Some(Cow::Borrowed("Test")), Some(Vr::UN));
-        println!("{}", k);
-        println!("{:?}", k);
+        println!("{k}");
+        println!("{k:?}");
     }
 }

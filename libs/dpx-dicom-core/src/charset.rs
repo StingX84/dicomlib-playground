@@ -62,7 +62,7 @@ pub struct Info {
     pub kind: Kind,
 }
 
-pub const INFO: &'static [Info] = &[
+pub const INFO: &[Info] = &[
     Info {
         code: Code::Default,
         term: "ISO-IR 6",
