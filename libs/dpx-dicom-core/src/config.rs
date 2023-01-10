@@ -5,8 +5,8 @@ use crate::{
 
 use crate::vr::Vr;
 
-const THIS_MODULE: &'static str = "dpx-dicom-core";
-const DISPLAY_SECTION_DATASET: &'static str = "Dataset";
+const THIS_MODULE: &str = "dpx-dicom-core";
+const DISPLAY_SECTION_DATASET: &str = "Dataset";
 
 pub const DEFAULT_SPECIFIC_CHARSET: Key = Key::new(THIS_MODULE, line!());
 pub const DEFAULT_TIMEZONE_OFFSET: Key = Key::new(THIS_MODULE, line!());

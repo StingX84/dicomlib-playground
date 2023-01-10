@@ -65,11 +65,11 @@ pub struct Level<'a> {
     pub level: Cow<'a, str>,
 }
 
-const ROOT_PATIENT: &'static str = "patient";
-const LEVEL_PATIENT: &'static str = "patient";
-const LEVEL_STUDY: &'static str = "study";
-const LEVEL_SERIES: &'static str = "series";
-const LEVEL_INSTANCE: &'static str = "instance";
+const ROOT_PATIENT: &str = "patient";
+const LEVEL_PATIENT: &str = "patient";
+const LEVEL_STUDY: &str = "study";
+const LEVEL_SERIES: &str = "series";
+const LEVEL_INSTANCE: &str = "instance";
 
 #[derive(Clone)]
 pub struct StaticDictionary(&'static [TagInfo<'static>]);
@@ -118,7 +118,7 @@ impl<'a> Dictionary<'a> {
         let statics: Vec<&'static StaticDictionary> =
             inventory::iter::<StaticDictionary>.into_iter().collect();
         for dict in statics.iter() {
-            Self::verify_sorted(&dict);
+            Self::verify_sorted(dict);
         }
 
         Self {
@@ -140,7 +140,7 @@ impl<'a> Dictionary<'a> {
         if !self
             .statics
             .iter()
-            .any(|e| (*e) as *const _ == dict as *const _)
+            .any(|e| core::ptr::eq((*e) as *const _, dict as *const _))
         {
             Self::verify_sorted(dict);
             self.statics.push(dict);
@@ -251,7 +251,7 @@ impl<'a> Dictionary<'a> {
         // Search in the cache if it is available
         if let Some(c) = &self.cache {
             // first, search directly in a sorted "flattened" array
-            if let Ok(index) = c.sorted.binary_search_by(|v| v.0.cmp(&tag)) {
+            if let Ok(index) = c.sorted.binary_search_by(|v| v.0.cmp(tag)) {
                 // Safety: we've got this VALID index from the vector method and there is no way
                 // to mutate vector content after the search.
                 return Some(unsafe { c.sorted.get_unchecked(index).1 });
@@ -267,11 +267,11 @@ impl<'a> Dictionary<'a> {
         }
 
         // Search the hard-way.
-        if let Some(v) = Self::search_in_ary(self.dynamic.iter(), &tag) {
+        if let Some(v) = Self::search_in_ary(self.dynamic.iter(), tag) {
             return Some(v);
         }
         for ary in self.statics.iter().rev() {
-            if let Some(v) = Self::search_in_ary(ary.0.iter(), &tag) {
+            if let Some(v) = Self::search_in_ary(ary.0.iter(), tag) {
                 return Some(v);
             }
         }
@@ -296,7 +296,7 @@ impl<'a> Dictionary<'a> {
 
         // Add "masked" tag in a special array
         if tag_info.mask != 0xFFFFFFFFu32 {
-            debug_assert_eq!(key.as_u32() & 0xFFFFFFFFu32, key.as_u32(),
+            debug_assert_eq!(key.as_u32() & tag_info.mask, key.as_u32(),
                 "TagInfo for tag {} in dpx_dicom_core::tag::StaticDictionary must be pre-multiplied by it's mask {:08x}",
                 tag_info.tag, tag_info.mask);
             cache.masked.push((key.as_u32(), tag_info.mask, tag_info));

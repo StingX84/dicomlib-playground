@@ -161,7 +161,7 @@ impl Registry {
         });
     }
     pub fn iter(&self) -> impl Iterator<Item = &KeyMeta> {
-        self.keys.values().map(|x| *x)
+        self.keys.values().copied()
     }
     pub fn get(&self, key: &'_ Key) -> Option<&'static KeyMeta> {
         self.keys.get(key).copied()
@@ -195,6 +195,12 @@ impl Settings {
     }
     pub fn get<'a>(&'a self, k: &'_ Key) -> Option<&'a Value> {
         self.0.get(k)
+    }
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -248,32 +254,32 @@ impl ConditionalSettings {
                     return None;
                 }
                 let mut score = 0;
-                if !v.0.peer_aet.is_none() && !k.peer_aet.is_none() {
-                    if v.0.peer_aet != k.peer_aet {
+                if v.0.peer_aet.is_some() {
+                    if k.peer_aet.is_none() || v.0.peer_aet != k.peer_aet {
                         return None;
                     }
                     score += 16;
                 }
-                if !v.0.local_aet.is_none() && !k.local_aet.is_none() {
-                    if v.0.local_aet != k.local_aet {
+                if v.0.local_aet.is_some() {
+                    if k.local_aet.is_none() || v.0.local_aet != k.local_aet {
                         return None;
                     }
                     score += 8;
                 }
-                if !v.0.peer_ip.is_none() && !k.peer_ip.is_none() {
-                    if v.0.peer_ip != k.peer_ip {
+                if v.0.peer_ip.is_some() {
+                    if k.peer_ip.is_none() || v.0.peer_ip != k.peer_ip {
                         return None;
                     }
                     score += 4;
                 }
-                if !v.0.local_ip.is_none() && !k.local_ip.is_none() {
-                    if v.0.local_ip != k.local_ip {
+                if v.0.local_ip.is_some() {
+                    if k.local_ip.is_none() || v.0.local_ip != k.local_ip {
                         return None;
                     }
                     score += 2;
                 }
-                if !v.0.local_port.is_none() && !k.local_port.is_none() {
-                    if v.0.local_port != k.local_port {
+                if v.0.local_port.is_some() {
+                    if k.local_port.is_none() || v.0.local_port != k.local_port {
                         return None;
                     }
                     score += 1;
@@ -282,6 +288,12 @@ impl ConditionalSettings {
             })
             .max_by(|l, r| l.0.cmp(&r.0))
             .map(|t| t.2)
+    }
+}
+
+impl Default for ConditionalSettings {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

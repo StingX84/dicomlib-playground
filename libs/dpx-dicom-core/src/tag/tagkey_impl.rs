@@ -157,7 +157,7 @@ impl std::str::FromStr for TagKey {
             let (g, e) = s
                 .strip_prefix('(')
                 .and_then(|s| s.strip_suffix(')'))
-                .and_then(|s| s.split_once(&[',', ':']))
+                .and_then(|s| s.split_once([',', ':']))
                 .context(TagKeyInBracesMissingSeparatorSnafu)?;
 
             let ng = u16::from_str_radix(g, 16).context(TagKeyContainsNonHexCharactersSnafu)?;
@@ -168,7 +168,7 @@ impl std::str::FromStr for TagKey {
 
         if s.len() == 9 && (s.as_bytes()[4] == b':' || s.as_bytes()[4] == b',') {
             // Panic: this will never panic, because we've previously checked, that array contains requested characters
-            let (g, e) = s.split_once(&[',', ':']).unwrap();
+            let (g, e) = s.split_once([',', ':']).unwrap();
 
             let ng = u16::from_str_radix(g, 16).context(TagKeyContainsNonHexCharactersSnafu)?;
             let ne = u16::from_str_radix(e, 16).context(TagKeyContainsNonHexCharactersSnafu)?;
@@ -267,8 +267,8 @@ mod tests {
 
         // string transformations
         assert_eq!(k.to_string(), "(1234,5678)");
-        assert_eq!(format!("{}", k), "(1234,5678)");
-        assert_eq!(format!("{:?}", k), "TagKey(0x12345678)");
+        assert_eq!(format!("{k}"), "(1234,5678)");
+        assert_eq!(format!("{k:?}"), "TagKey(0x12345678)");
 
         assert_eq!(TagKey::new().to_string(), "(0000,0000)");
         assert_eq!(format!("{}", TagKey::new()), "(0000,0000)");

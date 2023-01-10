@@ -9,9 +9,9 @@ use std:: {
 // cSpell:ignore ggggeeee
 
 // Reexports
-pub use tagkey::TagKey;
-pub use tag::Tag;
-pub use dict::{Dictionary, Level};
+pub use tagkey_impl::TagKey;
+pub use tag_impl::Tag;
+pub use dict_impl::{Dictionary, Level};
 
 #[derive(Debug, Snafu)]
 pub enum Error {
@@ -34,6 +34,6 @@ pub enum Error {
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 // Private modules
-mod tagkey;
-mod tag;
-mod dict;
+mod tagkey_impl;
+mod tag_impl;
+mod dict_impl;
