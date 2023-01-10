@@ -508,7 +508,7 @@ pub enum Kind {
 #[derive(Debug, Clone)]
 pub struct Meta {
     pub vr: Vr,
-    pub code: &'static str,
+    pub code: [u8; 2],
     pub kind: Kind,
     pub flags: Flags,
     pub name: &'static str,
@@ -521,8 +521,8 @@ pub struct Meta {
 /// Note: Currently rust BUGGY traits implementation does not
 /// allow const BitOr, so this macro also "wraps" this operator.
 macro_rules! mk_info {
-    ($vr:expr, $name:expr, $kind:expr, $($($flags:path)|+)?) => {
-        $crate::vr::Meta{vr: $vr, code: stringify!($vr), name: $name, kind: $kind, flags: $crate::vr::Flags::from_bits_truncate(0 $( | $($flags.bits())|+ )? )}
+    ($vr:expr, $code:expr, $name:expr, $kind:expr, $($($flags:path)|+)?) => {
+        $crate::vr::Meta{vr: $vr, code: $code, name: $name, kind: $kind, flags: $crate::vr::Flags::from_bits_truncate(0 $( | $($flags.bits())|+ )? )}
     };
 }
 
@@ -531,40 +531,40 @@ impl Vr {
     pub const fn all() -> &'static [Meta] {
         use Vr::*;
         const LIST: [Meta; MAX_VR as usize + 1] = [
-            mk_info!(AE, "Application Entity",          Kind::Text, ),
-            mk_info!(AS, "Age String",                  Kind::Text, Flags::KeepLeadingSpaces | Flags::KeepTrailingSpaces),
-            mk_info!(AT, "Attribute Tag",               Kind::U32,  ),
-            mk_info!(CS, "Code String",                 Kind::Text, ),
-            mk_info!(DA, "Date",                        Kind::Text, Flags::KeepLeadingSpaces | Flags::KeepTrailingSpaces),
-            mk_info!(DS, "Decimal String",              Kind::Text, ),
-            mk_info!(DT, "Date Time",                   Kind::Text, Flags::KeepLeadingSpaces | Flags::KeepTrailingSpaces),
-            mk_info!(FL, "Floating Point Single",       Kind::F32,  ),
-            mk_info!(FD, "Floating Point Double",       Kind::F64,  ),
-            mk_info!(IS, "Integer String",              Kind::Text, ),
-            mk_info!(LO, "Long String",                 Kind::Text, Flags::Translatable),
-            mk_info!(LT, "Long Text",                   Kind::Text, Flags::Translatable | Flags::KeepLeadingSpaces),
-            mk_info!(OB, "Other Byte",                  Kind::Bytes,),
-            mk_info!(OD, "Other Double",                Kind::Bytes,),
-            mk_info!(OF, "Other Float",                 Kind::Bytes,),
-            mk_info!(OL, "Other Long",                  Kind::Bytes,),
-            mk_info!(OV, "Other 64-bit Very Long",      Kind::Bytes,),
-            mk_info!(OW, "Other Word",                  Kind::Bytes,),
-            mk_info!(PN, "Person Name",                 Kind::Text, Flags::Translatable),
-            mk_info!(SH, "Short String",                Kind::Text, Flags::Translatable),
-            mk_info!(SL, "Signed Long",                 Kind::I32,  ),
-            mk_info!(SQ, "Sequence of Items",           Kind::Items,),
-            mk_info!(SS, "Signed Short",                Kind::I16,  ),
-            mk_info!(ST, "Short Text",                  Kind::Text, Flags::Translatable),
-            mk_info!(SV, "Signed 64-bit Very Long",     Kind::I64,  ),
-            mk_info!(TM, "Time",                        Kind::Text, Flags::KeepLeadingSpaces | Flags::KeepTrailingSpaces),
-            mk_info!(UC, "Unlimited Characters",        Kind::Text, Flags::Translatable | Flags::KeepLeadingSpaces),
-            mk_info!(UI, "Unique Identifier (UID)",     Kind::Text, Flags::NullPadded),
-            mk_info!(UL, "Unsigned Long",               Kind::U32,  ),
-            mk_info!(UN, "Unknown",                     Kind::Bytes,),
-            mk_info!(UR, "URI/URL",                     Kind::Text, Flags::KeepLeadingSpaces),
-            mk_info!(US, "Unsigned Short",              Kind::U16,  ),
-            mk_info!(UT, "Unlimited Text",              Kind::U16,  Flags::Translatable | Flags::KeepLeadingSpaces),
-            mk_info!(UV, "Unsigned 64-bit Very Long",   Kind::U64,  ),
+            mk_info!(AE, [b'A', b'E'], "Application Entity",          Kind::Text, ),
+            mk_info!(AS, [b'A', b'S'], "Age String",                  Kind::Text, Flags::KeepLeadingSpaces | Flags::KeepTrailingSpaces),
+            mk_info!(AT, [b'A', b'T'], "Attribute Tag",               Kind::U32,  ),
+            mk_info!(CS, [b'C', b'S'], "Code String",                 Kind::Text, ),
+            mk_info!(DA, [b'D', b'A'], "Date",                        Kind::Text, Flags::KeepLeadingSpaces | Flags::KeepTrailingSpaces),
+            mk_info!(DS, [b'D', b'S'], "Decimal String",              Kind::Text, ),
+            mk_info!(DT, [b'D', b'T'], "Date Time",                   Kind::Text, Flags::KeepLeadingSpaces | Flags::KeepTrailingSpaces),
+            mk_info!(FL, [b'F', b'L'], "Floating Point Single",       Kind::F32,  ),
+            mk_info!(FD, [b'F', b'D'], "Floating Point Double",       Kind::F64,  ),
+            mk_info!(IS, [b'I', b'S'], "Integer String",              Kind::Text, ),
+            mk_info!(LO, [b'L', b'O'], "Long String",                 Kind::Text, Flags::Translatable),
+            mk_info!(LT, [b'L', b'T'], "Long Text",                   Kind::Text, Flags::Translatable | Flags::KeepLeadingSpaces),
+            mk_info!(OB, [b'O', b'B'], "Other Byte",                  Kind::Bytes,),
+            mk_info!(OD, [b'O', b'D'], "Other Double",                Kind::Bytes,),
+            mk_info!(OF, [b'O', b'F'], "Other Float",                 Kind::Bytes,),
+            mk_info!(OL, [b'O', b'L'], "Other Long",                  Kind::Bytes,),
+            mk_info!(OV, [b'O', b'V'], "Other 64-bit Very Long",      Kind::Bytes,),
+            mk_info!(OW, [b'O', b'W'], "Other Word",                  Kind::Bytes,),
+            mk_info!(PN, [b'P', b'N'], "Person Name",                 Kind::Text, Flags::Translatable),
+            mk_info!(SH, [b'S', b'H'], "Short String",                Kind::Text, Flags::Translatable),
+            mk_info!(SL, [b'S', b'L'], "Signed Long",                 Kind::I32,  ),
+            mk_info!(SQ, [b'S', b'Q'], "Sequence of Items",           Kind::Items,),
+            mk_info!(SS, [b'S', b'S'], "Signed Short",                Kind::I16,  ),
+            mk_info!(ST, [b'S', b'T'], "Short Text",                  Kind::Text, Flags::Translatable),
+            mk_info!(SV, [b'S', b'V'], "Signed 64-bit Very Long",     Kind::I64,  ),
+            mk_info!(TM, [b'T', b'M'], "Time",                        Kind::Text, Flags::KeepLeadingSpaces | Flags::KeepTrailingSpaces),
+            mk_info!(UC, [b'U', b'C'], "Unlimited Characters",        Kind::Text, Flags::Translatable | Flags::KeepLeadingSpaces),
+            mk_info!(UI, [b'U', b'I'], "Unique Identifier (UID)",     Kind::Text, Flags::NullPadded),
+            mk_info!(UL, [b'U', b'L'], "Unsigned Long",               Kind::U32,  ),
+            mk_info!(UN, [b'U', b'N'], "Unknown",                     Kind::Bytes,),
+            mk_info!(UR, [b'U', b'R'], "URI/URL",                     Kind::Text, Flags::KeepLeadingSpaces),
+            mk_info!(US, [b'U', b'S'], "Unsigned Short",              Kind::U16,  ),
+            mk_info!(UT, [b'U', b'T'], "Unlimited Text",              Kind::U16,  Flags::Translatable | Flags::KeepLeadingSpaces),
+            mk_info!(UV, [b'U', b'V'], "Unsigned 64-bit Very Long",   Kind::U64,  ),
             ];
         &LIST
     }
@@ -573,20 +573,30 @@ impl Vr {
         &Self::all()[*self as usize]
     }
 
-    pub const fn code(&self) -> &'static str {
-        &self.info().code
+    pub const fn code(&self) -> [u8; 2] {
+        self.info().code
+    }
+
+    pub const fn as_str(&self) -> &'static str {
+        // SAFETY: `code` is a static constant under our control.
+        // It contains only ASCII characters, so it is a valid UTF-8 sequence.
+        unsafe { ::core::str::from_utf8_unchecked(&self.info().code) }
+    }
+
+    pub const fn name(&self) -> &'static str {
+        self.info().name
     }
 }
 
 impl fmt::Debug for Vr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "VR({})", self.code())
+        write!(f, "VR({})", self.as_str())
     }
 }
 
 impl fmt::Display for Vr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.code())
+        f.write_str(self.as_str())
     }
 }
 
@@ -595,7 +605,21 @@ impl TryFrom<&[u8]> for Vr {
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
         ensure!(value.len() == 2, InvalidVrLengthSnafu { len: value.len() });
         let all = Self::all();
-        match all.binary_search_by(|v| v.code.as_bytes().cmp(value)) {
+        match all.binary_search_by(|v| v.code.as_ref().cmp(value)) {
+            Ok(idx) => Ok(all[idx].vr),
+            Err(_) => UnknownVrSnafu {
+                name: value.escape_ascii().to_string(),
+            }
+            .fail(),
+        }
+    }
+}
+
+impl TryFrom<[u8; 2]> for Vr {
+    type Error = Error;
+    fn try_from(value: [u8; 2]) -> Result<Self, Self::Error> {
+        let all = Self::all();
+        match all.binary_search_by(|v| v.code.cmp(&value)) {
             Ok(idx) => Ok(all[idx].vr),
             Err(_) => UnknownVrSnafu {
                 name: value.escape_ascii().to_string(),
@@ -610,7 +634,7 @@ impl TryFrom<&str> for Vr {
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         ensure!(value.len() == 2, InvalidVrLengthSnafu { len: value.len() });
         let all = Self::all();
-        match all.binary_search_by(|v| v.code.cmp(value)) {
+        match all.binary_search_by(|v| v.code.as_ref().cmp(value.as_bytes())) {
             Ok(idx) => Ok(all[idx].vr),
             Err(_) => UnknownVrSnafu {
                 name: value.escape_default().to_string(),
@@ -624,5 +648,99 @@ impl std::str::FromStr for Vr {
     type Err = Error;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Self::try_from(s)
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn info_readable() {
+        assert_eq!(Vr::AE.as_str(), "AE");
+        assert_eq!(Vr::AE.code(), [b'A', b'E']);
+        assert_eq!(Vr::AE.name(), "Application Entity");
+        assert_eq!(Vr::UV.as_str(), "UV");
+        assert_eq!(Vr::UV.code(), [b'U', b'V']);
+        assert_eq!(format!("{}", Vr::AE), "AE");
+        assert_eq!(format!("{:?}", Vr::AE), "VR(AE)");
+    }
+}
+
+#[cfg(all(test, feature = "unstable"))]
+mod benches {
+    extern crate test;
+    use super::*;
+    use test::{Bencher, black_box};
+
+    struct Meta2 {
+        pub vr: Vr,
+        pub code: &'static str,
+        pub kind: Kind,
+        pub flags: Flags,
+        pub name: &'static str,
+    }
+
+    fn meta() -> Vec<Meta> {
+        Vr::all().iter().map(|v| v.clone()).collect()
+    }
+
+    fn meta2() -> Vec<Meta2> {
+        Vr::all().iter().map(|v| Meta2{vr: v.vr, code: ::core::str::from_utf8(&v.code).unwrap(), kind: v.kind, flags: v.flags, name: v.name}).collect()
+    }
+
+    fn all_vrs() -> Vec<[u8; 2]> {
+      Vr::all().iter().map(|v| v.code).collect()
+    }
+
+    #[bench]
+    fn vr_lookup_no_binary(b: &mut Bencher) {
+        let all = meta();
+        let searched = all_vrs();
+
+        b.iter(|| {
+            for needle in searched.iter() {
+                black_box(all.iter().find(|v| &v.code == needle));
+            };
+        })
+    }
+
+    #[allow(unused_must_use)]
+    #[bench]
+    fn vr_lookup_binary(b: &mut Bencher) {
+        let all = meta();
+        let searched = all_vrs();
+
+        b.iter(|| {
+            for needle in searched.iter() {
+                black_box(all.binary_search_by(|v| v.code.cmp(needle)));
+            };
+        })
+    }
+
+    #[bench]
+    fn vr_lookup_in_ptr_no_binary(b: &mut Bencher) {
+        let all = meta2();
+        let searched = all_vrs();
+
+        b.iter(|| {
+            for needle in searched.iter() {
+                black_box(all.iter().find(|v| &v.code.as_bytes() == needle));
+            };
+        })
+    }
+
+    #[allow(unused_must_use)]
+    #[bench]
+    fn vr_lookup_in_ptr_binary(b: &mut Bencher) {
+        let all = meta2();
+        let searched = all_vrs();
+
+        b.iter(|| {
+            for needle in searched.iter() {
+                black_box(all.binary_search_by(|v| v.code.as_bytes().cmp(needle)));
+            };
+        })
     }
 }
