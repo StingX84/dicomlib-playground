@@ -1,9 +1,7 @@
-#![allow(non_upper_case_globals)] // Seize bitflags warning
-
+use core::fmt;
 use snafu::{ensure, Snafu};
 
-use core::fmt;
-
+/// Possible error of text to `Vr` conversion operations
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display("VR code should be exactly 2 bytes long, {} given", len))]
@@ -13,8 +11,8 @@ pub enum Error {
     UnknownVr { name: String },
 }
 
+/// Result of text to `Vr` conversion operations
 pub type Result<T, E = Error> = std::result::Result<T, E>;
-
 
 // cSpell:ignore ZZXX hhmmss
 
@@ -23,14 +21,22 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 /// The Value Representation of a Data Element describes the data type and format
 /// of that Data Element's Value(s).
 ///
-/// A detailed description could be found in the [DICOM PS 3.5 "6.2 Value Representation (VR)"](https://dicom.nema.org/medical/dicom/current/output/html/part05.html#sect_6.2) standard.
+/// A detailed description could be found in the [DICOM PS 3.5 "6.2 Value Representation (VR)"] standard.
 ///
 /// Note, that some attributes may have a different length or format requirements depending on the context.
 /// Some Query/Retrieve matching techniques requires special characters (`*`,`?`,`-`,`=`,`\`, and `"` (QUOTATION MARK) ),
-/// which need not be part of the character repertoire for the VR of the Key Attributes. See [DICOM PS 3.4 "C.2.2.2 Attribute Matching"](https://dicom.nema.org/medical/dicom/current/output/html/part04.html#sect_C.2.2.2)
+/// which need not be part of the character repertoire for the VR of the Key Attributes. See [DICOM PS 3.4 "C.2.2.2 Attribute Matching"]
 /// for more information.
+///
+/// [DICOM PS 3.5 "6.2 Value Representation (VR)"]: https://dicom.nema.org/medical/dicom/current/output/chtml/part05/sect_6.2.html
+/// [DICOM PS 3.4 "C.2.2.2 Attribute Matching"]: https://dicom.nema.org/medical/dicom/current/output/chtml/part04/sect_C.2.2.2.html
 #[derive(Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(try_from = "&str"),
+    serde(into = "String")
+)]
 #[repr(u8)]
 pub enum Vr {
     /// Application Entity
@@ -159,16 +165,6 @@ pub enum Vr {
     /// [ISO 8601]: https://en.wikipedia.org/wiki/ISO_8601
     DT,
 
-    /// Floating Point Single
-    ///
-    /// Single precision binary floating point number represented in IEEE 754:1985 32-bit Floating Point Number Format.
-    /// - Format: Binary
-    ///   - Length: fixed, 4 bytes
-    ///   - VM: any
-    /// - Q/R C-FIND:
-    ///   - Supports: "Single Value Matching", "Universal Matching"
-    FL,
-
     /// Floating Point Double
     ///
     /// Double precision binary floating point number represented in IEEE 754:1985 64-bit Floating Point Number Format.
@@ -178,6 +174,16 @@ pub enum Vr {
     /// - Q/R C-FIND:
     ///   - Supports: "Single Value Matching", "Universal Matching"
     FD,
+
+    /// Floating Point Single
+    ///
+    /// Single precision binary floating point number represented in IEEE 754:1985 32-bit Floating Point Number Format.
+    /// - Format: Binary
+    ///   - Length: fixed, 4 bytes
+    ///   - VM: any
+    /// - Q/R C-FIND:
+    ///   - Supports: "Single Value Matching", "Universal Matching"
+    FL,
 
     /// Integer String
     ///
@@ -319,11 +325,11 @@ pub enum Vr {
     ///   - Every group is limited to 64 chars and whole string is Limited to 194 bytes if it is too long
     ///   - Disallowed characters replaced by `?`
     ///
-    /// [PS3.5 Annex H]: https://dicom.nema.org/medical/dicom/current/output/html/part05.html#chapter_H
-    /// [PS3.5 Annex I]: https://dicom.nema.org/medical/dicom/current/output/html/part05.html#chapter_I
-    /// [PS3.5 Annex J]: https://dicom.nema.org/medical/dicom/current/output/html/part05.html#chapter_J
-    /// [PS3.5 Section 6.2.1.2]: https://dicom.nema.org/medical/dicom/current/output/html/part05.html#sect_6.2.1.2
-    /// [PS3.5 Section 6.2.1.1]: https://dicom.nema.org/medical/dicom/current/output/html/part05.html#sect_6.2.1.1
+    /// [PS3.5 Annex H]: https://dicom.nema.org/medical/dicom/current/output/chtml/part05/chapter_H.html
+    /// [PS3.5 Annex I]: https://dicom.nema.org/medical/dicom/current/output/chtml/part05/chapter_I.html
+    /// [PS3.5 Annex J]: https://dicom.nema.org/medical/dicom/current/output/chtml/part05/chapter_J.html
+    /// [PS3.5 Section 6.2.1.2]: https://dicom.nema.org/medical/dicom/current/output/chtml/part05/sect_6.2.html#sect_6.2.1.2
+    /// [PS3.5 Section 6.2.1.1]: https://dicom.nema.org/medical/dicom/current/output/chtml/part05/sect_6.2.html#sect_6.2.1.1
     PN,
 
     /// Short String.
@@ -458,145 +464,225 @@ pub enum Vr {
     ///   - Permit all symbols in the range \x20 - \x7F. All other symbols are replaced with '_'
     UI,
 
-    /// Unsigned Long. (4 bytes fixed). Binary quint32. Endian depended..
+    /// Unsigned Long
+    ///
+    /// Unsigned binary integer 32 bits long.
+    /// - Format: Binary
+    ///   - Length: fixed, 4 bytes
+    ///   - VM: any
+    /// - Q/R C-FIND:
+    ///   - Supports: "Single Value Matching", "Universal Matching"
     UL,
 
-    /// Unknown element,
+    /// Unknown
+    ///
+    /// An octet-stream where the encoding of the contents is unknown (see [PS3.5 "6.2.2 Unknown (UN) Value Representation"])
+    ///
+    /// - Format: Binary
+    ///   - Length: variable
+    ///   - VM: any
+    /// - Q/R C-FIND: Not supported
+    ///
+    /// [PS3.5 "6.2.2 Unknown (UN) Value Representation"]: https://dicom.nema.org/medical/dicom/current/output/chtml/part05/sect_6.2.2.html
     UN,
 
-    /// URI/URL. (2^32-2 bytes max). The subset of the Default Character Repertoire IETF RFC3986 Section 2, plus the space character permitted only as trailing padding. Leading spaces are not allowed, trailing should be ignored.
+    /// Universal Resource Identifier or Universal Resource Locator (URI/URL)
+    ///
+    /// A string of characters that identifies a URI or a URL as defined in [RFC3986].
+    /// See description in [PS3.5 "6.2.3 URI/URL (UR) Value Representation"]
+    /// - Format: Text, subject to `Specific Character Set (0008,0005)`
+    ///   - Length: variable, 2^32-2 chars max
+    ///   - VM: 0, 1
+    ///   - Padding char: `\x20` SPACE
+    ///   - Allowed chars: `[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=-]`
+    /// - Q/R C-FIND:
+    ///   - Supports: "Single Value Matching", "Universal Matching", "Wild Card Matching", "Empty Value Matching"
+    ///   - Note: `*` and `?` characters are allowed here, so "Single Value Matching" against attribute containing these symbol would yield an unexpected results.
+    /// - Fixes when `nonConformingTags` == `fix`:
+    ///   - Trim any zero bytes from the end of the string
+    ///   - Trim any white-spaces from beginning and ending of the string
+    ///   - Invalid UTF-8 characters replaced by `?`
+    ///   - URL parsed according to the [URL Standard] (this can convert domain into [Punycode], Percent-encode other parts of the URL)
+    ///
+    /// [RFC3986]: http://tools.ietf.org/html/rfc3986
+    /// [PS3.5 "6.2.3 URI/URL (UR) Value Representation"]: https://dicom.nema.org/medical/dicom/current/output/chtml/part05/sect_6.2.3.html
+    /// [Punycode]: https://en.wikipedia.org/wiki/Punycode
+    /// [URL Standard]: https://url.spec.whatwg.org/
     UR,
 
-    /// Unsigned short. (2 bytes fixed). Binary.
+    /// Unsigned short.
+    ///
+    /// Unsigned binary integer 16 bits long
+    /// - Format: Binary
+    ///   - Length: fixed, 2 bytes
+    ///   - VM: any
+    /// - Q/R C-FIND:
+    ///   - Supports: "Single Value Matching", "Universal Matching"
     US,
 
-    /// Unlimited text. (no limit, 2^32-2 max). Same as LT.
+    /// Unlimited Text.
+    ///
+    /// A character string that may contain one or more paragraphs
+    /// - Format: Text, subject to `Specific Character Set (0008,0005)`
+    ///   - Length: variable, 1024 chars max
+    ///   - VM: 0 or 1
+    ///   - Padding char: `\x20` (space)
+    ///   - Allowed chars: `\x09` (TAB), '\x0A' (LF), `\x0C` (FF), `\x0D` (CR) and any valid unicode greater or equal to `\x20`
+    ///   - Trailing spaces are not significant
+    /// - Q/R C-FIND:
+    ///   - Supports: "Single Value Matching", "Universal Matching", "Wild Card Matching", "Empty Value Matching",
+    ///   - Note: `*` and `?` characters are allowed here, so "Single Value Matching" against attribute containing these symbol would yield an unexpected results.
+    /// - Fixes when `nonConformingTags` == `fix`:
+    ///   - Trim any zero bytes from the end of the string
+    ///   - Limit to 1024 bytes if string is too long
+    ///   - Disallowed characters replaced by `?`
     UT,
 
     /// Unsigned 64-bit Very Long
+    ///
+    /// Unsigned binary integer 64 bits long
+    /// - Format: Binary
+    ///   - Length: fixed, 8 bytes
+    ///   - VM: any
+    /// - Q/R C-FIND:
+    ///   - Supports: "Single Value Matching", "Universal Matching"
     UV,
 }
 
+/// Maximum value in `Vr` enum
 pub const MAX_VR: Vr = Vr::UV;
 
-bitflags::bitflags! {
-    pub struct Flags: u8 {
-        const Translatable          = 1u8<<1;
-        const NullPadded            = 1u8<<2;
-        const KeepLeadingSpaces     = 1u8<<3;
-        const KeepTrailingSpaces    = 1u8<<4;
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[repr(u8)]
-pub enum Kind {
-    Bytes,
-    Items,
-    Text,
-    I16,
-    U16,
-    I32,
-    U32,
-    I64,
-    U64,
-    F32,
-    F64,
-}
-
-#[derive(Debug, Clone)]
-pub struct Meta {
-    pub vr: Vr,
-    pub code: [u8; 2],
-    pub kind: Kind,
-    pub flags: Flags,
-    pub name: &'static str,
-}
-
-/// Macro that makes `vr::Info` for a given constants.
+/// Macro that makes `vr::Meta` for a given constants.
 ///
 /// This doesn't allocate.
 ///
 /// Note: Currently rust BUGGY traits implementation does not
 /// allow const BitOr, so this macro also "wraps" this operator.
-macro_rules! mk_info {
-    ($vr:expr, $code:expr, $name:expr, $kind:expr, $($($flags:path)|+)?) => {
-        $crate::vr::Meta{vr: $vr, code: $code, name: $name, kind: $kind, flags: $crate::vr::Flags::from_bits_truncate(0 $( | $($flags.bits())|+ )? )}
+macro_rules! mk_meta {
+    ($vr:expr, $code:expr, $description:expr, $kind:expr) => {
+        $crate::vr::Meta {
+            vr: $vr,
+            code: $code,
+            description: $description,
+            kind: $kind,
+        }
     };
 }
 
 impl Vr {
+    /// Returns a list of `dpx_dicom_core::vr::Meta` structures describing all known VR constants.
+    ///
+    /// Example usage:
+    /// ```
+    /// println!("Supported VR's:");
+    /// dpx_dicom_core::Vr::all().iter().for_each(|v|
+    ///     println!("{} ({})", std::str::from_utf8(&v.code).unwrap(), v.description)
+    /// );
+    /// ```
     #[rustfmt::skip]
     pub const fn all() -> &'static [Meta] {
         use Vr::*;
         const LIST: [Meta; MAX_VR as usize + 1] = [
-            mk_info!(AE, [b'A', b'E'], "Application Entity",          Kind::Text, ),
-            mk_info!(AS, [b'A', b'S'], "Age String",                  Kind::Text, Flags::KeepLeadingSpaces | Flags::KeepTrailingSpaces),
-            mk_info!(AT, [b'A', b'T'], "Attribute Tag",               Kind::U32,  ),
-            mk_info!(CS, [b'C', b'S'], "Code String",                 Kind::Text, ),
-            mk_info!(DA, [b'D', b'A'], "Date",                        Kind::Text, Flags::KeepLeadingSpaces | Flags::KeepTrailingSpaces),
-            mk_info!(DS, [b'D', b'S'], "Decimal String",              Kind::Text, ),
-            mk_info!(DT, [b'D', b'T'], "Date Time",                   Kind::Text, Flags::KeepLeadingSpaces | Flags::KeepTrailingSpaces),
-            mk_info!(FL, [b'F', b'L'], "Floating Point Single",       Kind::F32,  ),
-            mk_info!(FD, [b'F', b'D'], "Floating Point Double",       Kind::F64,  ),
-            mk_info!(IS, [b'I', b'S'], "Integer String",              Kind::Text, ),
-            mk_info!(LO, [b'L', b'O'], "Long String",                 Kind::Text, Flags::Translatable),
-            mk_info!(LT, [b'L', b'T'], "Long Text",                   Kind::Text, Flags::Translatable | Flags::KeepLeadingSpaces),
-            mk_info!(OB, [b'O', b'B'], "Other Byte",                  Kind::Bytes,),
-            mk_info!(OD, [b'O', b'D'], "Other Double",                Kind::Bytes,),
-            mk_info!(OF, [b'O', b'F'], "Other Float",                 Kind::Bytes,),
-            mk_info!(OL, [b'O', b'L'], "Other Long",                  Kind::Bytes,),
-            mk_info!(OV, [b'O', b'V'], "Other 64-bit Very Long",      Kind::Bytes,),
-            mk_info!(OW, [b'O', b'W'], "Other Word",                  Kind::Bytes,),
-            mk_info!(PN, [b'P', b'N'], "Person Name",                 Kind::Text, Flags::Translatable),
-            mk_info!(SH, [b'S', b'H'], "Short String",                Kind::Text, Flags::Translatable),
-            mk_info!(SL, [b'S', b'L'], "Signed Long",                 Kind::I32,  ),
-            mk_info!(SQ, [b'S', b'Q'], "Sequence of Items",           Kind::Items,),
-            mk_info!(SS, [b'S', b'S'], "Signed Short",                Kind::I16,  ),
-            mk_info!(ST, [b'S', b'T'], "Short Text",                  Kind::Text, Flags::Translatable),
-            mk_info!(SV, [b'S', b'V'], "Signed 64-bit Very Long",     Kind::I64,  ),
-            mk_info!(TM, [b'T', b'M'], "Time",                        Kind::Text, Flags::KeepLeadingSpaces | Flags::KeepTrailingSpaces),
-            mk_info!(UC, [b'U', b'C'], "Unlimited Characters",        Kind::Text, Flags::Translatable | Flags::KeepLeadingSpaces),
-            mk_info!(UI, [b'U', b'I'], "Unique Identifier (UID)",     Kind::Text, Flags::NullPadded),
-            mk_info!(UL, [b'U', b'L'], "Unsigned Long",               Kind::U32,  ),
-            mk_info!(UN, [b'U', b'N'], "Unknown",                     Kind::Bytes,),
-            mk_info!(UR, [b'U', b'R'], "URI/URL",                     Kind::Text, Flags::KeepLeadingSpaces),
-            mk_info!(US, [b'U', b'S'], "Unsigned Short",              Kind::U16,  ),
-            mk_info!(UT, [b'U', b'T'], "Unlimited Text",              Kind::U16,  Flags::Translatable | Flags::KeepLeadingSpaces),
-            mk_info!(UV, [b'U', b'V'], "Unsigned 64-bit Very Long",   Kind::U64,  ),
+            mk_meta!(AE, [b'A', b'E'], "Application Entity",    Kind::Text { translatable: false, null_padded: false, leading_spaces_important: false, trailing_spaces_important: false}),
+            mk_meta!(AS, [b'A', b'S'], "Age String",            Kind::Text { translatable: false, null_padded: false, leading_spaces_important: true,  trailing_spaces_important: true}),
+            mk_meta!(AT, [b'A', b'T'], "Attribute Tag",         Kind::U32),
+            mk_meta!(CS, [b'C', b'S'], "Code String",           Kind::Text { translatable: false, null_padded: false, leading_spaces_important: false, trailing_spaces_important: false}),
+            mk_meta!(DA, [b'D', b'A'], "Date",                  Kind::Text { translatable: false, null_padded: false, leading_spaces_important: true,  trailing_spaces_important: true}),
+            mk_meta!(DS, [b'D', b'S'], "Decimal String",        Kind::Text { translatable: false, null_padded: false, leading_spaces_important: false, trailing_spaces_important: false}),
+            mk_meta!(DT, [b'D', b'T'], "Date Time",             Kind::Text { translatable: false, null_padded: false, leading_spaces_important: true,  trailing_spaces_important: false}),
+            mk_meta!(FD, [b'F', b'D'], "Floating Point Double", Kind::F64),
+            mk_meta!(FL, [b'F', b'L'], "Floating Point Single", Kind::F32),
+            mk_meta!(IS, [b'I', b'S'], "Integer String",        Kind::Text { translatable: false, null_padded: false, leading_spaces_important: false, trailing_spaces_important: false}),
+            mk_meta!(LO, [b'L', b'O'], "Long String",           Kind::Text { translatable: true,  null_padded: false, leading_spaces_important: false, trailing_spaces_important: false}),
+            mk_meta!(LT, [b'L', b'T'], "Long Text",             Kind::Text { translatable: true,  null_padded: false, leading_spaces_important: true,  trailing_spaces_important: false}),
+            mk_meta!(OB, [b'O', b'B'], "Other Byte",            Kind::Bytes),
+            mk_meta!(OD, [b'O', b'D'], "Other Double",          Kind::Bytes),
+            mk_meta!(OF, [b'O', b'F'], "Other Float",           Kind::Bytes),
+            mk_meta!(OL, [b'O', b'L'], "Other Long",            Kind::Bytes),
+            mk_meta!(OV, [b'O', b'V'], "Other Very Long",       Kind::Bytes),
+            mk_meta!(OW, [b'O', b'W'], "Other Word",            Kind::Bytes),
+            mk_meta!(PN, [b'P', b'N'], "Person Name",           Kind::Text { translatable: true,  null_padded: false, leading_spaces_important: false, trailing_spaces_important: false}),
+            mk_meta!(SH, [b'S', b'H'], "Short String",          Kind::Text { translatable: true,  null_padded: false, leading_spaces_important: false, trailing_spaces_important: false}),
+            mk_meta!(SL, [b'S', b'L'], "Signed Long",           Kind::I32),
+            mk_meta!(SQ, [b'S', b'Q'], "Sequence of Items",     Kind::Items),
+            mk_meta!(SS, [b'S', b'S'], "Signed Short",          Kind::I16),
+            mk_meta!(ST, [b'S', b'T'], "Short Text",            Kind::Text { translatable: true,  null_padded: false, leading_spaces_important: false, trailing_spaces_important: false}),
+            mk_meta!(SV, [b'S', b'V'], "Signed Very Long",      Kind::I64),
+            mk_meta!(TM, [b'T', b'M'], "Time",                  Kind::Text { translatable: false, null_padded: false, leading_spaces_important: true,  trailing_spaces_important: true}),
+            mk_meta!(UC, [b'U', b'C'], "Unlimited Characters",  Kind::Text { translatable: true,  null_padded: false, leading_spaces_important: true,  trailing_spaces_important: false}),
+            mk_meta!(UI, [b'U', b'I'], "Unique Identifier",     Kind::Text { translatable: false, null_padded: true,  leading_spaces_important: true,  trailing_spaces_important: true}),
+            mk_meta!(UL, [b'U', b'L'], "Unsigned Long",         Kind::U32),
+            mk_meta!(UN, [b'U', b'N'], "Unknown",               Kind::Bytes),
+            mk_meta!(UR, [b'U', b'R'], "URI/URL",               Kind::Text { translatable: false, null_padded: false, leading_spaces_important: true,  trailing_spaces_important: false}),
+            mk_meta!(US, [b'U', b'S'], "Unsigned Short",        Kind::U16),
+            mk_meta!(UT, [b'U', b'T'], "Unlimited Text",        Kind::Text { translatable: true,  null_padded: false, leading_spaces_important: true,  trailing_spaces_important: false}),
+            mk_meta!(UV, [b'U', b'V'], "Unsigned Very Long",    Kind::U64),
             ];
         &LIST
     }
 
+    /// Returns a structure describing this VR
+    ///
+    /// Example:
+    /// ```
+    /// # use dpx_dicom_core::vr::*;
+    /// assert!(matches!(Vr::SV.info().kind, Kind::I64));
+    /// ```
     pub const fn info(&self) -> &'static Meta {
         &Self::all()[*self as usize]
     }
 
+    /// Returns an array of two u8 elements with a code of this Vr
+    ///
+    /// Equivalent to
+    /// ```
+    /// # let my_vr = dpx_dicom_core::Vr::AE;
+    /// my_vr.info().code;
+    /// ```
     pub const fn code(&self) -> [u8; 2] {
         self.info().code
     }
 
-    pub const fn as_str(&self) -> &'static str {
+    /// Returns a code of this Vr as a string slice
+    ///
+    /// Rough equivalent to
+    /// ```
+    /// # let my_vr = dpx_dicom_core::Vr::AE;
+    /// std::str::from_utf8(&my_vr.info().code).unwrap();
+    /// ```
+    pub const fn name(&self) -> &'static str {
         // SAFETY: `code` is a static constant under our control.
         // It contains only ASCII characters, so it is a valid UTF-8 sequence.
         unsafe { ::core::str::from_utf8_unchecked(&self.info().code) }
     }
 
-    pub const fn name(&self) -> &'static str {
-        self.info().name
+    /// Returns a short description of this Vr
+    ///
+    /// Equivalent to
+    /// ```
+    /// # let my_vr = dpx_dicom_core::Vr::AE;
+    /// my_vr.info().description;
+    /// ```
+    pub const fn description(&self) -> &'static str {
+        self.info().description
     }
 }
 
 impl fmt::Debug for Vr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "VR({})", self.as_str())
+        write!(f, "VR({})", self.name())
     }
 }
 
 impl fmt::Display for Vr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.as_str())
+        f.write_str(self.name())
+    }
+}
+
+impl From<Vr> for String {
+    fn from(value: Vr) -> Self {
+        value.name().to_owned()
     }
 }
 
@@ -651,20 +737,111 @@ impl std::str::FromStr for Vr {
     }
 }
 
+/// A enum representing a kind of this VR.
+///
+/// You rarely need to match against this enum unless
+/// developing a custom file parser.
+#[derive(Debug, Clone, Copy)]
+pub enum Kind {
+    /// Values of this element are stored as some byte array and not presentable directly.
+    /// For example, pixel data
+    Bytes,
+
+    /// Values of this element represents a children datasets in a `SQ` (sequence)
+    Items,
+
+    /// Values of this element has a textual form
+    Text {
+        translatable: bool,
+        null_padded: bool,
+        leading_spaces_important: bool,
+        trailing_spaces_important: bool,
+    },
+
+    // Values of this element has `i16` type
+    I16,
+
+    // Values of this element has `u16` type
+    U16,
+
+    // Values of this element has `i32` type
+    I32,
+
+    // Values of this element has `u32` type. This also applies to the `dpx_dicom_core::TagKey`.
+    U32,
+
+    // Values of this element has `i64` type
+    I64,
+
+    // Values of this element has `u32` type
+    U64,
+
+    // Values of this element has `f32` type
+    F32,
+
+    // Values of this element has `f64` type
+    F64,
+}
+
+/// A structure describing generic properties of some Value Representation.
+#[derive(Debug, Clone)]
+pub struct Meta {
+    /// Value Representation this meta structure describes.
+    pub vr: Vr,
+    /// DICOM term associated with this Value Representation
+    ///
+    /// This term uniquely identifies this VR in the DICOM file.
+    /// Contains only ASCII letters and can be casted to `&str` unsafely.
+    pub code: [u8; 2],
+    /// The generic storage characteristic for values of this VR
+    pub kind: Kind,
+    /// Short textual description of this VR.
+    pub description: &'static str,
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn info_readable() {
-        assert_eq!(Vr::AE.as_str(), "AE");
+    fn can_retrieve_info() {
+        assert_eq!(Vr::AE.name(), "AE");
         assert_eq!(Vr::AE.code(), [b'A', b'E']);
-        assert_eq!(Vr::AE.name(), "Application Entity");
-        assert_eq!(Vr::UV.as_str(), "UV");
+        assert_eq!(Vr::AE.description(), "Application Entity");
+        assert_eq!(Vr::UV.name(), "UV");
         assert_eq!(Vr::UV.code(), [b'U', b'V']);
         assert_eq!(format!("{}", Vr::AE), "AE");
         assert_eq!(format!("{:?}", Vr::AE), "VR(AE)");
+    }
+
+    #[test]
+    fn can_recognize_all_vrs() {
+        // Try [u8;2]
+        for vr in Vr::all().iter() {
+            assert_eq!(Vr::try_from(vr.code).unwrap(), vr.vr)
+        }
+        // Try &[u8]
+        for vr in Vr::all().iter() {
+            assert_eq!(Vr::try_from(vr.code.as_slice()).unwrap(), vr.vr)
+        }
+        // Try &str
+        for vr in Vr::all().iter() {
+            assert_eq!(
+                Vr::try_from(::core::str::from_utf8(&vr.code).unwrap()).unwrap(),
+                vr.vr
+            )
+        }
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn can_use_serde() {
+        use serde_test::{assert_de_tokens, assert_ser_tokens, Token};
+
+        let vr = Vr::AE;
+
+        assert_ser_tokens(&vr, &[Token::String("AE")]);
+        assert_de_tokens(&vr, &[Token::BorrowedStr("AE")]);
     }
 }
 
@@ -672,75 +849,132 @@ mod tests {
 mod benches {
     extern crate test;
     use super::*;
-    use test::{Bencher, black_box};
+    use test::{black_box, Bencher};
 
+    // Implementation of vr::Meta -like structure, but with "code" referenced in a constant memory.
     struct Meta2 {
-        pub vr: Vr,
-        pub code: &'static str,
-        pub kind: Kind,
-        pub flags: Flags,
-        pub name: &'static str,
+        vr: Vr,
+        code: &'static str,
+        kind: Kind,
+        description: &'static str,
     }
 
+    // Returns a vector of `vr::Meta` for all the known VR's
     fn meta() -> Vec<Meta> {
         Vr::all().iter().map(|v| v.clone()).collect()
     }
 
+    // Returns a vector of `vr::Meta2` for all the known VR's
     fn meta2() -> Vec<Meta2> {
-        Vr::all().iter().map(|v| Meta2{vr: v.vr, code: ::core::str::from_utf8(&v.code).unwrap(), kind: v.kind, flags: v.flags, name: v.name}).collect()
+        Vr::all()
+            .iter()
+            .map(|v| Meta2 {
+                vr: v.vr,
+                code: ::core::str::from_utf8(&v.code).unwrap(),
+                kind: v.kind,
+                description: v.description,
+            })
+            .collect()
     }
 
+    // Returns a vector of all known VR codes
     fn all_vrs() -> Vec<[u8; 2]> {
-      Vr::all().iter().map(|v| v.code).collect()
+        Vr::all().iter().map(|v| v.code).collect()
     }
 
+    fn bench_meta_no_binary(needle: [u8; 2], haystack: &Vec<Meta>) -> Result<&Meta, Error> {
+        match haystack.iter().find(|v| v.code == needle) {
+            Some(v) => Ok(v),
+            None => UnknownVrSnafu {
+                name: needle.escape_ascii().to_string(),
+            }
+            .fail(),
+        }
+    }
+
+    fn bench_meta_binary(needle: [u8; 2], haystack: &Vec<Meta>) -> Result<&Meta, Error> {
+        match haystack.binary_search_by(|v| v.code.cmp(&needle)) {
+            Ok(idx) => Ok(&haystack[idx]),
+            Err(_) => UnknownVrSnafu {
+                name: needle.escape_ascii().to_string(),
+            }
+            .fail(),
+        }
+    }
+
+    fn bench_meta2_no_binary(needle: [u8; 2], haystack: &Vec<Meta2>) -> Result<&Meta2, Error> {
+        match haystack.iter().find(|v| v.code.as_bytes() == needle) {
+            Some(v) => Ok(v),
+            None => UnknownVrSnafu {
+                name: needle.escape_ascii().to_string(),
+            }
+            .fail(),
+        }
+    }
+
+    fn bench_meta2_binary(needle: [u8; 2], haystack: &Vec<Meta2>) -> Result<&Meta2, Error> {
+        match haystack.binary_search_by(|v| v.code.as_bytes().cmp(&needle)) {
+            Ok(idx) => Ok(&haystack[idx]),
+            Err(_) => UnknownVrSnafu {
+                name: needle.escape_ascii().to_string(),
+            }
+            .fail(),
+        }
+    }
+
+    // Search VR in a Vr::Meta vector using simple "loop"
     #[bench]
     fn vr_lookup_no_binary(b: &mut Bencher) {
-        let all = meta();
-        let searched = all_vrs();
-
+        let haystack = meta();
         b.iter(|| {
-            for needle in searched.iter() {
-                black_box(all.iter().find(|v| &v.code == needle));
-            };
+            for needle in all_vrs() {
+                black_box(bench_meta_no_binary(needle, &haystack).unwrap());
+            }
         })
     }
 
-    #[allow(unused_must_use)]
+    // Search VR in a Vr::Meta vector using binary search
     #[bench]
     fn vr_lookup_binary(b: &mut Bencher) {
-        let all = meta();
-        let searched = all_vrs();
-
+        let haystack = meta();
         b.iter(|| {
-            for needle in searched.iter() {
-                black_box(all.binary_search_by(|v| v.code.cmp(needle)));
-            };
+            for needle in all_vrs() {
+                black_box(bench_meta_binary(needle, &haystack).unwrap());
+            }
         })
     }
 
+    // Search VR in a Vr::Meta2 vector using simple "loop"
     #[bench]
     fn vr_lookup_in_ptr_no_binary(b: &mut Bencher) {
-        let all = meta2();
-        let searched = all_vrs();
-
+        let haystack = meta2();
         b.iter(|| {
-            for needle in searched.iter() {
-                black_box(all.iter().find(|v| &v.code.as_bytes() == needle));
-            };
+            for needle in all_vrs() {
+                black_box(bench_meta2_no_binary(needle, &haystack).unwrap());
+            }
         })
     }
 
+    // Search VR in a Vr::Meta2 vector using binary search
     #[allow(unused_must_use)]
     #[bench]
     fn vr_lookup_in_ptr_binary(b: &mut Bencher) {
-        let all = meta2();
-        let searched = all_vrs();
-
+        let haystack = meta2();
         b.iter(|| {
-            for needle in searched.iter() {
-                black_box(all.binary_search_by(|v| v.code.as_bytes().cmp(needle)));
-            };
+            for needle in all_vrs() {
+                black_box(bench_meta2_binary(needle, &haystack).unwrap());
+            }
+        })
+    }
+
+    // Search VR with a current implementation. Should roughly equal to `vr_lookup_binary`
+    #[allow(unused_must_use)]
+    #[bench]
+    fn vr_lookup_current(b: &mut Bencher) {
+        b.iter(|| {
+            for needle in all_vrs() {
+                black_box(Vr::try_from(needle).unwrap());
+            }
         })
     }
 }

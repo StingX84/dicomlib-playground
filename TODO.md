@@ -8,7 +8,7 @@ Legend:
 
 ## Core library:
 
-### ☐ Value Representation - module "vr"
+### ☑ Value Representation - module "vr"
 - Enumeration
 - Information accessor
 
