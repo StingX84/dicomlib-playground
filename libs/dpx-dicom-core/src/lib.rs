@@ -1,6 +1,9 @@
 #![allow(dead_code)]
-#![cfg_attr(feature = "unstable", feature(debugger_visualizer), debugger_visualizer(natvis_file = "../dpx_dicom_core.natvis"))]
-#![cfg_attr(feature = "unstable", feature(is_sorted))]
+#![cfg_attr(feature = "unstable",
+    feature(debugger_visualizer),
+    debugger_visualizer(natvis_file = "../dpx_dicom_core.natvis"),
+    feature(is_sorted),
+    feature(test),)]
 
 // Module declarations
 pub mod tag;
