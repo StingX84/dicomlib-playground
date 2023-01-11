@@ -8,13 +8,16 @@
     "words": [
         "bitflags",
         "DICOM",
+        "diconde",
+        "dicos",
         "DIMSE",
+        "ggggeeee",
         "hexdigit",
         "natvis",
+        "Punycode",
         "repr",
         "rustfmt",
         "tagkey",
-        "Punycode",
         "thiserror"
     ]
 }

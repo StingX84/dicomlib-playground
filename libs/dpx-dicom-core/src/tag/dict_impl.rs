@@ -1,15 +1,16 @@
 use super::*;
+use crate::{Cow, Vr};
 
 use std::io::BufRead;
-
-use crate::Cow;
 
 #[derive(Debug, Clone)]
 pub struct TagInfo<'a> {
     pub tag: Tag<'a>,
     pub mask: u32,
+    pub vr: Vr,
     pub name: Cow<'a, str>,
     pub level: Level<'a>,
+    pub section: Section<'a>,
 }
 
 impl<'a> PartialEq for TagInfo<'a> {
@@ -71,6 +72,15 @@ const LEVEL_STUDY: &str = "study";
 const LEVEL_SERIES: &str = "series";
 const LEVEL_INSTANCE: &str = "instance";
 
+#[derive(Debug, Clone)]
+pub enum Section<'a> {
+    Dicom,
+    Diconde,
+    Dicos,
+    DicomRetired(Option<Cow<'a, str>>),
+    Vendored(Cow<'a, str>),
+}
+
 #[derive(Clone)]
 pub struct StaticDictionary(&'static [TagInfo<'static>]);
 inventory::collect!(StaticDictionary);
@@ -106,7 +116,7 @@ impl<'a> Dictionary<'a> {
     #[cfg(all(feature = "unstable", debug_assertions))]
     fn verify_sorted(dict: &'static StaticDictionary) {
         assert!(
-            dict.0.is_sorted_by(|l, r| l.tag.partial_cmp(&r.tag)),
+            dict.0.is_sorted_by_key(|i| &i.tag ),
             "array in dpx_dicom_core::tag::StaticDictionary should be sorted by TagKey!"
         );
     }
@@ -234,7 +244,7 @@ impl<'a> Dictionary<'a> {
         }
 
         // Search the hard-way.
-        let tag: Tag<'static> = key.into();
+        let tag = Tag::new(key, None);
         if let Some(v) = Self::search_in_ary(self.dynamic.iter(), &tag) {
             return Some(v);
         }
@@ -306,7 +316,7 @@ impl<'a> Dictionary<'a> {
         // then it will be matched "exactly". This is a "compatibility" feature with
         // some buggy software, that does not provide any "private creator" for their
         // attributes.
-        if key.is_private_any() && tag_info.tag.creator.is_some() {
+        if key.is_private() && tag_info.tag.creator.is_some() {
             // Add private attribute without "private creator"
             if key.is_private_attribute() {
                 cache.sorted.push((
@@ -337,7 +347,7 @@ impl<'a> Dictionary<'a> {
     ) -> Option<&'a TagInfo<'a>> {
         let mut matched = None;
 
-        if !tag.key.is_private_any() || tag.creator.is_none() {
+        if !tag.key.is_private() || tag.creator.is_none() {
             // Search for a regular tag OR private without known "creator".
             // We can't coerce private attributes and reservations to it's canonical form,
             // because without known "creator" we will collide with someone other private attribute.
