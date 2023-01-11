@@ -2,6 +2,9 @@
 version = "0.1.0"
 authors = [ "Alexei Devyatnikov <to@stingx.ru>" ]
 edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/StingX84/dicomlib-playground"
+categories = ["network-programming"]
 
 [workspace]
 

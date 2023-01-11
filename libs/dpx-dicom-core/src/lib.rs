@@ -4,6 +4,7 @@
     debugger_visualizer(natvis_file = "../dpx_dicom_core.natvis"),
     feature(is_sorted),
     feature(test),)]
+#![deny(clippy::all)]
 
 // Module declarations
 pub mod tag;
@@ -13,9 +14,12 @@ pub mod settings;
 pub mod vr;
 
 // Public re-exports
+#[doc(no_inline)]
 pub use vr::Vr;
-pub use tag::TagKey;
+#[doc(no_inline)]
 pub use tag::Tag;
+#[doc(no_inline)]
+pub use tag::TagKey;
 
 // Crate STD lib types
 pub(crate) type Arc<T> = std::sync::Arc<T>;

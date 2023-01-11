@@ -1,10 +1,15 @@
 [package]
 name = "dpx-dicom-core"
 description = "Core DICOM library component"
+keywords = ["dicom"]
+readme = "README.md"
 
-version.workspace = true
 authors.workspace = true
+categories.workspace = true
 edition.workspace = true
+license.workspace = true
+repository.workspace = true
+version.workspace = true
 
 [features]
 default = [ "unstable", "serde" ]
