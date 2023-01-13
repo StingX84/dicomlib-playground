@@ -1,9 +1,12 @@
 use super::*;
-use crate::{utils::unescape::unescape, Cow, Vr};
+use crate::{utils::unescape::unescape_with_validator, Cow, Vr};
 
 use std::io::BufRead;
 
-// cSpell:ignore Deidentification Nonidentifying
+// cSpell:ignore Deidentification Nonidentifying тест
+
+#[cfg(test)]
+mod tests;
 
 /// This structure contains information about a specific DICOM [`Tag`]
 ///
@@ -100,7 +103,7 @@ impl<'a> Ord for Meta<'a> {
 }
 
 /// Section of the Standard, that declares this attribute.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Source {
     /// Invalid attribute
     Invalid,
@@ -137,7 +140,7 @@ pub enum Source {
 /// type, then "Block Identifying Information Status (0008,0303)" will be set to "MIXED",
 /// then "Nonidentifying Private Elements (0008,0304)" and "Deidentification Action Sequence (0008,0305)"
 /// attributes are written to reflect attribute de-identifying actions.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PrivateIdentificationAction {
     /// Attribute does not contain identifying information
     None,
@@ -403,12 +406,13 @@ impl<'a> Dictionary<'a> {
     }
 
     fn map_offset_to_char_pos(line: &str, offset: usize) -> usize {
-        let byte_pos = offset.clamp(line.as_ptr() as usize, line.as_ptr() as usize + line.len()) - line.as_ptr() as usize;
+        let byte_pos = offset.clamp(line.as_ptr() as usize, line.as_ptr() as usize + line.len())
+            - line.as_ptr() as usize;
         let mut bytes_counted = 0usize;
         let mut char_pos = 0usize;
         for c in line.chars() {
             bytes_counted += c.len_utf8();
-            if byte_pos < bytes_counted  {
+            if byte_pos < bytes_counted {
                 break;
             }
             char_pos += 1;
@@ -418,7 +422,8 @@ impl<'a> Dictionary<'a> {
     }
 
     fn dict_parse_line_int(line: &str) -> Result<Option<Meta<'static>>, DictParseErr> {
-        if line.starts_with('#') {
+        let line = line.trim_start();
+        if line.starts_with('#') || line.is_empty() {
             return Ok(None);
         }
 
@@ -455,7 +460,7 @@ impl<'a> Dictionary<'a> {
         match s.find('\t') {
             None => parse_fail!(
                 s,
-                if s.is_empty() { 0 } else { s.len() - 1 },
+                s.len().saturating_sub(1),
                 "unexpected end of line, expecting TAB character"
             ),
             Some(index) => Ok((&s[0..index], &s[index + 1..])),
@@ -464,32 +469,36 @@ impl<'a> Dictionary<'a> {
 
     fn dict_parse_tag_component(s: &str) -> Result<(u16, u16), DictParseErr> {
         let s = s.trim();
-        parse_ensure!(
-            s.len() == 4,
-            s,
-            0,
-            format!("invalid Tag component length {}, expected 4", s.len())
-        );
-
         let mut mask = 0u16;
         let mut number = 0u16;
+        let mut it = s.chars();
+        let mut byte_offset = 0usize;
         for n in 0usize..4 {
-            let c = &s.as_bytes()[n];
-            match c {
-                b'x' | b'X' => mask |= 0xF << (4 * (3 - n)),
-                b'0'..=b'9' => number |= ((c - b'0') as u16) << (4 * (3 - n)),
-                b'a'..=b'f' => number |= ((c - b'a' + 10) as u16) << (4 * (3 - n)),
-                b'A'..=b'F' => number |= ((c - b'A' + 10) as u16) << (4 * (3 - n)),
-                _ => parse_fail!(
+            let c = it.next().ok_or_else(|| {
+                mk_parse_err!(s, byte_offset, "expecting hexadecimal number or \"x\"")
+            })?;
+            byte_offset += c.len_utf8();
+            if let Some(num) = c.to_digit(16) {
+                number |= (num as u16) << (4 * (3 - n));
+            } else if c == 'x' || c == 'X' {
+                mask |= 0xF << (4 * (3 - n));
+            } else {
+                parse_fail!(
                     s,
                     n,
                     format!(
                         "invalid character \"{}\" in Tag component, expected hexadecimal or 'X'",
-                        c.to_string().escape_default()
+                        c.escape_default()
                     )
-                ),
+                );
             }
         }
+        parse_ensure!(
+            it.next().is_none(),
+            s,
+            byte_offset,
+            "extra characters after Tag element"
+        );
         Ok((number, !mask))
     }
 
@@ -516,7 +525,7 @@ impl<'a> Dictionary<'a> {
         let element_chars = components.next().ok_or_else(|| {
             mk_parse_err!(
                 group_chars,
-                if group_chars.is_empty() { 0 } else { group_chars.len() - 1 },
+                group_chars.len().saturating_sub(1),
                 "expecting comma separated Tag group number"
             )
         })?;
@@ -528,19 +537,25 @@ impl<'a> Dictionary<'a> {
             Some(creator) => {
                 let creator = creator.trim();
                 parse_ensure!(
-                    creator.len() >= 3 && creator.starts_with('"') && creator.ends_with('"'),
+                    creator.len() >= 2 && creator.starts_with('"') && creator.ends_with('"'),
                     creator,
                     0,
-                    "private creator in Tag definition should start and end with double quotes"
+                    "no starting or ending double quote for private creator in Tag definition"
                 );
                 let creator = &creator[1..creator.len() - 1];
+                parse_ensure!(
+                    !creator.is_empty(),
+                    creator,
+                    0,
+                    "empty private creator in Tag definition"
+                );
 
                 use crate::utils::unescape::Error::*;
-                let unescaped = unescape(creator).map_err(|e| match e {
+                let unescaped = unescape_with_validator(creator, |c| !c.is_control() && c != '\\').map_err(|e| match e {
                     IncompleteStr { pos } => mk_parse_err!(
                         creator,
                         pos,
-                        "incomplete escaped sequence in private creator"
+                        "incomplete escape sequence in private creator"
                     ),
                     InvalidChar { char, pos } => mk_parse_err!(
                         creator,
@@ -555,7 +570,21 @@ impl<'a> Dictionary<'a> {
                         pos,
                         format!("unable to parse escape sequence({source}) in private creator")
                     ),
+                    NotAllowedChar { char, pos } => mk_parse_err!(
+                        creator,
+                        pos,
+                        format!("invalid character \"{char}\" in private creator. backslash and control characters are not allowed")
+                    )
                 })?;
+                let chars_count = unescaped.chars().count();
+                parse_ensure!(
+                    chars_count <= 64,
+                    creator,
+                    0,
+                    format!(
+                        "private creator is too long ({chars_count} chars). maximum 64 allowed."
+                    )
+                );
                 Some(Cow::Owned(unescaped))
             }
         };
@@ -572,7 +601,7 @@ impl<'a> Dictionary<'a> {
         parse_ensure!(
             s.len() <= 128,
             s,
-            s.len() - 1,
+            0,
             format!(
                 "Name field is too long ({} bytes) maximum allowed 128 bytes",
                 s.len()
@@ -583,7 +612,7 @@ impl<'a> Dictionary<'a> {
                 s,
                 index,
                 format!(
-                    "invalid character \"{}\" in Name field",
+                    "invalid character \"{}\" in Name field. only space and ascii graphic allowed",
                     s.as_bytes()[index].to_owned().escape_ascii()
                 )
             );
@@ -597,7 +626,7 @@ impl<'a> Dictionary<'a> {
         parse_ensure!(
             s.len() <= 64,
             s,
-            s.len() - 1,
+            0,
             format!(
                 "Keyword field is too long ({} bytes) maximum allowed 64 bytes",
                 s.len()
@@ -621,7 +650,7 @@ impl<'a> Dictionary<'a> {
                 s,
                 index,
                 format!(
-                    "invalid character \"{}\" in Name field",
+                    "invalid character \"{}\" in Name field. only underscore and alphabetic allowed",
                     s.as_bytes()[index].to_owned().escape_ascii()
                 )
             );
@@ -630,19 +659,18 @@ impl<'a> Dictionary<'a> {
     }
 
     fn dict_parse_field_vr(s: &'_ str) -> Result<(Vr, Vr), DictParseErr> {
-        let s = s.trim();
         if let Some(i) = s.find(" or ") {
-            let vr_text = &s[0..i];
-            parse_ensure!(i + 4 < s.len(), s, 0, "unexpected empty second VR");
-            let alt_vr_text = &s[i + 4..];
-            let vr = Vr::try_from(s).map_err(|_| {
+            let vr_text = s[0..i].trim();
+            //parse_ensure!(i + 4 < s.len(), s, 0, "unexpected empty second VR");
+            let alt_vr_text = s[i + 4..].trim();
+            let vr = Vr::try_from(vr_text).map_err(|_| {
                 mk_parse_err!(
                     vr_text,
                     0,
                     format!("unsupported VR \"{}\"", vr_text.escape_default())
                 )
             })?;
-            let alt_vr = Vr::try_from(s).map_err(|_| {
+            let alt_vr = Vr::try_from(alt_vr_text).map_err(|_| {
                 mk_parse_err!(
                     alt_vr_text,
                     0,
@@ -651,6 +679,7 @@ impl<'a> Dictionary<'a> {
             })?;
             Ok((vr, alt_vr))
         } else {
+            let s = s.trim();
             let vr = Vr::try_from(s).map_err(|_| {
                 mk_parse_err!(s, 0, format!("unsupported VR \"{}\"", s.escape_default()))
             })?;
@@ -664,20 +693,39 @@ impl<'a> Dictionary<'a> {
         if vm_is_unbounded {
             s = &s[..s.len() - 1];
         }
+        let mut vm1_text = s;
+        let mut vm2_text = s;
         let (vm1, vm2) = if let Some(index) = s.find('-') {
-            let vm1_text = s[..index].trim();
-            let vm2_text = s[index + 1..].trim();
+            vm1_text = s[..index].trim();
+            vm2_text = s[index + 1..].trim();
             let vm1 = vm1_text
                 .parse::<u8>()
                 .map_err(|e| mk_parse_err!(vm1_text, 0, format!("invalid VM number({e})")))?;
-            let vm2 = vm2_text
-                .parse::<u8>()
-                .map_err(|e| mk_parse_err!(vm2_text, 0, format!("invalid VM number({e})")))?;
-            (vm1, Some(vm2))
+            parse_ensure!(
+                vm_is_unbounded || !vm2_text.is_empty(),
+                vm2_text,
+                0,
+                "unexpected end of VM. expecting number after \"-\""
+            );
+            let vm2 = if !vm2_text.is_empty() {
+                let vm = vm2_text
+                    .parse::<u8>()
+                    .map_err(|e| mk_parse_err!(vm2_text, 0, format!("invalid VM number({e})")))?;
+                Some(vm)
+            } else {
+                None
+            };
+            (vm1, vm2)
         } else {
-            let vm1 = s
+            parse_ensure!(
+                !vm_is_unbounded,
+                s,
+                s.len(),
+                "unexpected \"n\". allowed \"-\" or end of VM"
+            );
+            let vm1 = vm1_text
                 .parse::<u8>()
-                .map_err(|e| mk_parse_err!(s, 0, format!("invalid VM number({e})")))?;
+                .map_err(|e| mk_parse_err!(vm1_text, 0, format!("invalid VM number({e})")))?;
             (vm1, None)
         };
 
@@ -686,7 +734,7 @@ impl<'a> Dictionary<'a> {
                 // Form `A-Bn`
                 parse_ensure!(
                     vm1 == vm2,
-                    s,
+                    vm1_text,
                     0,
                     format!("unequal numbers ({vm1} and {vm2}) in unbound repetitive VM")
                 );
@@ -698,14 +746,26 @@ impl<'a> Dictionary<'a> {
         } else if let Some(vm2) = vm2 {
             // Form `A-B`
             parse_ensure!(
-                vm1 <= vm2,
-                s,
+                vm2 > 0,
+                vm2_text,
                 0,
-                format!("second VM number({vm2}) should be greater or equal to first({vm1})")
+                format!("zero second VM number. expected number in range 1-255")
+            );
+            parse_ensure!(
+                vm1 <= vm2,
+                vm1_text,
+                0,
+                format!("second VM number({vm2}) is less than first({vm1})")
             );
             Ok((vm1, vm2, 1))
         } else {
             // Form `A`
+            parse_ensure!(
+                vm1 > 0,
+                vm1_text,
+                0,
+                format!("zero first VM number. expected number in range 1-255")
+            );
             Ok((vm1, vm1, 1))
         }
     }
@@ -943,67 +1003,5 @@ impl<'a> Dictionary<'a> {
         }
 
         matched
-    }
-}
-
-#[cfg(test)]
-#[rustfmt::skip]
-mod tests {
-    use super::*;
-
-    macro_rules! assert_parser_err {
-        ($fn:path, $text:expr, $expected_pos:expr) => {{
-            let text: &str = $text;
-            match $fn(text) {
-                Err(DictParseErr(pos, _)) => {
-                    let pos = Dictionary::map_offset_to_char_pos(text, pos);
-                    assert!(pos == $expected_pos, "pos \"{}\" is not equal to expected \"{}\" in error from \"{}\"", pos, $expected_pos, stringify!($fn));
-                }
-                _ => assert!(false, "{} expected to fail", stringify!($fn)),
-            }
-        }};
-        ($fn:path, $text:expr, $expected_pos:expr, $expected_msg:expr) => {{
-            let text: &str = $text;
-            match $fn(text) {
-                Err(DictParseErr(pos, msg)) => {
-                    let pos = Dictionary::map_offset_to_char_pos(text, pos);
-                    assert!(pos == $expected_pos, "pos \"{}\" is not equal to expected \"{}\" in error from \"{}\"", pos, $expected_pos, stringify!($fn));
-                    assert!(msg.starts_with($expected_msg), "message \"{}\" is not equal to expected \"{}\" in error from \"{}\"", msg, $expected_msg, stringify!($fn));
-                }
-                _ => assert!(false, "{} expected to fail", stringify!($fn)),
-            }
-        }};
-    }
-
-    #[test]
-    fn check_dict_next_field() {
-        assert_eq!(Dictionary::dict_next_field("\t").unwrap(), ("", ""));
-        assert_eq!(Dictionary::dict_next_field("1\t").unwrap(), ("1", ""));
-        assert_eq!(Dictionary::dict_next_field("\t2").unwrap(), ("", "2"));
-        assert_eq!(Dictionary::dict_next_field("1\t2").unwrap(), ("1", "2"));
-
-        // This should fail, because no TAB character.
-        // Also this test checks if the character position is actual characters, not bytes.
-        assert_parser_err!(Dictionary::dict_next_field, "", 0);
-        assert_parser_err!(Dictionary::dict_next_field, "Abc", 2);
-        assert_parser_err!(Dictionary::dict_next_field, "Абв", 2);
-    }
-
-    #[test]
-    fn check_dict_parse_field_tag() {
-        assert_eq!(Dictionary::dict_parse_field_tag("(4321,5678,\"creator\")").unwrap(),
-            (Tag::private(0x4321, 0x5678, "creator"), 0xFFFFFFFFu32));
-        assert_eq!(Dictionary::dict_parse_field_tag("(cDeF,xXaB)").unwrap(),
-            (Tag::standard(0xcdef, 0x00ab), 0xFFFF00FFu32));
-        assert_eq!(Dictionary::dict_parse_field_tag("(xxxx,xxxx)").unwrap(),
-            (Tag::standard(0x0000, 0x0000), 0x00000000u32));
-        assert_eq!(Dictionary::dict_parse_field_tag(" ( 4321 , 5678 , \"creator\" ) ").unwrap(),
-            (Tag::private(0x4321, 0x5678, "creator"), 0xFFFFFFFFu32));
-
-        assert_parser_err!(Dictionary::dict_parse_field_tag, "", 0, "expecting opening brace");
-        assert_parser_err!(Dictionary::dict_parse_field_tag, "A", 0, "expecting opening brace");
-        assert_parser_err!(Dictionary::dict_parse_field_tag, "(A", 1, "expecting closing brace");
-        assert_parser_err!(Dictionary::dict_parse_field_tag, "()", 1, "expecting comma");
-        assert_parser_err!(Dictionary::dict_parse_field_tag, "()", 1, "expecting comma");
     }
 }
