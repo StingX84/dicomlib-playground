@@ -14,7 +14,7 @@ pub enum Error {
 /// Result of text to `Vr` conversion operations
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
-// cSpell:ignore ZZXX hhmmss
+// cSpell:ignore ZZXX hhmmss FFFE
 
 /// A enumeration of known Value Representation codes
 ///
@@ -39,6 +39,12 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 )]
 #[repr(u8)]
 pub enum Vr {
+    /// An undefined value
+    ///
+    /// This constant used for the special DICOM attributes, that has no value representation.
+    /// For example, Sequence Delimitation Item (FFFE,E0DD)
+    Undefined,
+
     /// Application Entity
     ///
     /// A string of characters that identifies an Application Entity
@@ -230,7 +236,7 @@ pub enum Vr {
     /// A character string that may contain one or more paragraphs
     /// - Format: Text, subject to `Specific Character Set (0008,0005)`
     ///   - Length: variable, 10240 chars max
-    ///   - VM: 0 or 1
+    ///   - VM: 1
     ///   - Padding char: `\x20` (space)
     ///   - Allowed chars: `\x09` (TAB), '\x0A' (LF), `\x0C` (FF), `\x0D` (CR) and any valid unicode greater or equal to `\x20`
     ///   - Trailing spaces are not significant
@@ -248,7 +254,7 @@ pub enum Vr {
     /// An octet-stream where the encoding of the contents is specified by the negotiated Transfer Syntax.
     /// - Format: Special RAW-only binary
     ///   - Length: variable
-    ///   - VM: 1 (even if empty binary)
+    ///   - VM: 1
     /// - Q/R C-FIND not supported
     OB,
 
@@ -257,7 +263,7 @@ pub enum Vr {
     /// A stream of 64-bit IEEE 754:1985 floating point words.
     /// - Format: Special RAW-only binary
     ///   - Length: variable, 2^32-8 bytes max
-    ///   - VM: 1 (even if empty binary)
+    ///   - VM: 1
     /// - Q/R C-FIND not supported
     OD,
 
@@ -266,7 +272,7 @@ pub enum Vr {
     /// A stream of 32-bit IEEE 754:1985 floating point words.
     /// - Format: Special RAW-only binary
     ///   - Length: variable, 2^32-8 bytes max
-    ///   - VM: 1 (even if empty binary)
+    ///   - VM: 1
     /// - Q/R C-FIND not supported
     OF,
 
@@ -275,7 +281,7 @@ pub enum Vr {
     /// A stream of 32-bit words where the encoding of the contents is specified by the negotiated Transfer Syntax.
     /// - Format: Special RAW-only binary
     ///   - Length: variable
-    ///   - VM: 1 (even if empty binary)
+    ///   - VM: 1
     /// - Q/R C-FIND not supported
     OL,
 
@@ -284,7 +290,7 @@ pub enum Vr {
     /// A stream of 64-bit words where the encoding of the contents is specified by the negotiated Transfer Syntax
     /// - Format: Special RAW-only binary
     ///   - Length: variable
-    ///   - VM: 1 (even if empty binary)
+    ///   - VM: 1
     /// - Q/R C-FIND not supported
     OV,
 
@@ -293,7 +299,7 @@ pub enum Vr {
     /// A stream of 16-bit words where the encoding of the contents is specified by the negotiated Transfer Syntax
     /// - Format: Special RAW-only binary
     ///   - Length: variable
-    ///   - VM: 1 (even if empty binary)
+    ///   - VM: 1
     /// - Q/R C-FIND not supported
     OW,
 
@@ -366,7 +372,7 @@ pub enum Vr {
     /// Value is a Sequence of zero or more Items
     /// - Format: Special list
     ///   - Length: variable, unlimited
-    ///   - VM: any
+    ///   - VM: 1
     /// - Q/R C-FIND:
     ///   - Supports: "Single Value Matching", "Universal Matching"
     SQ,
@@ -386,7 +392,7 @@ pub enum Vr {
     /// A character string that may contain one or more paragraphs
     /// - Format: Text, subject to `Specific Character Set (0008,0005)`
     ///   - Length: variable, 1024 chars max
-    ///   - VM: 0 or 1
+    ///   - VM: 1
     ///   - Padding char: `\x20` (space)
     ///   - Allowed chars: `\x09` (TAB), '\x0A' (LF), `\x0C` (FF), `\x0D` (CR) and any valid unicode greater or equal to `\x20`
     ///   - Trailing spaces are not significant
@@ -480,7 +486,7 @@ pub enum Vr {
     ///
     /// - Format: Binary
     ///   - Length: variable
-    ///   - VM: any
+    ///   - VM: 1
     /// - Q/R C-FIND: Not supported
     ///
     /// [PS3.5 "6.2.2 Unknown (UN) Value Representation"]: https://dicom.nema.org/medical/dicom/current/output/chtml/part05/sect_6.2.2.html
@@ -492,7 +498,7 @@ pub enum Vr {
     /// See description in [PS3.5 "6.2.3 URI/URL (UR) Value Representation"]
     /// - Format: Text, subject to `Specific Character Set (0008,0005)`
     ///   - Length: variable, 2^32-2 chars max
-    ///   - VM: 0, 1
+    ///   - VM: 1
     ///   - Padding char: `\x20` SPACE
     ///   - Allowed chars: `[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=-]`
     /// - Q/R C-FIND:
@@ -525,7 +531,7 @@ pub enum Vr {
     /// A character string that may contain one or more paragraphs
     /// - Format: Text, subject to `Specific Character Set (0008,0005)`
     ///   - Length: variable, 1024 chars max
-    ///   - VM: 0 or 1
+    ///   - VM: 1
     ///   - Padding char: `\x20` (space)
     ///   - Allowed chars: `\x09` (TAB), '\x0A' (LF), `\x0C` (FF), `\x0D` (CR) and any valid unicode greater or equal to `\x20`
     ///   - Trailing spaces are not significant
@@ -583,6 +589,7 @@ impl Vr {
     pub const fn all() -> &'static [Meta] {
         use Vr::*;
         const LIST: [Meta; MAX_VR as usize + 1] = [
+            mk_meta!(Undefined, [b' ', b' '], "N/A",            Kind::Invalid),
             mk_meta!(AE, [b'A', b'E'], "Application Entity",    Kind::Text { translatable: false, null_padded: false, leading_spaces_important: false, trailing_spaces_important: false}),
             mk_meta!(AS, [b'A', b'S'], "Age String",            Kind::Text { translatable: false, null_padded: false, leading_spaces_important: true,  trailing_spaces_important: true}),
             mk_meta!(AT, [b'A', b'T'], "Attribute Tag",         Kind::U32),
@@ -743,6 +750,9 @@ impl std::str::FromStr for Vr {
 /// developing a custom file parser.
 #[derive(Debug, Clone, Copy)]
 pub enum Kind {
+    /// Invalid kind. These attribute can not be stored in the dataset.
+    Invalid,
+
     /// Values of this element are stored as some byte array and not presentable directly.
     /// For example, pixel data
     Bytes,

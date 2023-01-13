@@ -1,111 +1,185 @@
 use super::*;
-use crate::{Cow, Vr};
+use crate::{utils::unescape::unescape, Cow, Vr};
 
 use std::io::BufRead;
 
+// cSpell:ignore Deidentification Nonidentifying
+
+/// This structure contains information about a specific DICOM [`Tag`]
+///
+/// See [`dpx_dicom_core::tag::Dictionary`]
 #[derive(Debug, Clone)]
-pub struct TagInfo<'a> {
+pub struct Meta<'a> {
+    /// Tag key and it's private creator
     pub tag: Tag<'a>,
+    /// TagKey mask.
+    ///
+    /// This number represents an AND mask applied to the attribute tag key
+    /// when searching in a [`Dictionary`].
+    ///
+    /// The value of 0xFFFFFFFFu32 means attribute is searched exactly as-is.
+    ///
+    /// Mask may contain only one block of zero bits!
     pub mask: u32,
+    /// Attribute Value Representation
     pub vr: Vr,
+    /// Alternative Value Representation
+    ///
+    /// Most of attributes has a single VR and this member will
+    /// be set to [`Vr::Undefined`]
+    ///
+    /// Note: This value deliberately not an [`Option`] for the performance considerations.
+    pub alt_vr: Vr,
+    /// Value Multiplicity constraint
+    ///
+    /// The first value is the minimum multiplicity, the second value is the maximum multiplicity.
+    /// If the maximum multiplicity is open-ended, 0 is used. The third value, if present, is the "stride", i.e.,
+    /// the increment between valid multiplicity values. A stride is used when values are added in sets, such as
+    /// an x/y/z set of coordinate values that is recorded in triplets. The stride is not permitted to be 0.
+    ///
+    /// Examples:
+    /// - VM of 1-3 is expressed as (1,3,1) meaning the multiplicity is permitted to be 1, 2 or 3
+    /// - VM of 1-n is expressed as (1,0,1)
+    /// - VM of 0-n is expressed as (0,0,1)
+    /// - VM of 3-3n is expressed as (3,0,3)
+    pub vm: (u8, u8, u8),
+    /// Short display name of the attribute Tag
+    ///
+    /// For example: "Patient's Name"
     pub name: Cow<'a, str>,
-    pub level: Level<'a>,
-    pub section: Section<'a>,
+    /// Alphanumeric keyword of this attribute
+    ///
+    /// For example: "Patient​Name"
+    pub keyword: Cow<'a, str>,
+    /// Section of the standard or a vendor name
+    pub source: Source,
 }
 
-impl<'a> PartialEq for TagInfo<'a> {
+impl<'a> PartialEq for Meta<'a> {
     fn eq(&self, other: &Self) -> bool {
         self.tag.eq(&other.tag)
     }
 }
 
-impl<'a, 'b> PartialEq<Tag<'b>> for TagInfo<'a> {
+impl<'a, 'b> PartialEq<Tag<'b>> for Meta<'a> {
     fn eq(&self, other: &Tag<'b>) -> bool {
         self.tag.eq(other)
     }
 }
 
-impl<'a> PartialEq<TagKey> for TagInfo<'a> {
+impl<'a> PartialEq<TagKey> for Meta<'a> {
     fn eq(&self, other: &TagKey) -> bool {
         self.tag.key.eq(other)
     }
 }
 
-impl<'a> Eq for TagInfo<'a> {}
+impl<'a> Eq for Meta<'a> {}
 
-impl<'a> PartialOrd for TagInfo<'a> {
+impl<'a> PartialOrd for Meta<'a> {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         self.tag.partial_cmp(&other.tag)
     }
 }
 
-impl<'a, 'b> PartialOrd<Tag<'b>> for TagInfo<'a> {
+impl<'a, 'b> PartialOrd<Tag<'b>> for Meta<'a> {
     fn partial_cmp(&self, other: &Tag<'b>) -> Option<std::cmp::Ordering> {
         self.tag.partial_cmp(other)
     }
 }
 
-impl<'a> PartialOrd<TagKey> for TagInfo<'a> {
+impl<'a> PartialOrd<TagKey> for Meta<'a> {
     fn partial_cmp(&self, other: &TagKey) -> Option<std::cmp::Ordering> {
         self.tag.key.partial_cmp(other)
     }
 }
 
-impl<'a> Ord for TagInfo<'a> {
+impl<'a> Ord for Meta<'a> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.tag.cmp(&other.tag)
     }
 }
 
-// ---------------------------------------------------------------------------
-// dpx-dicom-core::tag::Level implementation
-// ---------------------------------------------------------------------------
+/// Section of the Standard, that declares this attribute.
 #[derive(Debug, Clone)]
-pub struct Level<'a> {
-    pub root: Cow<'a, str>,
-    pub level: Cow<'a, str>,
+pub enum Source {
+    /// Invalid attribute
+    Invalid,
+    /// Standard DICOM attribute
+    Dicom,
+    /// Digital Imaging and Communication for Security
+    Dicos,
+    /// Digital Imaging and Communication in Nondestructive Evaluation
+    Diconde,
+    /// Retired standard DICOM attribute
+    Retired,
+    /// Custom attribute from a vendor
+    Vendored(PrivateIdentificationAction),
 }
 
-const ROOT_PATIENT: &str = "patient";
-const LEVEL_PATIENT: &str = "patient";
-const LEVEL_STUDY: &str = "study";
-const LEVEL_SERIES: &str = "series";
-const LEVEL_INSTANCE: &str = "instance";
-
+/// Private attribute de-identification action
+///
+/// This affects the action library takes on the attribute
+/// when de-identifying the dataset. Also, this actions
+/// may be conveyed in the dataset, so other dicom application
+/// know what to do with private attributes when it decides to
+/// de-identify the dataset.
+///
+/// This library may automatically construct and/or update
+/// attribute "Private Data Element Characteristics Sequence (0008,0300)"
+/// and this code affects attribute "Block Identifying Information Status (0008,0303)",
+/// "Nonidentifying Private Elements (0008,0304)" and "Deidentification Action Sequence (0008,0305)":
+///
+/// If all of attributes in the single private group has [`PrivateIdentificationAction::None`]
+/// type, then "Block Identifying Information Status (0008,0303)" will be set to "SAFE" and
+/// no other de-identifying related attributes are written.
+///
+/// If some of attributes in the single private group has [`PrivateIdentificationAction::None`]
+/// type, then "Block Identifying Information Status (0008,0303)" will be set to "MIXED",
+/// then "Nonidentifying Private Elements (0008,0304)" and "Deidentification Action Sequence (0008,0305)"
+/// attributes are written to reflect attribute de-identifying actions.
 #[derive(Debug, Clone)]
-pub enum Section<'a> {
-    Dicom,
-    Diconde,
-    Dicos,
-    DicomRetired(Option<Cow<'a, str>>),
-    Vendored(Cow<'a, str>),
+pub enum PrivateIdentificationAction {
+    /// Attribute does not contain identifying information
+    None,
+    /// Attribute contains identifying information and recommended action for the de-identifying entity:\
+    /// replace with a non-zero length value that may be a dummy value and consistent with the VR
+    D,
+    /// Attribute contains identifying information and recommended action for the de-identifying entity:\
+    /// replace with a zero length value, or a non-zero length value that may be a dummy value and consistent with the VR
+    Z,
+    /// Attribute contains identifying information and recommended action for the de-identifying entity:\
+    /// remove
+    X,
+    /// Attribute contains identifying information and recommended action for the de-identifying entity:\
+    /// replace with a non-zero length UID that is internally consistent within a set of Instance
+    U,
 }
 
 #[derive(Clone)]
-pub struct StaticDictionary(&'static [TagInfo<'static>]);
-inventory::collect!(StaticDictionary);
+pub struct StaticMetaList(&'static [Meta<'static>]);
+inventory::collect!(StaticMetaList);
 
 // cSpell:ignore aabb
 struct DictCache<'a> {
     // Contains Tag (element 0) and TagInfo (element 1) "flattened" from static and
     // dynamic dictionaries sorted by Tag.
-    // Private attributes Tag's are "flattened" in 4 different forms:
+    // Private Attributes Tag's are "flattened" in 4 different forms:
     // 1. original form as given
-    // 2. zeroed `aa` in TagKey (gggg,aabb)
+    // 2. zeroed `XX` in TagKey (gggg,eeXX)
     // 3. original TagKey and "zeroed" `creator` field in Tag
     // 4. 2 and 3 combined
-    sorted: Vec<(Tag<'a>, &'a TagInfo<'a>)>,
+    sorted: Vec<(Tag<'a>, &'a Meta<'a>)>,
 
     // Contains TagKey bitwise and'ed with mask (element 0), mask from TagInfo (element 1)
     // and TagInfo "flattened" from static and dynamic dictionaries.
     // This list contains only elements with a mask other than 0xFFFFFFFF
-    masked: Vec<(u32, u32, &'a TagInfo<'a>)>,
+    masked: Vec<(u32, u32, &'a Meta<'a>)>,
 }
 
 #[derive(Default)]
 pub struct Dictionary<'a> {
-    statics: Vec<&'static StaticDictionary>,
-    dynamic: Vec<TagInfo<'a>>,
+    statics: Vec<&'static StaticMetaList>,
+    dynamic: Vec<Meta<'a>>,
     cache: Option<DictCache<'a>>,
 }
 
@@ -114,19 +188,19 @@ impl<'a> Dictionary<'a> {
     // Function is enabled only in "debug" builds. Other function variant
     // for "Release" builds is no-op.
     #[cfg(all(feature = "unstable", debug_assertions))]
-    fn verify_sorted(dict: &'static StaticDictionary) {
+    fn verify_sorted(dict: &'static StaticMetaList) {
         assert!(
-            dict.0.is_sorted_by_key(|i| &i.tag ),
+            dict.0.is_sorted_by_key(|i| &i.tag),
             "array in dpx_dicom_core::tag::StaticDictionary should be sorted by TagKey!"
         );
     }
 
     #[cfg(not(all(feature = "unstable", debug_assertions)))]
-    const fn verify_sorted(_: &'static StaticDictionary) {}
+    const fn verify_sorted(_: &'static StaticMetaList) {}
 
     pub fn new() -> Self {
-        let statics: Vec<&'static StaticDictionary> =
-            inventory::iter::<StaticDictionary>.into_iter().collect();
+        let statics: Vec<&'static StaticMetaList> =
+            inventory::iter::<StaticMetaList>.into_iter().collect();
         for dict in statics.iter() {
             Self::verify_sorted(dict);
         }
@@ -146,11 +220,11 @@ impl<'a> Dictionary<'a> {
         }
     }
 
-    pub fn add_static_dict(&mut self, dict: &'static StaticDictionary) {
+    pub fn add_static_list(&mut self, dict: &'static StaticMetaList) {
         if !self
             .statics
             .iter()
-            .any(|e| core::ptr::eq((*e) as *const _, dict as *const _))
+            .any(|e| ::core::ptr::eq((*e) as *const _, dict as *const _))
         {
             Self::verify_sorted(dict);
             self.statics.push(dict);
@@ -158,7 +232,7 @@ impl<'a> Dictionary<'a> {
         }
     }
 
-    pub fn add_dynamic_dict<'b: 'a, T: Iterator<Item = TagInfo<'b>>>(&mut self, iter: T) {
+    pub fn add_dynamic_list<'b: 'a, T: Iterator<Item = Meta<'b>>>(&mut self, iter: T) {
         self.dynamic.reserve(iter.size_hint().1.unwrap_or(0));
         for v in iter {
             self.dynamic.push(v);
@@ -166,24 +240,26 @@ impl<'a> Dictionary<'a> {
         self.cache = None;
     }
 
-    pub fn add_memory_dict(&mut self, buf: &mut impl std::io::Read) -> Result<()> {
+    pub fn add_from_memory(&mut self, buf: &mut impl std::io::Read) -> Result<()> {
         let reader = std::io::BufReader::new(buf);
-        let mut dict = Vec::<TagInfo<'static>>::new();
+        let mut dict = Vec::<Meta<'static>>::new();
 
-        for line in reader.buffer().lines() {
-            let line = line.context(FailedToReadTagDictionaryFileSnafu)?;
-            if let Some(tag_info) = Self::parse_file_line(line.trim())? {
+        for (line_number, line) in reader.buffer().lines().enumerate() {
+            let line = line.context(DictFileReadFailedSnafu)?;
+            if let Some(tag_info) = Self::dict_parse_line(line_number, line.trim())? {
                 dict.push(tag_info);
             }
         }
-        self.add_dynamic_dict(dict.into_iter());
+        self.add_dynamic_list(dict.into_iter());
         Ok(())
     }
 
-    pub fn add_file_dict(&mut self, file_name: impl AsRef<Path>) -> Result<()> {
+    pub fn add_from_file(&mut self, file_name: impl AsRef<Path>) -> Result<()> {
         use std::fs::File;
-        let mut file = File::open(file_name.as_ref()).context(FailedToOpenTagDictionaryFileSnafu{file_name: file_name.as_ref().to_path_buf()})?;
-        self.add_memory_dict(&mut file)
+        let mut file = File::open(file_name.as_ref()).context(DictFileOpenFailedSnafu {
+            file_name: file_name.as_ref().to_path_buf(),
+        })?;
+        self.add_from_memory(&mut file)
     }
 
     pub fn rebuild_cache(&'a mut self) {
@@ -213,22 +289,24 @@ impl<'a> Dictionary<'a> {
         // added attributes. Each list of attributes also prioritizes
         // lastly added.
         for tag_info in self.dynamic.iter().rev() {
-            Self::add_cached_tag(tag_info, &mut cache);
+            Self::add_cached_tag(&mut cache, tag_info);
         }
 
         for dict in self.statics.iter().rev() {
             for tag_info in dict.0.iter() {
-                Self::add_cached_tag(tag_info, &mut cache)
+                Self::add_cached_tag(&mut cache, tag_info)
             }
         }
 
         cache.sorted.sort_by(|l, r| l.0.cmp(&r.0));
         cache.sorted.dedup_by(|l, r| l.0 == r.0);
+        cache.masked.sort_by(|l, r| l.1.cmp(&r.1).reverse());
+        cache.masked.dedup_by(|l, r| l.0 == r.0 && l.1 == r.1);
 
         self.cache = Some(cache);
     }
 
-    pub fn get_by_tag_key(&self, key: TagKey) -> Option<&'a TagInfo> {
+    pub fn get_by_tag_key(&self, key: TagKey) -> Option<&'a Meta> {
         // Search in the cache if it is available
         if let Some(c) = &self.cache {
             // first, search directly in a sorted "flattened" array
@@ -257,7 +335,7 @@ impl<'a> Dictionary<'a> {
         None
     }
 
-    pub fn get_by_tag(&self, tag: &Tag) -> Option<&'a TagInfo> {
+    pub fn get_by_tag(&self, tag: &Tag) -> Option<&'a Meta> {
         // Search in the cache if it is available
         if let Some(c) = &self.cache {
             // first, search directly in a sorted "flattened" array
@@ -290,15 +368,373 @@ impl<'a> Dictionary<'a> {
     }
 }
 
+#[derive(Debug)]
+struct DictParseErr(usize, String);
+
+macro_rules! mk_parse_err {
+    ($str:expr, $index:expr, $msg:expr) => {
+        DictParseErr($str.as_ptr() as usize + $index, ($msg).to_owned())
+    };
+}
+macro_rules! parse_fail {
+    ($str:expr, $index:expr, $msg:expr) => {{
+        return Err(mk_parse_err!($str, $index, $msg));
+    }};
+}
+macro_rules! parse_ensure {
+    ($e:expr, $str:expr, $index:expr, $msg:expr) => {{
+        if !($e) {
+            parse_fail!($str, $index, $msg);
+        }
+    }};
+}
+
 // Private implementations
 impl<'a> Dictionary<'a> {
-    fn parse_file_line(line: &str) -> Result<Option<TagInfo<'static>>> {
+    fn dict_parse_line(line_number: usize, line: &str) -> Result<Option<Meta<'static>>> {
+        Self::dict_parse_line_int(line).map_err(|e| {
+            let char_pos = Self::map_offset_to_char_pos(line, e.0);
+            Error::DictParseFailed {
+                line_number,
+                char_pos,
+                msg: e.1,
+            }
+        })
+    }
+
+    fn map_offset_to_char_pos(line: &str, offset: usize) -> usize {
+        let byte_pos = offset.clamp(line.as_ptr() as usize, line.as_ptr() as usize + line.len()) - line.as_ptr() as usize;
+        let mut bytes_counted = 0usize;
+        let mut char_pos = 0usize;
+        for c in line.chars() {
+            bytes_counted += c.len_utf8();
+            if byte_pos < bytes_counted  {
+                break;
+            }
+            char_pos += 1;
+        }
+
+        char_pos
+    }
+
+    fn dict_parse_line_int(line: &str) -> Result<Option<Meta<'static>>, DictParseErr> {
         if line.starts_with('#') {
             return Ok(None);
         }
-        unimplemented!()
+
+        let (field_text, line_left) = Self::dict_next_field(line)?;
+        let (tag, mask) = Self::dict_parse_field_tag(field_text)?;
+
+        let (field_text, line_left) = Self::dict_next_field(line_left)?;
+        let name = Self::dict_parse_field_name(field_text)?;
+
+        let (field_text, line_left) = Self::dict_next_field(line_left)?;
+        let keyword = Self::dict_parse_field_keyword(field_text)?;
+
+        let (field_text, line_left) = Self::dict_next_field(line_left)?;
+        let (vr, alt_vr) = Self::dict_parse_field_vr(field_text)?;
+
+        let (field_text, line_left) = Self::dict_next_field(line_left)?;
+        let vm = Self::dict_parse_field_vm(field_text)?;
+
+        let source = Self::dict_parse_field_source(line_left)?;
+
+        Ok(Some(Meta::<'static> {
+            tag,
+            mask,
+            vr,
+            alt_vr,
+            vm,
+            name,
+            keyword,
+            source,
+        }))
     }
-    fn add_cached_tag(tag_info: &'a TagInfo<'a>, cache: &'_ mut DictCache<'a>) {
+
+    fn dict_next_field(s: &str) -> Result<(&str, &str), DictParseErr> {
+        match s.find('\t') {
+            None => parse_fail!(
+                s,
+                if s.is_empty() { 0 } else { s.len() - 1 },
+                "unexpected end of line, expecting TAB character"
+            ),
+            Some(index) => Ok((&s[0..index], &s[index + 1..])),
+        }
+    }
+
+    fn dict_parse_tag_component(s: &str) -> Result<(u16, u16), DictParseErr> {
+        let s = s.trim();
+        parse_ensure!(
+            s.len() == 4,
+            s,
+            0,
+            format!("invalid Tag component length {}, expected 4", s.len())
+        );
+
+        let mut mask = 0u16;
+        let mut number = 0u16;
+        for n in 0usize..4 {
+            let c = &s.as_bytes()[n];
+            match c {
+                b'x' | b'X' => mask |= 0xF << (4 * (3 - n)),
+                b'0'..=b'9' => number |= ((c - b'0') as u16) << (4 * (3 - n)),
+                b'a'..=b'f' => number |= ((c - b'a' + 10) as u16) << (4 * (3 - n)),
+                b'A'..=b'F' => number |= ((c - b'A' + 10) as u16) << (4 * (3 - n)),
+                _ => parse_fail!(
+                    s,
+                    n,
+                    format!(
+                        "invalid character \"{}\" in Tag component, expected hexadecimal or 'X'",
+                        c.to_string().escape_default()
+                    )
+                ),
+            }
+        }
+        Ok((number, !mask))
+    }
+
+    fn dict_parse_field_tag(s: &str) -> Result<(Tag<'static>, u32), DictParseErr> {
+        let s = s.trim();
+        parse_ensure!(
+            !s.is_empty() && s.starts_with('('),
+            s,
+            0,
+            "expecting opening brace at Tag definition start"
+        );
+        parse_ensure!(
+            s.ends_with(')'),
+            s,
+            s.len() - 1,
+            "expecting closing brace at Tag definition end"
+        );
+
+        let mut components = s[1..s.len() - 1].splitn(3, ',');
+
+        let group_chars = components
+            .next()
+            .expect("Bug: `split` returned zero elements");
+        let element_chars = components.next().ok_or_else(|| {
+            mk_parse_err!(
+                group_chars,
+                if group_chars.is_empty() { 0 } else { group_chars.len() - 1 },
+                "expecting comma separated Tag group number"
+            )
+        })?;
+        let (group, group_mask) = Self::dict_parse_tag_component(group_chars)?;
+        let (element, element_mask) = Self::dict_parse_tag_component(element_chars)?;
+
+        let creator: Option<Cow<'static, str>> = match components.next() {
+            None => None,
+            Some(creator) => {
+                let creator = creator.trim();
+                parse_ensure!(
+                    creator.len() >= 3 && creator.starts_with('"') && creator.ends_with('"'),
+                    creator,
+                    0,
+                    "private creator in Tag definition should start and end with double quotes"
+                );
+                let creator = &creator[1..creator.len() - 1];
+
+                use crate::utils::unescape::Error::*;
+                let unescaped = unescape(creator).map_err(|e| match e {
+                    IncompleteStr { pos } => mk_parse_err!(
+                        creator,
+                        pos,
+                        "incomplete escaped sequence in private creator"
+                    ),
+                    InvalidChar { char, pos } => mk_parse_err!(
+                        creator,
+                        pos,
+                        format!(
+                            "invalid escape sequence character \"{}\" in private creator",
+                            char.to_owned().escape_default()
+                        )
+                    ),
+                    ParseInt { source, pos } => mk_parse_err!(
+                        creator,
+                        pos,
+                        format!("unable to parse escape sequence({source}) in private creator")
+                    ),
+                })?;
+                Some(Cow::Owned(unescaped))
+            }
+        };
+
+        Ok((
+            Tag::new(TagKey::new(group, element), creator),
+            ((group_mask as u32) << 16) | element_mask as u32,
+        ))
+    }
+
+    fn dict_parse_field_name(s: &'_ str) -> Result<Cow<'static, str>, DictParseErr> {
+        let s = s.trim();
+        parse_ensure!(!s.is_empty(), s, 0, "unexpected empty Name field");
+        parse_ensure!(
+            s.len() <= 128,
+            s,
+            s.len() - 1,
+            format!(
+                "Name field is too long ({} bytes) maximum allowed 128 bytes",
+                s.len()
+            )
+        );
+        if let Some(index) = s.bytes().position(|c| !c.is_ascii_graphic() && c != b' ') {
+            parse_fail!(
+                s,
+                index,
+                format!(
+                    "invalid character \"{}\" in Name field",
+                    s.as_bytes()[index].to_owned().escape_ascii()
+                )
+            );
+        }
+        Ok(Cow::Owned(s.to_owned()))
+    }
+
+    fn dict_parse_field_keyword(s: &'_ str) -> Result<Cow<'static, str>, DictParseErr> {
+        let s = s.trim();
+        parse_ensure!(!s.is_empty(), s, 0, "unexpected empty Keyword field");
+        parse_ensure!(
+            s.len() <= 64,
+            s,
+            s.len() - 1,
+            format!(
+                "Keyword field is too long ({} bytes) maximum allowed 64 bytes",
+                s.len()
+            )
+        );
+        let c = s.as_bytes()[0];
+        parse_ensure!(
+            c.is_ascii_alphabetic(),
+            s,
+            0,
+            format!(
+                "first character \"{}\" is not alphabetic in Keyword field",
+                c.to_owned().escape_ascii()
+            )
+        );
+        if let Some(index) = s
+            .bytes()
+            .position(|c| !c.is_ascii_alphanumeric() && c != b'_')
+        {
+            parse_fail!(
+                s,
+                index,
+                format!(
+                    "invalid character \"{}\" in Name field",
+                    s.as_bytes()[index].to_owned().escape_ascii()
+                )
+            );
+        }
+        Ok(Cow::Owned(s.to_owned()))
+    }
+
+    fn dict_parse_field_vr(s: &'_ str) -> Result<(Vr, Vr), DictParseErr> {
+        let s = s.trim();
+        if let Some(i) = s.find(" or ") {
+            let vr_text = &s[0..i];
+            parse_ensure!(i + 4 < s.len(), s, 0, "unexpected empty second VR");
+            let alt_vr_text = &s[i + 4..];
+            let vr = Vr::try_from(s).map_err(|_| {
+                mk_parse_err!(
+                    vr_text,
+                    0,
+                    format!("unsupported VR \"{}\"", vr_text.escape_default())
+                )
+            })?;
+            let alt_vr = Vr::try_from(s).map_err(|_| {
+                mk_parse_err!(
+                    alt_vr_text,
+                    0,
+                    format!("unsupported VR \"{}\"", alt_vr_text.escape_default())
+                )
+            })?;
+            Ok((vr, alt_vr))
+        } else {
+            let vr = Vr::try_from(s).map_err(|_| {
+                mk_parse_err!(s, 0, format!("unsupported VR \"{}\"", s.escape_default()))
+            })?;
+            Ok((vr, Vr::Undefined))
+        }
+    }
+
+    fn dict_parse_field_vm(s: &'_ str) -> Result<(u8, u8, u8), DictParseErr> {
+        let mut s = s.trim();
+        let vm_is_unbounded = s.ends_with(['n', 'N']);
+        if vm_is_unbounded {
+            s = &s[..s.len() - 1];
+        }
+        let (vm1, vm2) = if let Some(index) = s.find('-') {
+            let vm1_text = s[..index].trim();
+            let vm2_text = s[index + 1..].trim();
+            let vm1 = vm1_text
+                .parse::<u8>()
+                .map_err(|e| mk_parse_err!(vm1_text, 0, format!("invalid VM number({e})")))?;
+            let vm2 = vm2_text
+                .parse::<u8>()
+                .map_err(|e| mk_parse_err!(vm2_text, 0, format!("invalid VM number({e})")))?;
+            (vm1, Some(vm2))
+        } else {
+            let vm1 = s
+                .parse::<u8>()
+                .map_err(|e| mk_parse_err!(s, 0, format!("invalid VM number({e})")))?;
+            (vm1, None)
+        };
+
+        if vm_is_unbounded {
+            if let Some(vm2) = vm2 {
+                // Form `A-Bn`
+                parse_ensure!(
+                    vm1 == vm2,
+                    s,
+                    0,
+                    format!("unequal numbers ({vm1} and {vm2}) in unbound repetitive VM")
+                );
+                Ok((vm1, 0, vm1))
+            } else {
+                // Form `A-n`
+                Ok((vm1, 0, 1))
+            }
+        } else if let Some(vm2) = vm2 {
+            // Form `A-B`
+            parse_ensure!(
+                vm1 <= vm2,
+                s,
+                0,
+                format!("second VM number({vm2}) should be greater or equal to first({vm1})")
+            );
+            Ok((vm1, vm2, 1))
+        } else {
+            // Form `A`
+            Ok((vm1, vm1, 1))
+        }
+    }
+
+    fn dict_parse_field_source(s: &'_ str) -> Result<Source, DictParseErr> {
+        if s.eq_ignore_ascii_case("dicom") {
+            Ok(Source::Dicom)
+        } else if s.eq_ignore_ascii_case("diconde") {
+            Ok(Source::Diconde)
+        } else if s.eq_ignore_ascii_case("dicos") {
+            Ok(Source::Dicos)
+        } else if s.eq_ignore_ascii_case("ret") {
+            Ok(Source::Retired)
+        } else if s.eq_ignore_ascii_case("priv") {
+            Ok(Source::Vendored(PrivateIdentificationAction::None))
+        } else if s.eq_ignore_ascii_case("priv(d)") {
+            Ok(Source::Vendored(PrivateIdentificationAction::D))
+        } else if s.eq_ignore_ascii_case("priv(z)") {
+            Ok(Source::Vendored(PrivateIdentificationAction::Z))
+        } else if s.eq_ignore_ascii_case("priv(x)") {
+            Ok(Source::Vendored(PrivateIdentificationAction::X))
+        } else if s.eq_ignore_ascii_case("priv(u)") {
+            Ok(Source::Vendored(PrivateIdentificationAction::U))
+        } else {
+            Err(mk_parse_err!(s, 0, "unrecognized Source field"))
+        }
+    }
+
+    fn add_cached_tag(cache: &'_ mut DictCache<'a>, tag_info: &'a Meta<'a>) {
         let key = &tag_info.tag.key;
 
         // Add tag as-is
@@ -341,10 +777,10 @@ impl<'a> Dictionary<'a> {
         }
     }
 
-    fn search_in_ary<T: Iterator<Item = &'a TagInfo<'a>>>(
+    fn search_in_ary<T: Iterator<Item = &'a Meta<'a>>>(
         iter: T,
         tag: &'_ Tag<'_>,
-    ) -> Option<&'a TagInfo<'a>> {
+    ) -> Option<&'a Meta<'a>> {
         let mut matched = None;
 
         if !tag.key.is_private() || tag.creator.is_none() {
@@ -507,5 +943,67 @@ impl<'a> Dictionary<'a> {
         }
 
         matched
+    }
+}
+
+#[cfg(test)]
+#[rustfmt::skip]
+mod tests {
+    use super::*;
+
+    macro_rules! assert_parser_err {
+        ($fn:path, $text:expr, $expected_pos:expr) => {{
+            let text: &str = $text;
+            match $fn(text) {
+                Err(DictParseErr(pos, _)) => {
+                    let pos = Dictionary::map_offset_to_char_pos(text, pos);
+                    assert!(pos == $expected_pos, "pos \"{}\" is not equal to expected \"{}\" in error from \"{}\"", pos, $expected_pos, stringify!($fn));
+                }
+                _ => assert!(false, "{} expected to fail", stringify!($fn)),
+            }
+        }};
+        ($fn:path, $text:expr, $expected_pos:expr, $expected_msg:expr) => {{
+            let text: &str = $text;
+            match $fn(text) {
+                Err(DictParseErr(pos, msg)) => {
+                    let pos = Dictionary::map_offset_to_char_pos(text, pos);
+                    assert!(pos == $expected_pos, "pos \"{}\" is not equal to expected \"{}\" in error from \"{}\"", pos, $expected_pos, stringify!($fn));
+                    assert!(msg.starts_with($expected_msg), "message \"{}\" is not equal to expected \"{}\" in error from \"{}\"", msg, $expected_msg, stringify!($fn));
+                }
+                _ => assert!(false, "{} expected to fail", stringify!($fn)),
+            }
+        }};
+    }
+
+    #[test]
+    fn check_dict_next_field() {
+        assert_eq!(Dictionary::dict_next_field("\t").unwrap(), ("", ""));
+        assert_eq!(Dictionary::dict_next_field("1\t").unwrap(), ("1", ""));
+        assert_eq!(Dictionary::dict_next_field("\t2").unwrap(), ("", "2"));
+        assert_eq!(Dictionary::dict_next_field("1\t2").unwrap(), ("1", "2"));
+
+        // This should fail, because no TAB character.
+        // Also this test checks if the character position is actual characters, not bytes.
+        assert_parser_err!(Dictionary::dict_next_field, "", 0);
+        assert_parser_err!(Dictionary::dict_next_field, "Abc", 2);
+        assert_parser_err!(Dictionary::dict_next_field, "Абв", 2);
+    }
+
+    #[test]
+    fn check_dict_parse_field_tag() {
+        assert_eq!(Dictionary::dict_parse_field_tag("(4321,5678,\"creator\")").unwrap(),
+            (Tag::private(0x4321, 0x5678, "creator"), 0xFFFFFFFFu32));
+        assert_eq!(Dictionary::dict_parse_field_tag("(cDeF,xXaB)").unwrap(),
+            (Tag::standard(0xcdef, 0x00ab), 0xFFFF00FFu32));
+        assert_eq!(Dictionary::dict_parse_field_tag("(xxxx,xxxx)").unwrap(),
+            (Tag::standard(0x0000, 0x0000), 0x00000000u32));
+        assert_eq!(Dictionary::dict_parse_field_tag(" ( 4321 , 5678 , \"creator\" ) ").unwrap(),
+            (Tag::private(0x4321, 0x5678, "creator"), 0xFFFFFFFFu32));
+
+        assert_parser_err!(Dictionary::dict_parse_field_tag, "", 0, "expecting opening brace");
+        assert_parser_err!(Dictionary::dict_parse_field_tag, "A", 0, "expecting opening brace");
+        assert_parser_err!(Dictionary::dict_parse_field_tag, "(A", 1, "expecting closing brace");
+        assert_parser_err!(Dictionary::dict_parse_field_tag, "()", 1, "expecting comma");
+        assert_parser_err!(Dictionary::dict_parse_field_tag, "()", 1, "expecting comma");
     }
 }

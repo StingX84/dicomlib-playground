@@ -82,7 +82,7 @@ pub enum ValueMeta {
         max: Option<i64>,
     },
     Tag {
-        filter_by_levels: Option<&'static [&'static crate::tag::Level<'static>]>,
+        //filter_by_levels: Option<&'static [&'static crate::tag::Level<'static>]>,
         filter_by_vr: Option<&'static [crate::vr::Vr]>,
         one_of: Option<MaybeGenerated<crate::tag::Tag<'static>>>,
     },

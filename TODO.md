@@ -12,15 +12,6 @@ Legend:
 - Enumeration
 - Information accessor
 
-### ☐ Charset encoding - module "charset"
-- Configuration parameters specific to charset handling
-- "Specific Character Set" attribute parser/validator
-- Standard single-paged tables & codec
-- ISO 2022 multi-paged tables & codec
-- UTF-8 codec
-- GB18030 codec
-- GBK codec
-
 ### ☐ Tag, TagKey and Dictionary - module "tag"
 - Basic classes for Tag, TagKey handling
 - Define Tag dictionary format
@@ -30,6 +21,15 @@ Legend:
 - Basic classes for Uid handling
 - Define UID dictionary format
 - Dictionary class and static data / file loader
+
+### ☐ Charset encoding - module "charset"
+- Configuration parameters specific to charset handling
+- "Specific Character Set" attribute parser/validator
+- Standard single-paged tables & codec
+- ISO 2022 multi-paged tables & codec
+- UTF-8 codec
+- GB18030 codec
+- GBK codec
 
 ### ☐ Basic I/O implementation - module "io"
 - Source/Target traits

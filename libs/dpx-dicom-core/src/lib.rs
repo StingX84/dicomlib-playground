@@ -12,6 +12,7 @@ pub mod charset;
 pub mod config;
 pub mod settings;
 pub mod vr;
+mod utils;
 
 // Public re-exports
 #[doc(no_inline)]

@@ -17,7 +17,8 @@
         "Punycode",
         "repr",
         "rustfmt",
+        "splitn",
         "tagkey",
-        "thiserror"
+        "zzzz-list-ending"
     ]
 }
