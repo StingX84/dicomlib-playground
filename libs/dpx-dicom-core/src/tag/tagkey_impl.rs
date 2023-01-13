@@ -128,7 +128,7 @@ impl TagKey {
     /// ```
     /// # use ::dpx_dicom_core::TagKey;
     /// assert!(!TagKey::new(0x1234, 0x0000).is_private());
-    /// assert!(TagKey::new(0x4321, 0x0000).is_private());
+    /// assert!( TagKey::new(0x4321, 0x0000).is_private());
     /// ```
     pub const fn is_private(&self) -> bool {
         self.0 & 0x00010000u32 != 0u32
@@ -211,8 +211,8 @@ impl TagKey {
     /// Returns `true` if this tag may be used in a dataset body or a dataset header
     ///
     /// From [PS3.5 7.8.1 Private Data Element Tags](https://dicom.nema.org/medical/dicom/current/output/chtml/part05/sect_7.8.html):
-    /// > Standard Data Elements have an even Group Number that is not (0000,eeee), (0002,eeee), (0004,eeee), or (0006,eeee).
-    /// >   Note: Usage of these groups is reserved for DIMSE Commands (see PS3.7) and DICOM File Formats.
+    /// > Standard Data Elements have an even Group Number that is not (0000,eeee), (0002,eeee), (0004,eeee), or (0006,eeee).\
+    /// >   Note: Usage of these groups is reserved for DIMSE Commands (see PS3.7) and DICOM File Formats.\
     /// > Private Data Elements have an odd Group Number that is not (0001,eeee), (0003,eeee), (0005,eeee), (0007,eeee), or (FFFF,eeee)
     ///
     /// Example:
@@ -228,33 +228,33 @@ impl TagKey {
     /// assert!(!TagKey::new(0xFFFF, 0x1234).is_valid_in_dataset());
     /// ```
     pub const fn is_valid_in_dataset(&self) -> bool {
-        // PS3.5 7.1 Data elements:
-        // > Standard Data Elements have an even Group Number that is not (0000,eeee), (0002,eeee), (0004,eeee), or (0006,eeee).
-        // > Note: Usage of these groups is reserved for DIMSE Commands (see PS3.7) and DICOM File Formats.
-        // > Private Data Elements have an odd Group Number that is not (0001,eeee), (0003,eeee), (0005,eeee), (0007,eeee), or (FFFF,eeee)
         self.is_valid() && (self.0 & 0xFFFF0000u32) >= 0x00080000u32
     }
 }
 
 impl std::fmt::Display for TagKey {
-    /// Outputs this key in format `(gggg,eeee)`, where `gggg` and `eeee` is group and element numbers in hexadecimal form.
+    /// Outputs this key in format `(gggg,eeee)`, where `gggg` and `eeee`
+    /// are group and element numbers in upper hexadecimal digits.
     ///
     /// Example:
     /// ```
     /// # use ::dpx_dicom_core::TagKey;
-    /// let key = TagKey::new(0x1234, 0x5678);
-    /// assert_eq!(key.to_string(), "(1234,5678)");
-    /// assert_eq!(format!("{key}"), "(1234,5678)");
+    /// let key = TagKey::new(0x4321, 0x10AA);
+    /// assert_eq!(format!("{key}"), "(4321,10AA)");
+    /// assert_eq!(TagKey::new(0x0008, 0x0005).to_string(), "(0008,0005)");
     /// ```
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "({:04x},{:04x})", self.0 >> 16, self.0 & 0xFFFFu32)
+        write!(f, "({:04X},{:04X})", self.0 >> 16, self.0 & 0xFFFFu32)
     }
 }
 
 impl From<TagKey> for String {
-    /// Outputs this key in format `(gggg,eeee)`, where `gggg` and `eeee` is group and element numbers in hexadecimal form.
+    /// Outputs this key in format `(gggg,eeee)`, where `gggg` and `eeee`
+    /// are group and element numbers in upper hexadecimal digits.
+    ///
+    /// See Display trait implementation [fmt](#method.fmt)
     fn from(value: TagKey) -> Self {
-        format!("({:04x},{:04x})", value.0 >> 16, value.0 & 0xFFFFu32)
+        format!("({:04X},{:04X})", value.0 >> 16, value.0 & 0xFFFFu32)
     }
 }
 
@@ -273,17 +273,18 @@ impl From<TagKey> for (u16, u16) {
 }
 
 impl std::fmt::Debug for TagKey {
-    /// Outputs this key in format `TagKey(gggg,eeee)`, where `gggg` and `eeee` is group and element numbers in hexadecimal form.
+    /// Outputs this key in format `TagKey(gggg,eeee)`, where `gggg` and `eeee`
+    /// are group and element numbers in upper hexadecimal digits.
     ///
     /// Example:
     /// ```
     /// # use ::dpx_dicom_core::TagKey;
     /// assert_eq!(
-    ///     format!("{:?}", TagKey::new(0x1234, 0x5678)),
-    ///     "TagKey(1234,5678)");
+    ///     format!("{:?}", TagKey::new(0x4321, 0x10AA)),
+    ///     "TagKey(4321,10AA)");
     /// ```
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "TagKey({:04x},{:04x})", self.0 >> 16, self.0 & 0xFFFFu32)
+        write!(f, "TagKey({:04X},{:04X})", self.0 >> 16, self.0 & 0xFFFFu32)
     }
 }
 
@@ -347,15 +348,10 @@ impl PartialOrd<(u16, u16)> for TagKey {
 
 impl ::core::str::FromStr for TagKey {
     type Err = Error;
-    /// Parses a text representation of the Tag
+    /// Parses a text representation of the TagKey
     ///
     /// Allowed formats:
-    /// - `(gggg,eeee)` (canonical format)
-    /// - `(gggg:eeee)`
-    /// - `gggg,eeee`
-    /// - `gggg:eeee`
-    /// - `ggggeeee`
-    /// - u32 hex encoded starting with `0x` or `0X`
+    /// - `(gggg,eeee)`
     ///
     /// Where `gggg` and `eeee` - hexadecimal group and element numbers.
     ///
@@ -366,64 +362,30 @@ impl ::core::str::FromStr for TagKey {
     /// # fn main() -> Result<(), Error> {
     /// let expected = TagKey::new(0x0008, 0x0005);
     /// assert_eq!(TagKey::from_str("(0008,0005)")?, expected);
-    /// assert_eq!(TagKey::from_str("(0008:0005)")?, expected);
-    /// assert_eq!(TagKey::from_str("0008,0005")?, expected);
-    /// assert_eq!(TagKey::from_str("0008:0005")?, expected);
-    /// assert_eq!(TagKey::from_str("00080005")?, expected);
-    /// assert_eq!(TagKey::from_str("0x00080005")?, expected);
     ///
-    /// let key: TagKey = "0x00080005".parse()?;
+    /// let key: TagKey = "(0008,0005)".parse()?;
     /// assert_eq!(key, expected);
     ///
-    /// assert!(matches!(TagKey::from_str("OOPS"), Err(tag::Error::UnrecognizedTagKeyFormat)));
-    /// assert!(matches!(TagKey::from_str("(0008@0005)"), Err(tag::Error::TagKeyInBracesMissingSeparator)));
-    /// assert!(matches!(TagKey::from_str("(0008:000Z)"), Err(tag::Error::TagKeyContainsNonHexCharacters{source:_})));
-    /// assert!(matches!(TagKey::from_str("0008 0005"), Err(tag::Error::UnrecognizedTagKeyFormat)));
+    /// assert!(matches!(TagKey::from_str("OOPS"), Err(tag::Error::TagKeyMissingOpeningBrace)));
     /// # Ok(())
     /// # }
     /// ```
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        // Accept '(gggg,eeee)' and '(gggg:eeee)'
-        if s.starts_with('(') {
-            let (g, e) = s
-                .strip_prefix('(')
-                .and_then(|s| s.strip_suffix(')'))
-                .and_then(|s| s.split_once([',', ':']))
-                .context(TagKeyInBracesMissingSeparatorSnafu)?;
+        ensure!(s.starts_with('('), TagKeyMissingOpeningBraceSnafu);
+        ensure!(s.ends_with(')'), TagKeyMissingClosingBraceSnafu);
 
-            let ng = u16::from_str_radix(g, 16).context(TagKeyContainsNonHexCharactersSnafu)?;
-            let ne = u16::from_str_radix(e, 16).context(TagKeyContainsNonHexCharactersSnafu)?;
+        let mut components = s[1..s.len() - 1].splitn(3, ',');
 
-            return Ok(Self::new(ng, ne));
-        }
+        let group_chars = components.next().context(TagKeyMissingComponentsSnafu)?;
+        let element_chars = components.next().context(TagKeyMissingComponentsSnafu)?;
 
-        // Accept gggg,eeee and gggg:eeee
-        if s.len() == 9 && (s.as_bytes()[4] == b':' || s.as_bytes()[4] == b',') {
-            // Panic: this will never panic, because we've previously checked, that array contains requested characters
-            let (g, e) = s.split_once([',', ':']).unwrap();
+        let group =
+            u16::from_str_radix(group_chars, 16).context(TagKeyContainsNonHexCharactersSnafu)?;
 
-            let ng = u16::from_str_radix(g, 16).context(TagKeyContainsNonHexCharactersSnafu)?;
-            let ne = u16::from_str_radix(e, 16).context(TagKeyContainsNonHexCharactersSnafu)?;
+        let element =
+            u16::from_str_radix(element_chars, 16).context(TagKeyContainsNonHexCharactersSnafu)?;
 
-            return Ok(Self::new(ng, ne));
-        }
-
-        // Accept 0x<hex>
-        if let Some(s) = s.strip_prefix("0x") {
-            return u32::from_str_radix(s, 16).map(TagKey::from).context(TagKeyContainsNonHexCharactersSnafu);
-        }
-
-        // Accept 0X<hex>
-        if let Some(s) = s.strip_prefix("0X") {
-            return s.parse::<u32>().map(TagKey::from).context(TagKeyContainsNonHexCharactersSnafu);
-        }
-
-        // Accept ggggeeee
-        if s.len() == 8 && s.as_bytes().iter().all(|c| c.is_ascii_hexdigit()) {
-            return u32::from_str_radix(s, 16).map(TagKey::from).context(TagKeyContainsNonHexCharactersSnafu);
-        }
-
-        UnrecognizedTagKeyFormatSnafu.fail()
+        Ok(Self::new(group, element))
     }
 }
 
@@ -464,6 +426,16 @@ mod tests {
         assert_eq!(k.as_u32(), 0x12345678);
         assert_eq!(0x12345678u32, k.into());
         assert_eq!((0x1234u16, 0x5678u16), k.into());
+
+        // Try all the errors
+        use Error::*;
+        use ::core::str::FromStr;
+        assert!(matches!(TagKey::from_str(""), Err(TagKeyMissingOpeningBrace)));
+        assert!(matches!(TagKey::from_str("0008,0005)"), Err(TagKeyMissingOpeningBrace)));
+        assert!(matches!(TagKey::from_str("(0008,0005"), Err(TagKeyMissingClosingBrace)));
+        assert!(matches!(TagKey::from_str("(00080005)"), Err(TagKeyMissingComponents)));
+        assert!(matches!(TagKey::from_str("(000Z,0005)"), Err(TagKeyContainsNonHexCharacters{source: _})));
+        assert!(matches!(TagKey::from_str("(0008,000Z)"), Err(TagKeyContainsNonHexCharacters{source: _})));
     }
 
     #[cfg(feature = "serde")]
