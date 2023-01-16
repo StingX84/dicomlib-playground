@@ -11,7 +11,7 @@ use std:: {
 // Reexports
 pub use tagkey_impl::TagKey;
 pub use tag_impl::Tag;
-pub use dict_impl::{Dictionary, Meta, Source, StaticMetaList};
+pub use dict_impl::{Dictionary, Meta, Source, PrivateIdentificationAction, StaticMetaList};
 
 pub type Result<T, E = Error> = ::core::result::Result<T, E>;
 

@@ -589,7 +589,7 @@ impl Vr {
     pub const fn all() -> &'static [Meta] {
         use Vr::*;
         const LIST: [Meta; MAX_VR as usize + 1] = [
-            mk_meta!(Undefined, [b' ', b' '], "N/A",            Kind::Invalid),
+            mk_meta!(Undefined, [b'-', b'-'], "N/A",            Kind::Invalid),
             mk_meta!(AE, [b'A', b'E'], "Application Entity",    Kind::Text { translatable: false, null_padded: false, leading_spaces_important: false, trailing_spaces_important: false}),
             mk_meta!(AS, [b'A', b'S'], "Age String",            Kind::Text { translatable: false, null_padded: false, leading_spaces_important: true,  trailing_spaces_important: true}),
             mk_meta!(AT, [b'A', b'T'], "Attribute Tag",         Kind::U32),
