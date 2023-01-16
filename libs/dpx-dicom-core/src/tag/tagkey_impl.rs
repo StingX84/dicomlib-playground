@@ -1,4 +1,5 @@
 use super::*;
+use crate::Cow;
 
 // cSpell:ignore xxee
 
@@ -230,6 +231,24 @@ impl TagKey {
     pub const fn is_valid_in_dataset(&self) -> bool {
         self.is_valid() && (self.0 & 0xFFFF0000u32) >= 0x00080000u32
     }
+
+    /// Searches tag information in the current [State](crate::State)
+    ///
+    /// See also [search_by_key](crate::tag::Dictionary::search_by_key)
+    pub fn meta(&self) -> Option<crate::tag::Meta> {
+        crate::State::with_current(|s| s.tag_dictionary().search_by_key(*self).cloned())
+    }
+
+    /// Searches and returns Tag name in the current [State](crate::State)
+    ///
+    /// See also [search_by_key](crate::uid::Dictionary::search_by_key)
+    pub fn name(&self) -> Option<Cow<'static, str>> {
+        crate::State::with_current(|s| {
+            s.tag_dictionary()
+                .search_by_key(*self)
+                .map(|m| m.name.clone())
+        })
+    }
 }
 
 impl std::fmt::Display for TagKey {
@@ -409,6 +428,7 @@ impl TryFrom<String> for TagKey {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{state::StateBuilder, State};
 
     #[test]
     fn struct_methods() {
@@ -436,6 +456,44 @@ mod tests {
         assert!(matches!(TagKey::from_str("(00080005)"), Err(TagKeyMissingComponents)));
         assert!(matches!(TagKey::from_str("(000Z,0005)"), Err(TagKeyContainsNonHexCharacters{source: _})));
         assert!(matches!(TagKey::from_str("(0008,000Z)"), Err(TagKeyContainsNonHexCharacters{source: _})));
+    }
+
+    #[test]
+    fn can_retrieve_meta() {
+        crate::declare_tags! {
+            const TAGS = [
+                TestTag: { (0x4321, 0x10AA, "test"), AE, 1, "Test Tag", Vendored(None) },
+            ];
+        }
+
+        let mut dict = Dictionary::new_empty();
+        dict.add_static_list(&TAGS);
+
+        let state = StateBuilder::new()
+            .with_tag_dictionary(dict.clone())
+            .build();
+
+        state.provide_current_for(|| {
+            // Test tag now may be found once we push dictionary to thread local
+            assert_eq!(TestTag.meta().unwrap().name, "Test Tag");
+
+            assert_eq!(TestTag.name().unwrap(), "Test Tag");
+        });
+
+        // Test tag should not be found again, because outside of
+        // "provide_current_for" scope
+        assert!(TestTag.meta().is_none());
+
+        state.into_global();
+
+        // Test tag should be found now, because we make our state global
+        assert_eq!(TestTag.meta().unwrap().name, "Test Tag");
+
+        // Restore default globaL state
+        State::default().into_global();
+
+        // Test tag should not present in the default global state
+        assert!(TestTag.meta().is_none());
     }
 
     #[cfg(feature = "serde")]

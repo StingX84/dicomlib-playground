@@ -12,7 +12,7 @@ Legend:
 - Enumeration
 - Information accessor
 
-### ☐ Tag, TagKey and Dictionary - module "tag"
+### ☑ Tag, TagKey and Dictionary - module "tag"
 - Basic classes for Tag, TagKey handling
 - Define Tag dictionary format
 - Dictionary class and static data / file loader
@@ -20,7 +20,7 @@ Legend:
 ### ☐ Uid and Dictionary - module "uid"
 - Basic classes for Uid handling
 - Define UID dictionary format
-- Dictionary class and static data / file loader
+- Dictionary class and static data
 
 ### ☐ Charset encoding - module "charset"
 - Configuration parameters specific to charset handling

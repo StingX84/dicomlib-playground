@@ -9,32 +9,32 @@
 # File created on ${DATE} by ${USER} on ${HOST}.
 #
 # Each line represents an entry in the data dictionary. Each line has 6 fields
-# `Tag`, `Name`, `Keyword`, `VR`, `VM` and `Version`. 
+# `Tag`, `Name`, `Keyword`, `VR`, `VM` and `Version`.
 #
-# Entries need not be in ascending tag order. Entries may override existing 
-# entries. Each field must be separated by a single tab. 
+# Entries need not be in ascending tag order. Entries may override existing
+# entries. Each field must be separated by a single tab.
 #
-# `Tag` field must in form `(gggg,eeee[,"creator"])` where `gggg`, `eeee` must 
-# be in hexadecimal form with exception of `X` character, which denotes 
-# "any digit". `creator` string is optional and specifies Private Attribute 
-# creator. If present, it must be enclosed in double quotes and separated by 
+# `Tag` field must in form `(gggg,eeee[,"creator"])` where `gggg`, `eeee` must
+# be in hexadecimal form with exception of `X` character, which denotes
+# "any digit". `creator` string is optional and specifies Private Attribute
+# creator. If present, it must be enclosed in double quotes and separated by
 # comma from an adjacent element number.
-# 
-# `Name` field should contain only graphical ASCII characters and white 
+#
+# `Name` field should contain only graphical ASCII characters and white
 # space [\x20-\x7E]. Maximum length is 128 bytes.
 #
-# `Keyword` field should contain only a subset of ASCII characters [A-Za-z0-9_] 
+# `Keyword` field should contain only a subset of ASCII characters [A-Za-z0-9_]
 # preferably in CamelCase. Keyword should start with a letter. Maximum length is
 # 64 bytes.
 #
-# `VR` field can contain single Value Representation name or a pair in form 
-# "XX or YY", where "XX" and "YY" are valid Value Representation names.
+# `VR` field can contain up to three Value Representation names separated with " or "
+# Undefined VR should be written as "--".
 #
 # `VM` field should contain one of the forms: `B`, `B-E`, `B-n`, `B-Bn`, where
-# `B` - minimum number of repetitions 0 to 255, `E` - maximum number of 
-# repetitions 1 to 255, `n` - literal "n" symbol, which denotes "unbounded". 
+# `B` - minimum number of repetitions 0 to 255, `E` - maximum number of
+# repetitions 1 to 255, `n` - literal "n" symbol, which denotes "unbounded".
 # Special form `B-Bn` means "arbitrary number multiple of B".
-# 
+#
 # `Version` field should contain one of the following terms (case insensitive):
 # - `DICOM` - standard DICOM attribute
 # - `DICONDE` - standard DICONDE attribute
@@ -45,12 +45,12 @@
 # - `Priv(X)` - This is a private attribute that contains patient
 #   identifying information. 'X' specifies a method of "de-identification" for
 #   this attribute and should be one of the following:
-#   - `D` - replace with a non-zero length value that may be a dummy value and 
+#   - `D` - replace with a non-zero length value that may be a dummy value and
 #     consistent with the VR
-#   - `Z` - replace with a zero length value, or a non-zero length value that 
+#   - `Z` - replace with a zero length value, or a non-zero length value that
 #     may be a dummy value and consistent with the VR
 #   - `X` - remove
-#   - `U` - replace with a non-zero length UID that is internally consistent 
+#   - `U` - replace with a non-zero length UID that is internally consistent
 #     within a set of Instance
 #
 # Comments have a '#' at the beginning of the line. The file should be encoded

@@ -1,61 +1,76 @@
 use super::*;
-use crate::{ Cow, utils::unescape::unescape };
+use crate::{utils::unescape::unescape, Cow, tag, State};
 
 // cSpell:ignore xxee Тест
 
 /// An identifier of the Attribute in DICOM world.
 ///
-/// This identifier consists of a `group` number, `element` number and
-/// optional "private creator" string, which unique identifies the
-/// private vendored attributes. Some explanation given in [PS3.6 "5 Conventions"].
+/// This identifier consists of a `group` number, `element` number and optional
+/// "private creator" string, which unique identifies the private vendored
+/// attributes. Some explanation given in [PS3.6 "5 Conventions"].
 ///
 /// This leads to a two major categories:
 /// - Standard attributes
 /// - Private attributes
 ///
 /// ### Standard attributes
-/// These attributes are specified in the DICOM Standard in [PS3.6 "6 Registry of DICOM Data Elements"],
-/// [PS3.6 "7 Registry of DICOM File Meta Elements"], [PS3.6 "8 Registry of DICOM Directory Structuring Elements"],
-/// [PS3.6 "Registry of DICOM Dynamic RTP Payload Elements"], [PS3.7 "E.1 Registry of DICOM Command Elements"] and
-/// [PS3.7 "E.2 Retired Command Fields"].
-/// Some of these attributes has a mask `XX` in their definition `(ggXX,eeee)`. This means that
-/// the attribute in a dataset may have any hex digits at the position denoted by `XX`. For example,
-/// the Tag `Overlay Data (60xx,3000)` can be written in dataset as (6000,3000), (6001,3000), ...,
-/// (60FF,3000).
+/// These attributes are specified in the DICOM Standard in [PS3.6 "6 Registry
+/// of DICOM Data Elements"], [PS3.6 "7 Registry of DICOM File Meta Elements"],
+/// [PS3.6 "8 Registry of DICOM Directory Structuring Elements"], [PS3.6
+/// "Registry of DICOM Dynamic RTP Payload Elements"], [PS3.7 "E.1 Registry of
+/// DICOM Command Elements"] and [PS3.7 "E.2 Retired Command Fields"]. Some of
+/// these attributes has a mask `XX` in their definition `(ggXX,eeee)`. This
+/// means that the attribute in a dataset may have any hex digits at the
+/// position denoted by `XX`. For example, the Tag `Overlay Data (60xx,3000)`
+/// can be written in dataset as (6000,3000), (6001,3000), ..., (60FF,3000).
 ///
 /// ### Private attributes
-/// These attributes are vendor-specific, so simple group/element matching will lead to inevitable collisions.
-/// Standard defines a way for coexistence of such attributes in a single dataset without colliding. You
-/// can learn this in details in [PS3.5 "7.8.1 Private Data Element Tags"]. In short:
+/// These attributes are vendor-specific, so simple group/element matching will
+/// lead to inevitable collisions. Standard defines a way for coexistence of
+/// such attributes in a single dataset without colliding. You can learn this in
+/// details in [PS3.5 "7.8.1 Private Data Element Tags"]. In short:
 /// - Vendor can define any number of element groups.
 /// - For each group vendor chooses:
 ///   - An odd group number
-///   - A unique designator for this group. This will be called "Private Creator".
+///   - A unique designator for this group. This will be called "Private
+///     Creator".
 ///   - There may be ap to 256 elements in one group.
-///   - This will end up with tag `(gggg,xxee)`, where `gggg` and `ee` - numbers specified by the vendor, `xx` - dynamic number from 0x10 to 0xFF.
-/// - For each group of the private attributes recorded in the dataset, there must be one "Private Reservation"
-///   attribute with the tag `(gggg,00xx)`, where `gggg` is a number of this group; `xx` - is a dynamic number
-///   from 0x10 to 0xFF. This dynamic number was chosen by the entity that wrote this attribute. The rules
-///   for dynamic number are simple: find some `xx`, with a value of your "Private Creator". IF not found,
-///   find non-existent `xx`. This standard algorithm limits the number of different vendors with conflicting
-///   groups in the same data set to 240.
+///   - This will end up with tag `(gggg,xxee)`, where `gggg` and `ee` - numbers
+///     specified by the vendor, `xx` - dynamic number from 0x10 to 0xFF.
+/// - For each group of the private attributes recorded in the dataset, there
+///   must be one "Private Reservation" attribute with the tag `(gggg,00xx)`,
+///   where `gggg` is a number of this group; `xx` - is a dynamic number from
+///   0x10 to 0xFF. This dynamic number was chosen by the entity that wrote this
+///   attribute. The rules for dynamic number are simple: find some `xx`, with a
+///   value of your "Private Creator". IF not found, find non-existent `xx`.
+///   This standard algorithm limits the number of different vendors with
+///   conflicting groups in the same data set to 240.
 ///
-/// Note for the application developers: When creating own dictionary of private attributes, one can use
-/// arbitrary number for `xx` part of the attribute. This particular number will be used when library
-/// reads a dataset with absent "Private Reservation", that was created by a non-conforming/buggy software.
-/// And, also when library writes attribute with such tag, it will preferably use this number if dataset
-/// if allowed.\
-/// When no backward compatibility reasons involved, one better choose "0x10", so attribute tag in a
-/// dictionary will end up as `(gggg,ee10)`.
+/// Note for the application developers: When creating own dictionary of private
+/// attributes, one can use arbitrary number for `xx` part of the attribute.
+/// This particular number will be used when library reads a dataset with absent
+/// "Private Reservation", that was created by a non-conforming/buggy software.
+/// And, also when library writes attribute with such tag, it will preferably
+/// use this number if dataset if allowed.\
+/// When no backward compatibility reasons involved, one better choose "0x10",
+/// so attribute tag in a dictionary will end up as `(gggg,ee10)`.
 ///
-/// [PS3.6 "5 Conventions"]: https://dicom.nema.org/medical/dicom/current/output/chtml/part06/chapter_5.html
-/// [PS3.6 "6 Registry of DICOM Data Elements"]: https://dicom.nema.org/medical/dicom/current/output/chtml/part06/chapter_6.html#table_6-1
-/// [PS3.6 "7 Registry of DICOM File Meta Elements"]: https://dicom.nema.org/medical/dicom/current/output/chtml/part06/chapter_7.html#table_7-1
-/// [PS3.6 "8 Registry of DICOM Directory Structuring Elements"]: https://dicom.nema.org/medical/dicom/current/output/chtml/part06/chapter_8.html#table_8-1
-/// [PS3.6 "9 Registry of DICOM Dynamic RTP Payload Elements"]: https://dicom.nema.org/medical/dicom/current/output/chtml/part06/chapter_9.html#table_9-1
-/// [PS3.7 "E.1 Registry of DICOM Command Elements"]: https://dicom.nema.org/medical/dicom/current/output/chtml/part07/chapter_E.html
-/// [PS3.7 "E.2 Retired Command Fields"]: https://dicom.nema.org/medical/dicom/current/output/chtml/part07/sect_E.2.html
-/// [PS3.5 "7.8.1 Private Data Element Tags"]: https://dicom.nema.org/medical/dicom/current/output/chtml/part05/sect_7.8.html
+/// [PS3.6 "5 Conventions"]:
+///     https://dicom.nema.org/medical/dicom/current/output/chtml/part06/chapter_5.html
+/// [PS3.6 "6 Registry of DICOM Data Elements"]:
+///     https://dicom.nema.org/medical/dicom/current/output/chtml/part06/chapter_6.html#table_6-1
+/// [PS3.6 "7 Registry of DICOM File Meta Elements"]:
+///     https://dicom.nema.org/medical/dicom/current/output/chtml/part06/chapter_7.html#table_7-1
+/// [PS3.6 "8 Registry of DICOM Directory Structuring Elements"]:
+///     https://dicom.nema.org/medical/dicom/current/output/chtml/part06/chapter_8.html#table_8-1
+/// [PS3.6 "9 Registry of DICOM Dynamic RTP Payload Elements"]:
+///     https://dicom.nema.org/medical/dicom/current/output/chtml/part06/chapter_9.html#table_9-1
+/// [PS3.7 "E.1 Registry of DICOM Command Elements"]:
+///     https://dicom.nema.org/medical/dicom/current/output/chtml/part07/chapter_E.html
+/// [PS3.7 "E.2 Retired Command Fields"]:
+///     https://dicom.nema.org/medical/dicom/current/output/chtml/part07/sect_E.2.html
+/// [PS3.5 "7.8.1 Private Data Element Tags"]:
+///     https://dicom.nema.org/medical/dicom/current/output/chtml/part05/sect_7.8.html
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Tag<'a> {
@@ -81,9 +96,9 @@ impl<'a> Tag<'a> {
 
     /// Construct a Private Attribute Tag with a specified `TagKey` and "Private Creator"
     ///
-    /// It is recommended to make a global constant for each of the private attribute
-    /// supported and register it in the dictionary rather constructing a Tag
-    /// on each use.
+    /// It is recommended to make a global constant for each of the private
+    /// attribute supported and register it in the dictionary rather
+    /// constructing a Tag on each use.
     ///
     /// ### Panics:
     /// This method panic in in non-optimized builds with '-C debug-assertions`
@@ -100,7 +115,8 @@ impl<'a> Tag<'a> {
         }
     }
 
-    /// Converts this tag into a "owned". one possibly allocating a memory for `creator` field.
+    /// Converts this tag into a "owned". one possibly allocating a memory for
+    /// `creator` field.
     ///
     /// Example:
     /// ```
@@ -130,11 +146,29 @@ impl<'a> Tag<'a> {
             creator: self.creator.map(|v| Cow::Owned(v.into_owned())),
         }
     }
+
+    /// Searches tag information in the current [State](crate::State)
+    ///
+    /// See also [search_by_tag](crate::tag::Dictionary::search_by_tag)
+    pub fn meta(&self) -> Option<tag::Meta> {
+        State::with_current(|s| s.tag_dictionary().search_by_tag(self).cloned())
+    }
+
+    /// Searches and returns Tag name in the current [State](crate::State)
+    ///
+    /// See also [search_by_tag](crate::uid::Dictionary::search_by_tag)
+    pub fn name(&self) -> Option<Cow<'static, str>> {
+        State::with_current(|s| {
+            s.tag_dictionary()
+                .search_by_tag(self)
+                .map(|m| m.name.clone())
+        })
+    }
 }
 
 impl<'a> std::fmt::Display for Tag<'a> {
-    /// Outputs this key in format `(gggg,eeee[,"creator"])`, where `gggg` and `eeee`
-    /// are the group and element numbers in upper hexadecimal digits,
+    /// Outputs this key in format `(gggg,eeee[,"creator"])`, where `gggg` and
+    /// `eeee` are the group and element numbers in upper hexadecimal digits,
     /// `creator` - private creator string if present.
     ///
     /// Example:
@@ -167,9 +201,10 @@ impl<'a> From<Tag<'a>> for String {
 }
 
 impl<'a> std::fmt::Debug for Tag<'a> {
-    /// Outputs this key in format `Tag(gggg,eeee[,"creator"])`, where `gggg` and `eeee`
-    /// are the group and element numbers in upper hexadecimal digits,
-    /// `creator` - private creator string if present (escaped using [`core::str::escape_default()`]).
+    /// Outputs this key in format `Tag(gggg,eeee[,"creator"])`, where `gggg`
+    /// and `eeee` are the group and element numbers in upper hexadecimal
+    /// digits, `creator` - private creator string if present (escaped using
+    /// [str::escape_default]).
     ///
     /// Example:
     /// ```
@@ -289,15 +324,17 @@ impl<'a> TryFrom<&'a str> for Tag<'a> {
 
                 match creator.len() {
                     0 => None,
-                    _ => if ! creator.contains('\\') {
-                        Some(Cow::Borrowed(creator))
-                    } else {
-                        Some(Cow::Owned(unescape(creator).map_err(|e| {
-                            Error::TagInvalidCreatorString {
-                                message: e.to_string(),
-                            }
-                        })?))
-                    },
+                    _ => {
+                        if !creator.contains('\\') {
+                            Some(Cow::Borrowed(creator))
+                        } else {
+                            Some(Cow::Owned(unescape(creator).map_err(|e| {
+                                Error::TagInvalidCreatorString {
+                                    message: e.to_string(),
+                                }
+                            })?))
+                        }
+                    }
                 }
             }
         };
@@ -317,6 +354,7 @@ impl TryFrom<String> for Tag<'static> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{state::State, state::StateBuilder};
 
     #[rustfmt::skip]
     #[test]
@@ -348,5 +386,42 @@ mod tests {
         assert!(matches!(Tag::from_str("(0008,0005,Test)"), Err(TagMissingCreatorOpeningQuote)));
         assert!(matches!(Tag::from_str(r#"(0008,0005,")"#), Err(TagMissingCreatorClosingQuote)));
         assert!(matches!(Tag::from_str(r#"(0008,0005,"\uZ")"#), Err(TagInvalidCreatorString{message: _})));
+    }
+
+    #[test]
+    fn can_retrieve_meta() {
+        crate::declare_tags! {
+            const TAGS = [
+                TestTag: { (0x4321, 0x10AA, "test"), AE, 1, "Test Tag", Vendored(None) },
+            ];
+        }
+
+        let mut dict = Dictionary::new_empty();
+        dict.add_static_list(&TAGS);
+
+        let state = StateBuilder::new()
+            .with_tag_dictionary(dict.clone())
+            .build();
+
+        state.provide_current_for(|| {
+            // Test tag now may be found once we push dictionary to thread local
+            assert_eq!(TestTag.meta().unwrap().name, "Test Tag");
+            assert_eq!(TestTag.name().unwrap(), "Test Tag");
+        });
+
+        // Test tag should not be found again, because outside of
+        // "provide_current_for" scope
+        assert!(TestTag.meta().is_none());
+
+        state.into_global();
+
+        // Test tag should be found now, because we make our state global
+        assert_eq!(TestTag.meta().unwrap().name, "Test Tag");
+
+        // Restore default globaL state
+        State::default().into_global();
+
+        // Test tag should not present in the default global state
+        assert!(TestTag.meta().is_none());
     }
 }

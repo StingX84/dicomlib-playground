@@ -6,19 +6,25 @@
     "language": "en",
     // words - list of words to be always considered correct
     "words": [
-        "bitflags",
-        "DICOM",
+        "deidentification",
+        "dicom",
         "diconde",
         "dicos",
-        "DIMSE",
+        "dimse",
+        "enchanced",
         "ggggeeee",
         "hexdigit",
+        "miri",
         "natvis",
-        "Punycode",
+        "nonidentifying",
+        "punycode",
         "repr",
         "rustfmt",
         "splitn",
         "tagkey",
+        "uids",
+        "uninit",
+        "xfer",
         "zzzz-list-ending"
     ]
 }

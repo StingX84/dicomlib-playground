@@ -1,105 +1,160 @@
 use super::*;
 use crate::{utils::unescape::unescape_with_validator, Cow, Vr};
-
-use std::io::BufRead;
-
-// cSpell:ignore Deidentification Nonidentifying тест
+use std::{cmp::Ordering, fmt::Debug, io::BufRead, ptr::NonNull};
 
 #[cfg(test)]
 mod tests;
 
+// cSpell:ignore strtok aabb
+
+/// Structure managing a collection of attributes and their metadata.
+///
+/// This structure is rarely accessed by the application. All the functions
+/// provided by this struct are mirrored in higher-level abstractions.
+///
+/// The structure itself contains a vector of statically allocated tag
+/// description ([`Meta`]) lists and dynamically registered individual tag
+/// descriptions.
+///
+/// Search in the directory is carried out by calling methods
+/// [search_by_tag](Self::search_by_tag) or
+/// [search_by_key](Self::search_by_key). To speed up the search process,
+/// Dictionary supports a "cache". It is invalidated every time content mutated
+/// and may be rebuild with [rebuild_cache](Self::rebuild_cache).
+///
+/// Dictionary may be extended with static lists using
+/// [add_static_list](Self::add_static_list) or with dynamic lists with
+/// [add_dynamic_list](Self::add_dynamic_list),
+/// [add_from_memory](Self::add_from_memory) or
+/// [add_from_file](Self::add_from_file).
+///
+/// Dictionary lookup by higher-level abstractions forwarded through
+/// [`State`](crate::State)
+///
+/// This class supports "automatic" registration of static descriptions list
+/// using crate [`inventory`]. Built-in standard DICOM attributes are already
+/// registered automatically.
+///
+/// Example of application custom dictionary loaded automatically:
+/// ```
+/// // Declare your attributes and register them in the Dictionary
+/// mod app {
+///     use dpx_dicom_core::declare_tags;
+///     use inventory::submit;
+///     declare_tags!{
+///         pub const ALL_APP_TAGS = [
+///             PatientSpacecraftLicense: { (0x4321, 0x1000, "CoolApp Group1"), LO, 1-n, "Patient's Spacecraft License", Vendored(X) },
+///             IssuerOfPatientSpacecraftLicense: { (0x4321, 0x1001, "CoolApp Group1"), LO, 1-n, "Issuer of Patient's Spacecraft License", Vendored(None) },
+///             DoctorCryingReason: { (0x4323, 0x10BB, "CoolApp Group2"), UT, 1, "Doctor Crying Reason", Vendored(None) },
+///         ];
+///     }
+///     submit!(ALL_APP_TAGS);
+/// }
+///
+/// // Use your attributes anywhere in the application
+/// use dpx_dicom_core::tag::Dictionary;
+/// # #[cfg(not(miri))]
+/// # fn main() {
+/// let dict = Dictionary::new();
+/// assert_eq!(
+///     dict.search_by_tag(&app::DoctorCryingReason).unwrap().name,
+///     "Doctor Crying Reason"
+/// );
+/// # }
+/// # #[cfg(miri)]
+/// # fn main() {}
+/// ```
+///
+/// Note: automatic registration is currently unsupported under
+/// [Miri](https://github.com/rust-lang/miri).
+#[derive(Default)]
+pub struct Dictionary {
+    /// Vector of statically defined attribute lists added with
+    /// [add_static_list](Self::add_static_list) or gathered in [new](Self::new)
+    /// with [`inventory`]
+    statics: Vec<&'static StaticMetaList>,
+
+    /// Vector of dynamically added attributes with
+    /// [add_dynamic_list](Self::add_dynamic_list),
+    /// [add_from_memory](Self::add_from_memory) or
+    /// [add_from_file](Self::add_from_file)
+    dynamic: Vec<Meta>,
+
+    /// Contains TagKey (element 0), private creator (element 1) and TagInfo
+    /// (element 2) "flattened" from static and dynamic dictionaries sorted by
+    /// Tag.
+    ///
+    /// Private Attributes Tag's are "flattened" in following forms:
+    /// 1. original form as given
+    /// 2. normalized form IF private creator is `Some`
+    cache: Option<DictCache>,
+}
+
+// SAFETY:
+// The reason this struct is not `Send` nor `Sync` by auto traits
+// is presence of "raw" pointers. Struct guarantees, that
+// no external shared state involved in those pointers.
+unsafe impl Send for Dictionary {}
+unsafe impl Sync for Dictionary {}
+
 /// This structure contains information about a specific DICOM [`Tag`]
 ///
-/// See [`dpx_dicom_core::tag::Dictionary`]
+/// See [`Dictionary`]
 #[derive(Debug, Clone)]
-pub struct Meta<'a> {
+pub struct Meta {
     /// Tag key and it's private creator
-    pub tag: Tag<'a>,
+    pub tag: Tag<'static>,
     /// TagKey mask.
     ///
     /// This number represents an AND mask applied to the attribute tag key
     /// when searching in a [`Dictionary`].
     ///
-    /// The value of 0xFFFFFFFFu32 means attribute is searched exactly as-is.
+    /// The value of `0xFFFFFFFF` means attribute is searched exactly as-is.
     ///
     /// Mask may contain only one block of zero bits!
     pub mask: u32,
-    /// Attribute Value Representation
-    pub vr: Vr,
-    /// Alternative Value Representation
+    /// Attribute Value Representations for this tag
     ///
-    /// Most of attributes has a single VR and this member will
-    /// be set to [`Vr::Undefined`]
+    /// This tuple holds up to three alternative value representations
+    /// for the Tag. Most of attributes has single VR and rest are set
+    /// to [Vr::Undefined].
     ///
     /// Note: This value deliberately not an [`Option`] for the performance considerations.
-    pub alt_vr: Vr,
+    pub vr: (Vr, Vr, Vr),
     /// Value Multiplicity constraint
     ///
-    /// The first value is the minimum multiplicity, the second value is the maximum multiplicity.
-    /// If the maximum multiplicity is open-ended, 0 is used. The third value, if present, is the "stride", i.e.,
-    /// the increment between valid multiplicity values. A stride is used when values are added in sets, such as
-    /// an x/y/z set of coordinate values that is recorded in triplets. The stride is not permitted to be 0.
+    /// The first value is the minimum multiplicity, the second value is the
+    /// maximum multiplicity. If the maximum multiplicity is open-ended, 0 is
+    /// used. The third value, if present, is the "stride", i.e., the increment
+    /// between valid multiplicity values. A stride is used when values are
+    /// added in sets, such as an x/y/z set of coordinate values that is
+    /// recorded in triplets. The stride is not permitted to be 0.
+    ///
+    /// This definition exactly follows definition of the standard attribute
+    /// "Private Data Element Value Multiplicity (0008,0309)". See [PS3.3
+    /// Section C.12.1.1.7.1]
     ///
     /// Examples:
-    /// - VM of 1-3 is expressed as (1,3,1) meaning the multiplicity is permitted to be 1, 2 or 3
+    /// - VM of 1-3 is expressed as (1,3,1) meaning the multiplicity is
+    ///   permitted to be 1, 2 or 3
     /// - VM of 1-n is expressed as (1,0,1)
     /// - VM of 0-n is expressed as (0,0,1)
     /// - VM of 3-3n is expressed as (3,0,3)
+    ///
+    /// [PS3.3 Section C.12.1.1.7.1]:
+    ///     https://dicom.nema.org/medical/dicom/current/output/chtml/part03/sect_C.12.html#sect_C.12.1.1.7.1
+    ///     "C.12.1.1.7.1 Private Data Element Value Multiplicity"
     pub vm: (u8, u8, u8),
     /// Short display name of the attribute Tag
     ///
     /// For example: "Patient's Name"
-    pub name: Cow<'a, str>,
+    pub name: Cow<'static, str>,
     /// Alphanumeric keyword of this attribute
     ///
     /// For example: "Patient​Name"
-    pub keyword: Cow<'a, str>,
+    pub keyword: Cow<'static, str>,
     /// Section of the standard or a vendor name
     pub source: Source,
-}
-
-impl<'a> PartialEq for Meta<'a> {
-    fn eq(&self, other: &Self) -> bool {
-        self.tag.eq(&other.tag)
-    }
-}
-
-impl<'a, 'b> PartialEq<Tag<'b>> for Meta<'a> {
-    fn eq(&self, other: &Tag<'b>) -> bool {
-        self.tag.eq(other)
-    }
-}
-
-impl<'a> PartialEq<TagKey> for Meta<'a> {
-    fn eq(&self, other: &TagKey) -> bool {
-        self.tag.key.eq(other)
-    }
-}
-
-impl<'a> Eq for Meta<'a> {}
-
-impl<'a> PartialOrd for Meta<'a> {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.tag.partial_cmp(&other.tag)
-    }
-}
-
-impl<'a, 'b> PartialOrd<Tag<'b>> for Meta<'a> {
-    fn partial_cmp(&self, other: &Tag<'b>) -> Option<std::cmp::Ordering> {
-        self.tag.partial_cmp(other)
-    }
-}
-
-impl<'a> PartialOrd<TagKey> for Meta<'a> {
-    fn partial_cmp(&self, other: &TagKey) -> Option<std::cmp::Ordering> {
-        self.tag.key.partial_cmp(other)
-    }
-}
-
-impl<'a> Ord for Meta<'a> {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.tag.cmp(&other.tag)
-    }
 }
 
 /// Section of the Standard, that declares this attribute.
@@ -121,131 +176,157 @@ pub enum Source {
 
 /// Private attribute de-identification action
 ///
-/// This affects the action library takes on the attribute
-/// when de-identifying the dataset. Also, this actions
-/// may be conveyed in the dataset, so other dicom application
-/// know what to do with private attributes when it decides to
+/// This affects the action library takes on the attribute when de-identifying
+/// the dataset. Also, this actions may be conveyed in the dataset, so other
+/// dicom application know what to do with private attributes when it decides to
 /// de-identify the dataset.
 ///
-/// This library may automatically construct and/or update
-/// attribute "Private Data Element Characteristics Sequence (0008,0300)"
-/// and this code affects attribute "Block Identifying Information Status (0008,0303)",
-/// "Nonidentifying Private Elements (0008,0304)" and "Deidentification Action Sequence (0008,0305)":
+/// This library may automatically construct and/or update attribute "Private
+/// Data Element Characteristics Sequence (0008,0300)" and this code affects
+/// attribute "Block Identifying Information Status (0008,0303)",
+/// "Nonidentifying Private Elements (0008,0304)" and "Deidentification Action
+/// Sequence (0008,0305)":
 ///
-/// If all of attributes in the single private group has [`PrivateIdentificationAction::None`]
-/// type, then "Block Identifying Information Status (0008,0303)" will be set to "SAFE" and
-/// no other de-identifying related attributes are written.
+/// If all of attributes in the single private group has
+/// [`PrivateIdentificationAction::None`] type, then "Block Identifying
+/// Information Status (0008,0303)" will be set to "SAFE" and no other
+/// de-identifying related attributes are written.
 ///
-/// If some of attributes in the single private group has [`PrivateIdentificationAction::None`]
-/// type, then "Block Identifying Information Status (0008,0303)" will be set to "MIXED",
-/// then "Nonidentifying Private Elements (0008,0304)" and "Deidentification Action Sequence (0008,0305)"
-/// attributes are written to reflect attribute de-identifying actions.
+/// If some of attributes in the single private group has
+/// [`PrivateIdentificationAction::None`] type, then "Block Identifying
+/// Information Status (0008,0303)" will be set to "MIXED", then "Nonidentifying
+/// Private Elements (0008,0304)" and "Deidentification Action Sequence
+/// (0008,0305)" attributes are written to reflect attribute de-identifying
+/// actions.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PrivateIdentificationAction {
     /// Attribute does not contain identifying information
     None,
-    /// Attribute contains identifying information and recommended action for the de-identifying entity:\
-    /// replace with a non-zero length value that may be a dummy value and consistent with the VR
+    /// Attribute contains identifying information and recommended action for
+    /// the de-identifying entity:\
+    /// replace with a non-zero length value that may be a dummy value and
+    /// consistent with the VR
     D,
-    /// Attribute contains identifying information and recommended action for the de-identifying entity:\
-    /// replace with a zero length value, or a non-zero length value that may be a dummy value and consistent with the VR
+    /// Attribute contains identifying information and recommended action for
+    /// the de-identifying entity:\
+    /// replace with a zero length value, or a non-zero length value that may be
+    /// a dummy value and consistent with the VR
     Z,
-    /// Attribute contains identifying information and recommended action for the de-identifying entity:\
+    /// Attribute contains identifying information and recommended action for
+    /// the de-identifying entity:\
     /// remove
     X,
-    /// Attribute contains identifying information and recommended action for the de-identifying entity:\
-    /// replace with a non-zero length UID that is internally consistent within a set of Instance
+    /// Attribute contains identifying information and recommended action for
+    /// the de-identifying entity:\
+    /// replace with a non-zero length UID that is internally consistent within
+    /// a set of Instance
     U,
 }
 
-#[derive(Clone)]
-pub struct StaticMetaList(&'static [Meta<'static>]);
+/// Structure holding a reference to a static list of tag descriptions (list of [`Meta`]'s)
+#[derive(Clone, Copy)]
+pub struct StaticMetaList(pub(crate) &'static [Meta]);
 inventory::collect!(StaticMetaList);
 
-// cSpell:ignore aabb
-struct DictCache<'a> {
-    // Contains Tag (element 0) and TagInfo (element 1) "flattened" from static and
-    // dynamic dictionaries sorted by Tag.
-    // Private Attributes Tag's are "flattened" in 4 different forms:
-    // 1. original form as given
-    // 2. zeroed `XX` in TagKey (gggg,eeXX)
-    // 3. original TagKey and "zeroed" `creator` field in Tag
-    // 4. 2 and 3 combined
-    sorted: Vec<(Tag<'a>, &'a Meta<'a>)>,
+/// Shorthand for private creator stored in [`Tag`]
+type Creator<'a> = Option<Cow<'a, str>>;
 
-    // Contains TagKey bitwise and'ed with mask (element 0), mask from TagInfo (element 1)
-    // and TagInfo "flattened" from static and dynamic dictionaries.
-    // This list contains only elements with a mask other than 0xFFFFFFFF
-    masked: Vec<(u32, u32, &'a Meta<'a>)>,
+/// Entry in the dictionary cache [DictCache]
+type DictCacheEntry = (TagKey, NonNull<Creator<'static>>, NonNull<Meta>);
+
+/// Shorthand for vector or "flattened" static and dynamic dictionaries
+struct DictCache {
+    vec: Vec<DictCacheEntry>,
 }
 
-#[derive(Default)]
-pub struct Dictionary<'a> {
-    statics: Vec<&'static StaticMetaList>,
-    dynamic: Vec<Meta<'a>>,
-    cache: Option<DictCache<'a>>,
+/// metrics from [Dictionary::metrics()]
+pub(crate) struct DictMetrics {
+    pub static_lists: usize,
+    pub static_tags: usize,
+    pub dynamic_tags: usize,
+    pub cached_tags: Option<usize>,
 }
 
-impl<'a> Dictionary<'a> {
-    // This function requires unstable, because of function "is_sorted_by"
-    // Function is enabled only in "debug" builds. Other function variant
-    // for "Release" builds is no-op.
-    #[cfg(all(feature = "unstable", debug_assertions))]
-    fn verify_sorted(dict: &'static StaticMetaList) {
-        assert!(
-            dict.0.is_sorted_by_key(|i| &i.tag),
-            "array in dpx_dicom_core::tag::StaticDictionary should be sorted by TagKey!"
-        );
-    }
+/// Internal to dicom dictionary parser error reporting structure.
+///
+/// It contains a byte offset of the character causing the problem
+/// in a line and an problem description.
+#[cfg_attr(test, derive(Debug))]
+struct DictParseErr(usize, String);
 
-    #[cfg(not(all(feature = "unstable", debug_assertions)))]
-    const fn verify_sorted(_: &'static StaticMetaList) {}
-
+// ---------------------------------------------------------------------------
+// Dictionary public interface methods implementation
+// ---------------------------------------------------------------------------
+impl Dictionary {
+    /// Constructs the class gathering all the [`StaticMetaList`] objects
+    /// registered with [`inventory::submit!`].
+    ///
+    /// Note: See struct-level [documentation](Self) for examples.
+    ///
+    /// Note: The created dictionary has no "cache". To speed up searches,
+    /// you should call [rebuild_cache](Self::rebuild_cache) after any
+    /// mutating functions.
     pub fn new() -> Self {
-        let statics: Vec<&'static StaticMetaList> =
-            inventory::iter::<StaticMetaList>.into_iter().collect();
-        for dict in statics.iter() {
-            Self::verify_sorted(dict);
-        }
-
         Self {
-            statics,
-            dynamic: Vec::new(),
-            cache: None,
+            statics: inventory::iter::<StaticMetaList>.into_iter().collect(),
+            ..Default::default()
         }
     }
 
+    /// Constructs the empty class without any statically registered lists.
     pub fn new_empty() -> Self {
         Self {
-            statics: Vec::new(),
-            dynamic: Vec::new(),
-            cache: None,
+            ..Default::default()
         }
     }
 
+    /// Adds custom constant list of ['Meta'] objects.
+    ///
+    /// Note: as any other mutating method, this invalidates a cache. To speed
+    /// up searches after mutation, you should call
+    /// [rebuild_cache](Self::rebuild_cache).
     pub fn add_static_list(&mut self, dict: &'static StaticMetaList) {
+        // Note: We do not check equality of dictionary content, only check if
+        // they are at the same memory address.
         if !self
             .statics
             .iter()
             .any(|e| ::core::ptr::eq((*e) as *const _, dict as *const _))
         {
-            Self::verify_sorted(dict);
-            self.statics.push(dict);
+            // Invalidate cache early to satisfy SAFETY invariants including
+            // safety on "panic" unwind
             self.cache = None;
+            self.statics.push(dict);
         }
     }
 
-    pub fn add_dynamic_list<'b: 'a, T: Iterator<Item = Meta<'b>>>(&mut self, iter: T) {
+    /// Adds custom constant list of ['Meta'] objects.
+    ///
+    /// Note: as any other mutating method, this invalidates a cache. To speed
+    /// up searches after mutation, you should call
+    /// [rebuild_cache](Self::rebuild_cache).
+    pub fn add_dynamic_list<T: Iterator<Item = Meta>>(&mut self, iter: T) {
+        // Invalidate cache early to satisfy SAFETY invariants including safety
+        // on "panic" unwind
+        self.cache = None;
         self.dynamic.reserve(iter.size_hint().1.unwrap_or(0));
         for v in iter {
             self.dynamic.push(v);
         }
-        self.cache = None;
     }
 
+    /// Parses a dictionary from a memory and adds it's content to the
+    /// dictionary
+    ///
+    /// See expected format in [add_from_file](Self::add_from_file) method
+    /// documentation.
+    ///
+    /// Note: as any other mutating method, this invalidates a cache. To speed
+    /// up searches after mutation, you should call
+    /// [rebuild_cache](Self::rebuild_cache).
     pub fn add_from_memory(&mut self, buf: &mut impl std::io::Read) -> Result<()> {
         let reader = std::io::BufReader::new(buf);
-        let mut dict = Vec::<Meta<'static>>::new();
+        let mut dict = Vec::<Meta>::new();
 
         for (line_number, line) in reader.buffer().lines().enumerate() {
             let line = line.context(DictFileReadFailedSnafu)?;
@@ -253,10 +334,73 @@ impl<'a> Dictionary<'a> {
                 dict.push(tag_info);
             }
         }
+        // Invalidate cache early to satisfy SAFETY invariants including safety on "panic" unwind
+        self.cache = None;
         self.add_dynamic_list(dict.into_iter());
+
         Ok(())
     }
 
+    /// Reads a dictionary file and adds it content to the dictionary
+    ///
+    /// Note: as any other mutating method, this invalidates a cache. To speed
+    /// up searches after mutation, you should call
+    /// [rebuild_cache](Self::rebuild_cache).
+    ///
+    /// File format documentation:\
+    /// Each line represents an entry in the data dictionary. Each line has 6
+    /// fields `Tag`, `Name`, `Keyword`, `VR`, `VM` and `Version`.
+    ///
+    /// Entries need not be in ascending tag order. Entries may override
+    /// existing entries. Each field must be separated by a single tab.
+    ///
+    /// `Tag` field must in form `(gggg,eeee[,"creator"])` where `gggg`, `eeee`
+    /// must be in hexadecimal form with exception of `X` character, which
+    /// denotes "any digit". `creator` string is optional and specifies Private
+    /// Attribute creator. If present, it must be enclosed in double quotes and
+    /// separated by comma from an adjacent element number.
+    ///
+    /// `Name` field should contain only graphical ASCII characters and white
+    /// space ```[\x20-\x7E]```. Maximum length is 128 bytes.
+    ///
+    /// `Keyword` field should contain only a subset of ASCII characters
+    /// ```[A-Za-z0-9_]``` preferably in CamelCase. Keyword should start with a
+    /// letter. Maximum length is 64 bytes.
+    ///
+    /// `VR` field can contain up to three Value Representation names separated
+    /// with " or " Undefined VR should be written as "--".
+    ///
+    /// `VM` field should contain one of the forms: `B`, `B-E`, `B-n`, `B-Bn`,
+    /// where `B` - minimum number of repetitions 0 to 255, `E` - maximum number
+    /// of repetitions 1 to 255, `n` - literal "n" symbol, which denotes
+    /// "unbounded". Special form `B-Bn` means "arbitrary number multiple of B".
+    ///
+    /// `Version` field should contain one of the following terms (case
+    /// insensitive):
+    /// - `DICOM` - standard DICOM attribute
+    /// - `DICONDE` - standard DICONDE attribute
+    /// - `DICOS` - standard DICOS attribute
+    /// - `Ret` - retired attribute from an unspecified source.
+    /// - `Priv` - This is a private attribute known not to contain any patient
+    ///   identifying information.
+    /// - `Priv(X)` - This is a private attribute that contains patient
+    ///   identifying information. 'X' specifies a method of "de-identification"
+    ///   for this attribute and should be one of the following:
+    /// - `D` - replace with a non-zero length value that may be a dummy value
+    ///   and consistent with the VR
+    /// - `Z` - replace with a zero length value, or a non-zero length value
+    ///   that may be a dummy value and consistent with the VR
+    /// - `X` - remove
+    /// - `U` - replace with a non-zero length UID that is internally consistent
+    ///   within a set of Instance
+    ///
+    /// Comments have a '#' at the beginning of the line. The file should be
+    /// encoded as UTF-8 without BOM.
+    ///
+    /// Example line(tabs were replaced by spaces for documentation):
+    /// ```text
+    /// (0010,0020) Patient ID  PatientID   LO  1   dicom
+    /// ```
     pub fn add_from_file(&mut self, file_name: impl AsRef<Path>) -> Result<()> {
         use std::fs::File;
         let mut file = File::open(file_name.as_ref()).context(DictFileOpenFailedSnafu {
@@ -265,27 +409,13 @@ impl<'a> Dictionary<'a> {
         self.add_from_memory(&mut file)
     }
 
-    pub fn rebuild_cache(&'a mut self) {
-        let mut cache = DictCache::<'a> {
-            sorted: Vec::new(),
-            masked: Vec::new(),
-        };
+    /// Rebuilds a cache
+    pub fn rebuild_cache(&mut self) {
+        let mut cache = DictCache { vec: Vec::new() };
 
         let guessed_total_count =
             self.statics.iter().fold(0, |acc, dict| acc + dict.0.len()) + self.dynamic.len();
-        cache.sorted.reserve(guessed_total_count);
-
-        let guessed_masked_count = self
-            .statics
-            .iter()
-            .map(|dict| dict.0.iter().filter(|v| v.mask != 0xFFFFFFFFu32).count())
-            .sum::<usize>()
-            + self
-                .dynamic
-                .iter()
-                .filter(|v| v.mask != 0xFFFFFFFFu32)
-                .count();
-        cache.masked.reserve(guessed_masked_count);
+        cache.vec.reserve(guessed_total_count);
 
         // Reverse order, because after stable sort and dedup, we want
         // to prioritize dynamically added attributes over statically
@@ -301,89 +431,186 @@ impl<'a> Dictionary<'a> {
             }
         }
 
-        cache.sorted.sort_by(|l, r| l.0.cmp(&r.0));
-        cache.sorted.dedup_by(|l, r| l.0 == r.0);
-        cache.masked.sort_by(|l, r| l.1.cmp(&r.1).reverse());
-        cache.masked.dedup_by(|l, r| l.0 == r.0 && l.1 == r.1);
+        cache.vec.sort_by(Self::cmp_cache);
+        cache
+            .vec
+            .dedup_by(|l, r| Self::cmp_cache(l, r) == Ordering::Equal);
 
         self.cache = Some(cache);
     }
 
-    pub fn get_by_tag_key(&self, key: TagKey) -> Option<&'a Meta> {
+    /// Searches a dictionary for the given [TagKey]
+    ///
+    /// This method does not honor Private Creators so it's usage
+    /// should be carefully judged. It searches for the first
+    /// [Meta] entry which `Meta.tag.key` matches the searched [TagKey]
+    /// combined with a [Meta::mask]
+    ///
+    /// If cache is invalidated, linear search is performed against dynamic
+    /// and all the static lists. If cache is available, binary search is
+    /// performed.
+    pub fn search_by_key(&self, key: TagKey) -> Option<&Meta> {
         // Search in the cache if it is available
-        if let Some(c) = &self.cache {
-            // first, search directly in a sorted "flattened" array
-            if let Ok(index) = c.sorted.binary_search_by(|v| v.0.key.0.cmp(&key.0)) {
-                // Safety: we've got this VALID index from the vector method and there is no way
-                // to mutate vector content after the search.
-                return Some(unsafe { c.sorted.get_unchecked(index).1 });
+        if let Some(cache) = &self.cache {
+            if cache.vec.is_empty() {
+                return None;
             }
-
-            // Then, search in an UNSORTED array containing only tags with mask
-            // This array expected to be small enough to do a O(N) search.
-            return c.masked.iter().find(|v| v.0 == key.0 & v.1).map(|v| v.2);
+            return Self::search_in_cache_ignore_creator(cache, key);
         }
-
         // Search the hard-way.
         let tag = Tag::new(key, None);
-        if let Some(v) = Self::search_in_ary(self.dynamic.iter(), &tag) {
-            return Some(v);
-        }
+
+        let mut best_match = match Self::search_in_ary(self.dynamic.iter(), &tag) {
+            None => None,
+            Some((true, meta)) => return Some(meta),
+            Some((false, meta)) => Some(meta),
+        };
+
         for ary in self.statics.iter().rev() {
-            if let Some(v) = Self::search_in_ary(ary.0.iter(), &tag) {
-                return Some(v);
+            match Self::search_in_ary(ary.0.iter(), &tag) {
+                Some((true, meta)) => {
+                    return Some(meta);
+                }
+                Some((false, meta)) => {
+                    best_match.get_or_insert(meta);
+                }
+                None => (),
             }
         }
 
-        None
+        best_match
     }
 
-    pub fn get_by_tag(&self, tag: &Tag) -> Option<&'a Meta> {
-        // Search in the cache if it is available
-        if let Some(c) = &self.cache {
-            // first, search directly in a sorted "flattened" array
-            if let Ok(index) = c.sorted.binary_search_by(|v| v.0.cmp(tag)) {
-                // Safety: we've got this VALID index from the vector method and there is no way
-                // to mutate vector content after the search.
-                return Some(unsafe { c.sorted.get_unchecked(index).1 });
-            }
+    /// Searches a dictionary for the given [Tag]
+    ///
+    /// It searches for the first [Meta] entry which `Meta.tag.key` matches the
+    /// searched [Tag] combined with a [Meta::mask] exactly.
+    ///
+    /// In case of private attributes with [Some] creator, method also tried to
+    /// find [canonical](TagKey::to_canonical_if_private) representation of the
+    /// private attribute.
+    ///
+    /// If cache is invalidated, linear search is performed against dynamic and
+    /// all the static lists. If cache is available, binary search is performed.
+    pub fn search_by_tag<'a>(&self, tag: &'a Tag<'a>) -> Option<&Meta> {
+        if !tag.key.is_private_attribute() {
+            // This search will be slightly faster, because no "creator" comparisons involved
+            return self.search_by_key(tag.key);
+        }
 
-            // Then, search in an UNSORTED array containing only tags with mask
-            // This array expected to be small enough to do a O(N) search.
-            return c
-                .masked
-                .iter()
-                .find(|v| v.0 == tag.key.0 & v.1)
-                .map(|v| v.2);
+        // Search in the cache if it is available
+        if let Some(cache) = &self.cache {
+            if cache.vec.is_empty() {
+                return None;
+            }
+            // Step 1: exact original
+            if let Some(meta) = Self::search_in_cache_exact(cache, tag.key, &tag.creator) {
+                return Some(meta);
+            }
+            if tag.creator.is_some() {
+                // Step 2 a: if creator: exact canonical
+                if let Some(canonical_key) = tag.key.to_canonical_if_private() {
+                    if let Some(meta) =
+                        Self::search_in_cache_exact(cache, canonical_key, &tag.creator)
+                    {
+                        return Some(meta);
+                    }
+                }
+                // Step 3: find an exact attribute with None creator
+                if let Some(meta) = Self::search_in_cache_exact(cache, tag.key, &None) {
+                    return Some(meta);
+                }
+            } else if let Some(meta) = Self::search_in_cache_ignore_creator(cache, tag.key) {
+                // Step 2 b: if no creator: exact ignoring creator
+                return Some(meta);
+            }
+            return None;
         }
 
         // Search the hard-way.
-        if let Some(v) = Self::search_in_ary(self.dynamic.iter(), tag) {
-            return Some(v);
-        }
+        let mut best_match = match Self::search_in_ary(self.dynamic.iter(), tag) {
+            None => None,
+            Some((true, meta)) => return Some(meta),
+            Some((false, meta)) => Some(meta),
+        };
+
         for ary in self.statics.iter().rev() {
-            if let Some(v) = Self::search_in_ary(ary.0.iter(), tag) {
-                return Some(v);
+            match Self::search_in_ary(ary.0.iter(), tag) {
+                Some((true, meta)) => {
+                    return Some(meta);
+                }
+                Some((false, meta)) => {
+                    best_match.get_or_insert(meta);
+                }
+                None => (),
             }
         }
 
-        None
+        best_match
+    }
+
+    /// Returns some simple metrics
+    pub(crate) fn metrics(&self) -> DictMetrics {
+        DictMetrics {
+            static_lists: self.statics.len(),
+            static_tags: self.statics.iter().fold(0, |v, c| v + c.0.len()),
+            dynamic_tags: self.dynamic.len(),
+            cached_tags: self.cache.as_ref().map(|c| c.vec.len()),
+        }
     }
 }
 
-#[derive(Debug)]
-struct DictParseErr(usize, String);
+impl Clone for Dictionary {
+    fn clone(&self) -> Self {
+        Self {
+            statics: self.statics.clone(),
+            dynamic: self.dynamic.clone(),
+            cache: None,
+        }
+    }
+}
 
+impl Debug for Dictionary {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let m = self.metrics();
+        write!(
+            f,
+            "tag::Dictionary(tags: {} lists, {} static, {} dynamic, {:?} cached)",
+            m.static_lists, m.static_tags, m.dynamic_tags, m.cached_tags
+        )
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Dictionary private methods implementation
+// ---------------------------------------------------------------------------
+
+/// Shortcut to create [DictParseErr]
+///
+/// Expected parameters
+/// - Reference to offending string (must be a slice of input line)
+/// - Index of the offending symbol relative to provided slice
+/// - String error description
 macro_rules! mk_parse_err {
     ($str:expr, $index:expr, $msg:expr) => {
         DictParseErr($str.as_ptr() as usize + $index, ($msg).to_owned())
     };
 }
+
+/// Returns error result with [DictParseErr]
+/// Same parameters as for [mk_parse_err]
 macro_rules! parse_fail {
     ($str:expr, $index:expr, $msg:expr) => {{
         return Err(mk_parse_err!($str, $index, $msg));
     }};
 }
+
+/// Checks the condition and returns error result with [DictParseErr] if
+/// condition failed.
+///
+/// Expected parameters:
+/// - Condition expression yielding `true` or `false`
+/// - Other parameters same as for [mk_parse_err]
 macro_rules! parse_ensure {
     ($e:expr, $str:expr, $index:expr, $msg:expr) => {{
         if !($e) {
@@ -393,8 +620,10 @@ macro_rules! parse_ensure {
 }
 
 // Private implementations
-impl<'a> Dictionary<'a> {
-    fn dict_parse_line(line_number: usize, line: &str) -> Result<Option<Meta<'static>>> {
+impl Dictionary {
+    /// Wraps underlying method [dict_parse_line_int](Self::dict_parse_line_int)
+    /// and transforms internal parser error to the module-level [`Error`]
+    fn dict_parse_line(line_number: usize, line: &str) -> Result<Option<Meta>> {
         Self::dict_parse_line_int(line).map_err(|e| {
             let char_pos = Self::map_offset_to_char_pos(line, e.0);
             Error::DictParseFailed {
@@ -405,6 +634,55 @@ impl<'a> Dictionary<'a> {
         })
     }
 
+    /// Main function that parses a line of dictionary file returning processed [`Meta`]
+    ///
+    /// If line is empty or contains only a comment, than Ok(None) returned.
+    fn dict_parse_line_int(line: &str) -> Result<Option<Meta>, DictParseErr> {
+        let line = line.trim_start();
+        if line.starts_with('#') || line.is_empty() {
+            return Ok(None);
+        }
+
+        let take_first_field = |s| -> Result<(&str, &str), DictParseErr> {
+            match Self::dict_parse_take_element(s, "\t") {
+                (_, None) => parse_fail!(
+                    s,
+                    s.len().saturating_sub(1),
+                    "unexpected end of line, expecting TAB character"
+                ),
+                (s1, Some(s2)) => Ok((s1, s2)),
+            }
+        };
+
+        let (field_text, line_left) = take_first_field(line)?;
+        let (tag, mask) = Self::dict_parse_field_tag(field_text)?;
+
+        let (field_text, line_left) = take_first_field(line_left)?;
+        let name = Self::dict_parse_field_name(field_text)?;
+
+        let (field_text, line_left) = take_first_field(line_left)?;
+        let keyword = Self::dict_parse_field_keyword(field_text)?;
+
+        let (field_text, line_left) = take_first_field(line_left)?;
+        let vr = Self::dict_parse_field_vr(field_text)?;
+
+        let (field_text, line_left) = take_first_field(line_left)?;
+        let vm = Self::dict_parse_field_vm(field_text)?;
+
+        let source = Self::dict_parse_field_source(line_left)?;
+
+        Ok(Some(Meta {
+            tag,
+            mask,
+            vr,
+            vm,
+            name,
+            keyword,
+            source,
+        }))
+    }
+
+    /// Helper function, that translates byte-offset in the string to the char-offset.
     fn map_offset_to_char_pos(line: &str, offset: usize) -> usize {
         let byte_pos = offset.clamp(line.as_ptr() as usize, line.as_ptr() as usize + line.len())
             - line.as_ptr() as usize;
@@ -421,52 +699,21 @@ impl<'a> Dictionary<'a> {
         char_pos
     }
 
-    fn dict_parse_line_int(line: &str) -> Result<Option<Meta<'static>>, DictParseErr> {
-        let line = line.trim_start();
-        if line.starts_with('#') || line.is_empty() {
-            return Ok(None);
-        }
-
-        let (field_text, line_left) = Self::dict_next_field(line)?;
-        let (tag, mask) = Self::dict_parse_field_tag(field_text)?;
-
-        let (field_text, line_left) = Self::dict_next_field(line_left)?;
-        let name = Self::dict_parse_field_name(field_text)?;
-
-        let (field_text, line_left) = Self::dict_next_field(line_left)?;
-        let keyword = Self::dict_parse_field_keyword(field_text)?;
-
-        let (field_text, line_left) = Self::dict_next_field(line_left)?;
-        let (vr, alt_vr) = Self::dict_parse_field_vr(field_text)?;
-
-        let (field_text, line_left) = Self::dict_next_field(line_left)?;
-        let vm = Self::dict_parse_field_vm(field_text)?;
-
-        let source = Self::dict_parse_field_source(line_left)?;
-
-        Ok(Some(Meta::<'static> {
-            tag,
-            mask,
-            vr,
-            alt_vr,
-            vm,
-            name,
-            keyword,
-            source,
-        }))
-    }
-
-    fn dict_next_field(s: &str) -> Result<(&str, &str), DictParseErr> {
-        match s.find('\t') {
-            None => parse_fail!(
-                s,
-                s.len().saturating_sub(1),
-                "unexpected end of line, expecting TAB character"
-            ),
-            Some(index) => Ok((&s[0..index], &s[index + 1..])),
+    /// Splits a string with delimiter. Returns first and second halves.
+    ///
+    /// Somewhat resembles `strtok` from C world.
+    fn dict_parse_take_element<'b>(s: &'b str, sep: &'_ str) -> (&'b str, Option<&'b str>) {
+        match s.find(sep) {
+            None => (s, None),
+            Some(index) => (&s[0..index], Some(&s[index + sep.len()..])),
         }
     }
 
+    /// Parses a tag component (group or element) from a string line.
+    ///
+    /// Expects exactly 4 hexadecimal or 'X' characters.
+    ///
+    /// Returns numeric component and it's mask.
     fn dict_parse_tag_component(s: &str) -> Result<(u16, u16), DictParseErr> {
         let s = s.trim();
         let mut mask = 0u16;
@@ -475,7 +722,11 @@ impl<'a> Dictionary<'a> {
         let mut byte_offset = 0usize;
         for n in 0usize..4 {
             let c = it.next().ok_or_else(|| {
-                mk_parse_err!(s, byte_offset, "expecting hexadecimal number or \"x\"")
+                mk_parse_err!(
+                    s,
+                    byte_offset,
+                    "unexpected end of Tag component, expecting 4 hexadecimal or 'x' characters"
+                )
             })?;
             byte_offset += c.len_utf8();
             if let Some(num) = c.to_digit(16) {
@@ -497,58 +748,52 @@ impl<'a> Dictionary<'a> {
             it.next().is_none(),
             s,
             byte_offset,
-            "extra characters after Tag element"
+            "unexpected extra character after Tag component."
         );
         Ok((number, !mask))
     }
 
+    /// Parses [`Tag`] and it's mask from the input string slice.
+    ///
+    /// Expects format `(gggg,eeee[,"creator"])` where `gggg`, `eeee` - hexadecimal
+    /// or 'X' characters.
+    ///
+    /// Returns a parsed `Tag` and it's mask (synthesized from 'X' characters).
     fn dict_parse_field_tag(s: &str) -> Result<(Tag<'static>, u32), DictParseErr> {
         let s = s.trim();
         parse_ensure!(
-            !s.is_empty() && s.starts_with('('),
+            !s.is_empty() && s.starts_with('(') && s.ends_with(')'),
             s,
             0,
-            "expecting opening brace at Tag definition start"
+            "expecting Tag definition in parentheses"
         );
-        parse_ensure!(
-            s.ends_with(')'),
-            s,
-            s.len() - 1,
-            "expecting closing brace at Tag definition end"
-        );
+        // Remove surrounding parentheses
+        let s = &s[1..s.len() - 1];
 
-        let mut components = s[1..s.len() - 1].splitn(3, ',');
-
-        let group_chars = components
-            .next()
-            .expect("Bug: `split` returned zero elements");
-        let element_chars = components.next().ok_or_else(|| {
-            mk_parse_err!(
-                group_chars,
-                group_chars.len().saturating_sub(1),
-                "expecting comma separated Tag group number"
-            )
-        })?;
+        let (group_chars, line_left) = Self::dict_parse_take_element(s, ",");
         let (group, group_mask) = Self::dict_parse_tag_component(group_chars)?;
+
+        parse_ensure!(
+            line_left.is_some(),
+            s,
+            s.len().saturating_sub(1),
+            "expecting comma after Tag group number"
+        );
+        // Panic safety: Before unwrapping, we've checked "line_left.is_some()"
+        let (element_chars, creator_chars) = Self::dict_parse_take_element(line_left.unwrap(), ",");
         let (element, element_mask) = Self::dict_parse_tag_component(element_chars)?;
 
-        let creator: Option<Cow<'static, str>> = match components.next() {
+        let creator: Option<Cow<'static, str>> = match creator_chars {
             None => None,
             Some(creator) => {
                 let creator = creator.trim();
                 parse_ensure!(
-                    creator.len() >= 2 && creator.starts_with('"') && creator.ends_with('"'),
+                    creator.len() >= 3 && creator.starts_with('"') && creator.ends_with('"'),
                     creator,
                     0,
-                    "no starting or ending double quote for private creator in Tag definition"
+                    "expecting non-empty private creator string in double quotes"
                 );
                 let creator = &creator[1..creator.len() - 1];
-                parse_ensure!(
-                    !creator.is_empty(),
-                    creator,
-                    0,
-                    "empty private creator in Tag definition"
-                );
 
                 use crate::utils::unescape::Error::*;
                 let unescaped = unescape_with_validator(creator, |c| !c.is_control() && c != '\\').map_err(|e| match e {
@@ -582,7 +827,7 @@ impl<'a> Dictionary<'a> {
                     creator,
                     0,
                     format!(
-                        "private creator is too long ({chars_count} chars). maximum 64 allowed."
+                        "private creator is too long ({chars_count} chars), maximum 64 chars allowed"
                     )
                 );
                 Some(Cow::Owned(unescaped))
@@ -595,6 +840,12 @@ impl<'a> Dictionary<'a> {
         ))
     }
 
+    /// Parses name of element
+    ///
+    /// Expects a string of maximum 128 characters composed of only ASCII graphic and white
+    /// space characters.
+    ///
+    /// Returns trimmed version of the source string
     fn dict_parse_field_name(s: &'_ str) -> Result<Cow<'static, str>, DictParseErr> {
         let s = s.trim();
         parse_ensure!(!s.is_empty(), s, 0, "unexpected empty Name field");
@@ -603,7 +854,7 @@ impl<'a> Dictionary<'a> {
             s,
             0,
             format!(
-                "Name field is too long ({} bytes) maximum allowed 128 bytes",
+                "Name field is too long ({} bytes), maximum 128 chars allowed",
                 s.len()
             )
         );
@@ -612,7 +863,7 @@ impl<'a> Dictionary<'a> {
                 s,
                 index,
                 format!(
-                    "invalid character \"{}\" in Name field. only space and ascii graphic allowed",
+                    "invalid character \"{}\" in Name field. only space and ascii graphic chars allowed",
                     s.as_bytes()[index].to_owned().escape_ascii()
                 )
             );
@@ -620,6 +871,12 @@ impl<'a> Dictionary<'a> {
         Ok(Cow::Owned(s.to_owned()))
     }
 
+    /// Parses keyword(identifier) of element
+    ///
+    /// Expects a string of maximum 64 characters composed of only alphanumeric
+    /// and '_' characters. String must start with an alphabetic character.
+    ///
+    /// Returns trimmed version of the source string.
     fn dict_parse_field_keyword(s: &'_ str) -> Result<Cow<'static, str>, DictParseErr> {
         let s = s.trim();
         parse_ensure!(!s.is_empty(), s, 0, "unexpected empty Keyword field");
@@ -628,7 +885,7 @@ impl<'a> Dictionary<'a> {
             s,
             0,
             format!(
-                "Keyword field is too long ({} bytes) maximum allowed 64 bytes",
+                "Keyword field is too long ({} bytes), maximum 64 chars allowed",
                 s.len()
             )
         );
@@ -638,7 +895,7 @@ impl<'a> Dictionary<'a> {
             s,
             0,
             format!(
-                "first character \"{}\" is not alphabetic in Keyword field",
+                "unexpected non-alphabetic first character \"{}\"  in Keyword field",
                 c.to_owned().escape_ascii()
             )
         );
@@ -658,35 +915,62 @@ impl<'a> Dictionary<'a> {
         Ok(Cow::Owned(s.to_owned()))
     }
 
-    fn dict_parse_field_vr(s: &'_ str) -> Result<(Vr, Vr), DictParseErr> {
-        if let Some(i) = s.find(" or ") {
-            let vr_text = s[0..i].trim();
-            //parse_ensure!(i + 4 < s.len(), s, 0, "unexpected empty second VR");
-            let alt_vr_text = s[i + 4..].trim();
+    /// Parses value representation code
+    ///
+    /// Expects one to three [`Vr`] codes separated by " or ".
+    ///
+    /// Returns a tuple of all the Vr's in the input string. Missing entries are
+    /// set to [Vr::Undefined]
+    fn dict_parse_field_vr(s: &'_ str) -> Result<(Vr, Vr, Vr), DictParseErr> {
+        fn parse_vr(vr_text: &str) -> Result<Vr, DictParseErr> {
+            let vr_text = vr_text.trim();
+            parse_ensure!(
+                !vr_text.is_empty(),
+                vr_text,
+                0,
+                "empty string found. expecting AE, AS, AT, etc"
+            );
             let vr = Vr::try_from(vr_text).map_err(|_| {
                 mk_parse_err!(
                     vr_text,
                     0,
-                    format!("unsupported VR \"{}\"", vr_text.escape_default())
+                    format!(
+                        "unsupported VR \"{}\". expecting AE, AS, AT, etc",
+                        vr_text.escape_default()
+                    )
                 )
             })?;
-            let alt_vr = Vr::try_from(alt_vr_text).map_err(|_| {
-                mk_parse_err!(
-                    alt_vr_text,
-                    0,
-                    format!("unsupported VR \"{}\"", alt_vr_text.escape_default())
-                )
-            })?;
-            Ok((vr, alt_vr))
-        } else {
-            let s = s.trim();
-            let vr = Vr::try_from(s).map_err(|_| {
-                mk_parse_err!(s, 0, format!("unsupported VR \"{}\"", s.escape_default()))
-            })?;
-            Ok((vr, Vr::Undefined))
+            Ok(vr)
         }
+        let (vr_text, line_left) = Self::dict_parse_take_element(s, " or ");
+        let vr_text = vr_text.trim();
+        let vr1 = parse_vr(vr_text)?;
+
+        let mut vr2 = Vr::Undefined;
+        let mut vr3 = Vr::Undefined;
+        if let Some(s) = line_left {
+            let (vr_text, line_left) = Self::dict_parse_take_element(s, " or ");
+            let vr_text = vr_text.trim();
+            vr2 = parse_vr(vr_text)?;
+            if let Some(s) = line_left {
+                let (vr_text, line_left) = Self::dict_parse_take_element(s, " or ");
+                if let Some(s) = line_left {
+                    parse_fail!(s, 0, "too many VR values, maximum 3 allowed");
+                }
+                let vr_text = vr_text.trim();
+                vr3 = parse_vr(vr_text)?;
+            }
+        }
+        Ok((vr1, vr2, vr3))
     }
 
+    /// Parses a value representation expression
+    ///
+    /// Expects a string in form `A`, `B-C`, `B-n`, `A-An` where `A`, `B` and
+    /// `C` - decimal numbers. `A` in range 1..=255, `B`, `C` in range 1..=255,
+    /// `C` >= `B`.
+    ///
+    /// Returns a tuple of 3 numbers as described in [Meta::vm]
     fn dict_parse_field_vm(s: &'_ str) -> Result<(u8, u8, u8), DictParseErr> {
         let mut s = s.trim();
         let vm_is_unbounded = s.ends_with(['n', 'N']);
@@ -770,6 +1054,11 @@ impl<'a> Dictionary<'a> {
         }
     }
 
+    /// Parses a tag source information.
+    ///
+    /// Expects one of predefined string (see function body)
+    ///
+    /// Returns `Source` corresponding to the input string.
     fn dict_parse_field_source(s: &'_ str) -> Result<Source, DictParseErr> {
         if s.eq_ignore_ascii_case("dicom") {
             Ok(Source::Dicom)
@@ -790,218 +1079,308 @@ impl<'a> Dictionary<'a> {
         } else if s.eq_ignore_ascii_case("priv(u)") {
             Ok(Source::Vendored(PrivateIdentificationAction::U))
         } else {
-            Err(mk_parse_err!(s, 0, "unrecognized Source field"))
+            Err(mk_parse_err!(
+                s,
+                0,
+                "unrecognized Source field. expected Diconde, Dicos, Ret, Priv, Priv(d|z|x|u)"
+            ))
         }
     }
 
-    fn add_cached_tag(cache: &'_ mut DictCache<'a>, tag_info: &'a Meta<'a>) {
+    /// Adds a specified tag to the end of provided vector
+    fn add_cached_tag(cache: &mut DictCache, tag_info: &Meta) {
         let key = &tag_info.tag.key;
 
         // Add tag as-is
-        cache.sorted.push((tag_info.tag.clone(), tag_info));
+        cache.vec.push((
+            TagKey(tag_info.tag.key.as_u32() & tag_info.mask),
+            NonNull::from(&tag_info.tag.creator),
+            NonNull::from(tag_info),
+        ));
 
-        // Add "masked" tag in a special array
-        if tag_info.mask != 0xFFFFFFFFu32 {
-            debug_assert_eq!(key.as_u32() & tag_info.mask, key.as_u32(),
-                "TagInfo for tag {} in dpx_dicom_core::tag::StaticDictionary must be pre-multiplied by it's mask {:08x}",
-                tag_info.tag, tag_info.mask);
-            cache.masked.push((key.as_u32(), tag_info.mask, tag_info));
-        }
-
-        // Note: if you did not provide 'private creator' for the private attribute,
-        // then it will be matched "exactly". This is a "compatibility" feature with
-        // some buggy software, that does not provide any "private creator" for their
-        // attributes.
-        if key.is_private() && tag_info.tag.creator.is_some() {
-            // Add private attribute without "private creator"
-            if key.is_private_attribute() {
-                cache.sorted.push((
-                    Tag {
-                        creator: None,
-                        ..tag_info.tag
-                    },
-                    tag_info,
-                ));
-            }
-
-            // Add normalized attribute
+        // Note: if you did not provide 'private creator' for the private
+        // attribute, then it will be matched "exactly". This is a
+        // "compatibility" feature with some buggy software, that does not
+        // provide any "private creator" for their attributes. If private
+        // attribute in non-canonical form and has a creator specified, then it
+        // will also lands in cache in canonical form.
+        if tag_info.tag.creator.is_some() {
+            // Add canonical form
             if let Some(normalized_key) = key.to_canonical_if_private() {
-                cache.sorted.push((
-                    Tag {
-                        key: normalized_key,
-                        ..tag_info.tag.clone()
-                    },
-                    tag_info,
+                cache.vec.push((
+                    normalized_key,
+                    NonNull::from(&tag_info.tag.creator),
+                    NonNull::from(tag_info),
                 ));
             }
         }
     }
 
-    fn search_in_ary<T: Iterator<Item = &'a Meta<'a>>>(
+    /// Performs a binary search of [Tag] in the list of [Meta]'s.
+    ///
+    /// Private creator is matched exactly as passed.
+    ///
+    /// Supports masked values by positioning at "lower_bound" of the searched text
+    /// and rewinding back.
+    fn search_in_cache_exact<'a, 'b>(
+        c: &'a DictCache,
+        key: TagKey,
+        creator: &'b Option<Cow<'b, str>>,
+    ) -> Option<&'a Meta> {
+        match c
+            .vec
+            .binary_search_by(|v| Self::cmp_cache_key_creator(v, key, creator))
+        {
+            Ok(index) => {
+                // Exact match found
+
+                // SAFETY "get_unchecked": we've got this VALID index from the
+                // vector method and there is no way to mutate vector content
+                // after the search. SAFETY "deref *const": all pointers are
+                // invalidated when data they point to mutates, so there is no
+                // chance for pointer to dangle.
+                return Some(unsafe { c.vec.get_unchecked(index).2.as_ref() });
+            }
+            Err(lower_bound) => {
+                // Non exact match found. Index - lower bound
+                for index in (0..lower_bound).rev() {
+                    // SAFETY "get_unchecked": lower_bound is less or equal to
+                    // vector.len(), so index in range to "0 .. lower_bound"
+                    // will never got beyond array length. If array is empty,
+                    // this range will not yield any indices. SAFETY "deref
+                    // *const": all pointers are invalidated when data they
+                    // point to mutates, so there is no chance for pointer to
+                    // dangle.
+                    let info = unsafe { c.vec.get_unchecked(index).2.as_ref() };
+                    // We must account possible mask in the meta description.
+                    let tag_key_masked = TagKey(key.as_u32() & info.mask);
+                    // Early bail out if moved to another key
+                    if info.tag.key != tag_key_masked {
+                        break;
+                    }
+                    // Match private creator exactly
+                    if info.tag.creator != *creator {
+                        continue;
+                    }
+                    return Some(info);
+                }
+            }
+        };
+        None
+    }
+
+    /// Performs a binary search of [Tag] in the list of [Meta]'s.
+    ///
+    /// This method ignores private creator on initial binary search, but when
+    /// positioned to "lower_bound" of a searched string peeks one element ahead
+    /// and one element behind for the match.
+    fn search_in_cache_ignore_creator(c: &DictCache, key: TagKey) -> Option<&Meta> {
+        match c
+            .vec
+            .binary_search_by(|v| Self::cmp_cache_key_creator(v, key, &None))
+        {
+            Ok(index) => {
+                // Exact match found
+
+                // SAFETY "get_unchecked": we've got this VALID index from the
+                // vector method and there is no way to mutate vector content
+                // after the search. SAFETY "deref *const": all pointers are
+                // invalidated when data they point to mutates, so there is no
+                // chance for pointer to dangle.
+                return Some(unsafe { c.vec.get_unchecked(index).2.as_ref() });
+            }
+            Err(lower_bound) => {
+                // Non exact match found. Index - lower bound. Next entries MAY
+                // contain same key, but with private creator set
+                if lower_bound < c.vec.len() {
+                    // SAFETY "get_unchecked": we've got this VALID index from
+                    // the vector method and there is no way to mutate vector
+                    // content after the search. SAFETY "deref *const": all
+                    // pointers are invalidated when data they point to mutates,
+                    // so there is no chance for pointer to dangle.
+                    let info = unsafe { c.vec.get_unchecked(lower_bound).2.as_ref() };
+                    // We must account possible mask in the meta description.
+                    let tag_key_masked = TagKey(key.as_u32() & info.mask);
+                    // Early bail out if moved to another key
+                    if info.tag.key == tag_key_masked {
+                        // Found same key ignoring private creator
+                        return Some(info);
+                    }
+                }
+                // Lower - ranked entry may contain our key if it is masked
+                if lower_bound > 0 {
+                    // SAFETY "get_unchecked": we've got this VALID index from
+                    // the vector method and there is no way to mutate vector
+                    // content after the search. SAFETY "deref *const": all
+                    // pointers are invalidated when data they point to mutates,
+                    // so there is no chance for pointer to dangle.
+                    let info = unsafe { c.vec.get_unchecked(lower_bound - 1).2.as_ref() };
+                    // We must account possible mask in the meta description.
+                    let tag_key_masked = TagKey(key.as_u32() & info.mask);
+                    // Early bail out if moved to another key
+                    if info.tag.key == tag_key_masked {
+                        // Found some key with mask ignoring creator
+                        return Some(info);
+                    }
+                }
+            }
+        };
+        None
+    }
+
+    /// Comparator function for sorting `DictCache::sorted` array.
+    /// It compares elements 0 and 1 of a given tuples.
+    fn cmp_cache(l: &DictCacheEntry, r: &DictCacheEntry) -> Ordering {
+        match l.0.as_u32().cmp(&r.0.as_u32()) {
+            Ordering::Less => Ordering::Less,
+            Ordering::Greater => Ordering::Greater,
+            // SAFETY: Cache is always cleared when any data it points to
+            // mutated, so there is no chance to get a dangling pointer.
+            Ordering::Equal => unsafe { (l.1).as_ref().cmp(r.1.as_ref()) },
+        }
+    }
+
+    /// Comparator function for searching `DictCache::sorted` array
+    /// by [TagKey] ignoring any private creators
+    fn cmp_cache_key(l: &DictCacheEntry, r: TagKey) -> Ordering {
+        l.0.as_u32().cmp(&r.as_u32())
+    }
+
+    /// Comparator function for searching `DictCache::sorted` array by [TagKey]
+    /// and private creator
+    fn cmp_cache_key_creator<'a>(
+        l: &DictCacheEntry,
+        r_key: TagKey,
+        r_creator: &'a Creator<'a>,
+    ) -> Ordering {
+        match l.0.as_u32().cmp(&r_key.as_u32()) {
+            Ordering::Less => Ordering::Less,
+            Ordering::Greater => Ordering::Greater,
+            // SAFETY: Cache is always cleared when any data it points to
+            // mutated, so there is no chance to get a dangling pointer.
+            Ordering::Equal => unsafe { l.1.as_ref().cmp(r_creator) },
+        }
+    }
+
+    /// Performs a linear search of the [Tag] in a specified iterator.
+    ///
+    /// Returns Some if some match found or None if no matches found. Some
+    /// contains a tuple of `bool` and matched `Meta`. `bool` indicates a
+    /// confidentiality of a match. `true` - match exacted, `false` match with
+    /// some "generalization".
+    fn search_in_ary<'a, T: Iterator<Item = &'a Meta>>(
         iter: T,
-        tag: &'_ Tag<'_>,
-    ) -> Option<&'a Meta<'a>> {
+        tag: &Tag,
+    ) -> Option<(bool, &'a Meta)> {
         let mut matched = None;
 
-        if !tag.key.is_private() || tag.creator.is_none() {
-            // Search for a regular tag OR private without known "creator".
-            // We can't coerce private attributes and reservations to it's canonical form,
-            // because without known "creator" we will collide with someone other private attribute.
+        if !tag.key.is_private_attribute() {
+            // Search for a regular tag
             for v in iter {
-                // Condition 1: exact match
-                if v.tag == *tag {
-                    matched = Some(v);
-                    break;
+                if v.tag.key.as_u32() == tag.key.as_u32() & v.mask {
+                    return Some((true, v));
                 }
-
-                // Condition 2: is searched tag in the masked range
-                if v.mask != 0xFFFFFFFFu32 && v.tag.key.0 & v.mask == tag.key.0 & v.mask {
-                    matched = Some(v);
-                    break;
+            }
+        } else if tag.creator.is_none() {
+            // Search for a private tag without known "creator".
+            for v in iter {
+                if v.tag.key.as_u32() == tag.key.as_u32() & v.mask {
+                    return Some((v.tag.creator.is_none(), v));
                 }
             }
         } else if let Some(canonical_key) =
             tag.key.to_canonical_if_private().filter(|v| *v != tag.key)
         {
-            const WEIGHT_MATCH_KEY: u8 = 4;
-            const WEIGHT_MATCH_MASK: u8 = 3;
-            const WEIGHT_MATCH_CANONICAL_KEY: u8 = 2;
-            const WEIGHT_MATCH_CANONICAL_MASK: u8 = 1;
-            let mut matched_weight = 0u8;
-
-            // This is a private reservation or attribute in non-canonical form with a known searched "creator".
+            // Search for a private attribute with a known "creator"
             for v in iter {
-                // Condition 1: searched Tag has exact match
-                if v.tag == *tag {
-                    matched = Some(v);
-                    break;
+                if v.tag.key.as_u32() == tag.key.as_u32() & v.mask {
+                    if v.tag.creator.is_none() {
+                        matched = Some((false, v)); // there may be a better alternatives
+                    } else if v.tag.creator == tag.creator {
+                        return Some((true, v));
+                    }
                 }
 
-                // Mask is non zero and contains high 16-bits of the original mask IF
-                // it contains non-zero bits in high 16-bits and has no masked out bits in lower 16-bits
-                let mask = {
-                    if v.mask != 0xFFFFFFFFu32 && v.mask & 0x0000FFFFu32 == 0x0000FFFFu32 {
-                        v.mask & 0xFFFF0000u32
-                    } else {
-                        0u32
-                    }
-                };
-
-                // Condition 2: "creator" matches and TagKey from searched Tag is in masked range
-                if mask != 0u32
-                    && v.tag.key.0 & mask == tag.key.0 & mask
+                if v.tag.key.as_u32() == canonical_key.as_u32() & v.mask
                     && v.tag.creator == tag.creator
                 {
-                    matched = Some(v);
-                    break;
-                }
-
-                // Condition 3: "creator" matches and canonical TagKey from searched Tag matches.
-                if v.tag.key == canonical_key && v.tag.creator == tag.creator {
-                    return Some(v);
-                }
-
-                // Condition 4: "creator" matches and canonical TagKey from searched Tag in masked range.
-                if mask != 0u32
-                    && v.tag.key.0 & mask == canonical_key.0 & mask
-                    && v.tag.creator == tag.creator
-                {
-                    matched = Some(v);
-                    break;
-                }
-
-                // Other matches are the "best guess" if our dictionary has no "creator"
-                if matched_weight < WEIGHT_MATCH_KEY && v.tag.creator.is_none() {
-                    // Condition 5: dict has no "creator", but TagKey exactly matched
-                    if v.tag.key == tag.key {
-                        matched_weight = WEIGHT_MATCH_KEY;
-                        matched = Some(v);
-                        continue;
-                    }
-
-                    if matched_weight < WEIGHT_MATCH_MASK {
-                        // Condition 6: dict has no "creator", bur TagKey falls into the masked range
-                        if mask != 0u32 && v.tag.key.0 & mask == tag.key.0 & mask {
-                            matched_weight = WEIGHT_MATCH_MASK;
-                            matched = Some(v);
-                            continue;
-                        }
-
-                        if matched_weight < WEIGHT_MATCH_CANONICAL_KEY {
-                            // Condition 7: dict has no "creator", but canonical TagKey matches
-                            if v.tag.key == canonical_key {
-                                matched_weight = WEIGHT_MATCH_CANONICAL_MASK;
-                                matched = Some(v);
-                                continue;
-                            }
-
-                            // Condition 8: dict has no "creator"
-                            if matched_weight == 0
-                                && mask != 0u32
-                                && v.tag.key.0 & mask == canonical_key.0 & mask
-                            {
-                                matched_weight = WEIGHT_MATCH_CANONICAL_MASK;
-                                matched = Some(v);
-                                continue;
-                            }
-                        }
-                    }
+                    return Some((true, v));
                 }
             }
         } else {
-            const WEIGHT_MATCH_KEY: u8 = 2;
-            const WEIGHT_MATCH_MASK: u8 = 1;
-            let mut matched_weight = 0u8;
-
-            // This is a private reservation or attribute in non-canonical form with a known searched "creator".
+            // Search for a private attribute in canonical form with a known "creator"
             for v in iter {
-                // Condition 1: searched Tag has exact match
-                if v.tag == *tag {
-                    matched = Some(v);
-                    break;
-                }
-
-                // Mask is non zero and contains high 16-bits of the original mask IF
-                // it contains non-zero bits in high 16-bits and has no masked out bits in lower 16-bits
-                let mask = {
-                    if v.mask != 0xFFFFFFFFu32 && v.mask & 0x0000FFFFu32 == 0x0000FFFFu32 {
-                        v.mask & 0xFFFF0000u32
-                    } else {
-                        0u32
-                    }
-                };
-
-                // Condition 2: "creator" matches and TagKey from searched Tag is in masked range
-                if mask != 0u32
-                    && v.tag.key.0 & mask == tag.key.0 & mask
-                    && v.tag.creator == tag.creator
-                {
-                    matched = Some(v);
-                    break;
-                }
-
-                // Other matches are the "best guess" if our dictionary has no "creator"
-                if matched_weight < WEIGHT_MATCH_KEY && v.tag.creator.is_none() {
-                    // Condition 5: dict has no "creator", but TagKey exactly matched
-                    if v.tag.key == tag.key {
-                        matched_weight = WEIGHT_MATCH_KEY;
-                        matched = Some(v);
-                        continue;
-                    }
-
-                    // Condition 6: dict has no "creator", bur TagKey falls into the masked range
-                    if matched_weight < WEIGHT_MATCH_MASK
-                        && mask != 0u32
-                        && v.tag.key.0 & mask == tag.key.0 & mask
-                    {
-                        matched_weight = WEIGHT_MATCH_MASK;
-                        matched = Some(v);
-                        continue;
+                if v.tag.key.as_u32() == tag.key.as_u32() & v.mask {
+                    if v.tag.creator.is_none() {
+                        matched = Some((false, v)); // there may be a better alternative with a known creator
+                    } else if v.tag.creator == tag.creator {
+                        return Some((true, v));
                     }
                 }
             }
         }
 
         matched
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Meta struct implementation
+// ---------------------------------------------------------------------------
+impl PartialEq for Meta {
+    fn eq(&self, other: &Self) -> bool {
+        self.tag.eq(&other.tag)
+    }
+}
+
+impl<'a> PartialEq<Tag<'a>> for Meta {
+    fn eq(&self, other: &Tag<'a>) -> bool {
+        self.tag.eq(other)
+    }
+}
+
+impl PartialEq<TagKey> for Meta {
+    fn eq(&self, other: &TagKey) -> bool {
+        self.tag.key.eq(other)
+    }
+}
+
+impl Eq for Meta {}
+
+impl PartialOrd for Meta {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.tag.partial_cmp(&other.tag)
+    }
+}
+
+impl<'a> PartialOrd<Tag<'a>> for Meta {
+    fn partial_cmp(&self, other: &Tag<'a>) -> Option<std::cmp::Ordering> {
+        self.tag.partial_cmp(other)
+    }
+}
+
+impl PartialOrd<TagKey> for Meta {
+    fn partial_cmp(&self, other: &TagKey) -> Option<std::cmp::Ordering> {
+        self.tag.key.partial_cmp(other)
+    }
+}
+
+impl Ord for Meta {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.tag.cmp(&other.tag)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// StaticMetaList struct implementation
+// ---------------------------------------------------------------------------
+impl StaticMetaList {
+    /// Creates a new instance with a specified constant list
+    pub const fn new(ml: &'static [Meta]) -> Self {
+        Self(ml)
+    }
+    /// Returns a contained constant list of [`Meta`] objects
+    pub const fn value(&self) -> &'static [Meta] {
+        self.0
     }
 }
