@@ -6,11 +6,13 @@
     "language": "en",
     // words - list of words to be always considered correct
     "words": [
+        "chrono",
         "deidentification",
         "dicom",
         "diconde",
         "dicos",
         "dimse",
+        "docbook",
         "enchanced",
         "ggggeeee",
         "hexdigit",
@@ -18,7 +20,9 @@
         "natvis",
         "nonidentifying",
         "punycode",
+        "replacen",
         "repr",
+        "roxmltree",
         "rustfmt",
         "splitn",
         "tagkey",

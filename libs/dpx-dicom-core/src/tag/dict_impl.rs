@@ -1,6 +1,6 @@
 use super::*;
 use crate::{utils::unescape::unescape_with_validator, Cow, Vr};
-use std::{cmp::Ordering, fmt::Debug, io::BufRead, ptr::NonNull};
+use std::{cmp::Ordering, fmt::Debug, io::{self, BufRead}, ptr::NonNull};
 
 #[cfg(test)]
 mod tests;
@@ -240,7 +240,7 @@ struct DictCache {
 }
 
 /// metrics from [Dictionary::metrics()]
-pub(crate) struct DictMetrics {
+pub struct DictMetrics {
     pub static_lists: usize,
     pub static_tags: usize,
     pub dynamic_tags: usize,
@@ -324,15 +324,22 @@ impl Dictionary {
     /// Note: as any other mutating method, this invalidates a cache. To speed
     /// up searches after mutation, you should call
     /// [rebuild_cache](Self::rebuild_cache).
-    pub fn add_from_memory(&mut self, buf: &mut impl std::io::Read) -> Result<()> {
-        let reader = std::io::BufReader::new(buf);
+    pub fn add_from_memory(&mut self, buf: impl io::Read) -> Result<()> {
+        let mut reader = io::BufReader::new(buf);
         let mut dict = Vec::<Meta>::new();
 
-        for (line_number, line) in reader.buffer().lines().enumerate() {
-            let line = line.context(DictFileReadFailedSnafu)?;
+        let mut line_number = 1;
+        let mut line = String::new();
+        line.reserve(1024);
+        while let Ok(size) = reader.read_line(&mut line) {
+            if size == 0 {
+                break;
+            }
             if let Some(tag_info) = Self::dict_parse_line(line_number, line.trim())? {
                 dict.push(tag_info);
             }
+            line.clear();
+            line_number += 1;
         }
         // Invalidate cache early to satisfy SAFETY invariants including safety on "panic" unwind
         self.cache = None;
@@ -403,10 +410,10 @@ impl Dictionary {
     /// ```
     pub fn add_from_file(&mut self, file_name: impl AsRef<Path>) -> Result<()> {
         use std::fs::File;
-        let mut file = File::open(file_name.as_ref()).context(DictFileOpenFailedSnafu {
+        let file = File::open(file_name.as_ref()).context(DictFileOpenFailedSnafu {
             file_name: file_name.as_ref().to_path_buf(),
         })?;
-        self.add_from_memory(&mut file)
+        self.add_from_memory(file)
     }
 
     /// Rebuilds a cache
@@ -550,7 +557,7 @@ impl Dictionary {
     }
 
     /// Returns some simple metrics
-    pub(crate) fn metrics(&self) -> DictMetrics {
+    pub fn metrics(&self) -> DictMetrics {
         DictMetrics {
             static_lists: self.statics.len(),
             static_tags: self.statics.iter().fold(0, |v, c| v + c.0.len()),
@@ -658,13 +665,13 @@ impl Dictionary {
         let (tag, mask) = Self::dict_parse_field_tag(field_text)?;
 
         let (field_text, line_left) = take_first_field(line_left)?;
+        let vr = Self::dict_parse_field_vr(field_text)?;
+
+        let (field_text, line_left) = take_first_field(line_left)?;
         let name = Self::dict_parse_field_name(field_text)?;
 
         let (field_text, line_left) = take_first_field(line_left)?;
         let keyword = Self::dict_parse_field_keyword(field_text)?;
-
-        let (field_text, line_left) = take_first_field(line_left)?;
-        let vr = Self::dict_parse_field_vr(field_text)?;
 
         let (field_text, line_left) = take_first_field(line_left)?;
         let vm = Self::dict_parse_field_vm(field_text)?;

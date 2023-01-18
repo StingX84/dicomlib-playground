@@ -28,8 +28,9 @@ snafu = "0.7.4"
 # Allows to statically register different types in the static list
 inventory = "0.3"
 
-# A macro allowing to create non-const static variables
-lazy_static = "1"
+machine-uid = "0.2"
+
+crc32fast = "1.3"
 
 ##################
 # Optional dependencies

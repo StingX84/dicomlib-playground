@@ -140,7 +140,7 @@ macro_rules! assert_parser_err {
 fn check_dict_parse_line_int() {
     assert!(Dictionary::dict_parse_line_int(" # Comment").unwrap().is_none());
     assert!(Dictionary::dict_parse_line_int(" ").unwrap().is_none());
-    assert_eq!(Dictionary::dict_parse_line_int("(0010,0020)\tPatient ID\tPatientID\tLO\t1\tdicom").unwrap().unwrap(),
+    assert_eq!(Dictionary::dict_parse_line_int("(0010,0020)\tLO\tPatient ID\tPatientID\t1\tdicom").unwrap().unwrap(),
         Meta{
             tag: Tag::standard(0x0010, 0x0020),
             mask: 0xFFFFFFFFu32,
@@ -151,8 +151,8 @@ fn check_dict_parse_line_int() {
             source: Source::Dicom
         });
     assert_parser_err!(Dictionary::dict_parse_line_int, "a", 0, "unexpected end of line");
-    assert_parser_err!(Dictionary::dict_parse_line_int, "(0010,0020)\tPatient ID\tPatientID\tLO\t1", 36, "unexpected end of line");
-    assert_parser_err!(Dictionary::dict_parse_line_int, "(0010,0020)\tPatient ID\tPatientID\tLO\t1\t", 38, "unrecognized Source");
+    assert_parser_err!(Dictionary::dict_parse_line_int, "(0010,0020)\tLO\tPatient ID\tPatientID\t1", 36, "unexpected end of line");
+    assert_parser_err!(Dictionary::dict_parse_line_int, "(0010,0020)\tLO\tPatient ID\tPatientID\t1\t", 38, "unrecognized Source");
 }
 
 #[test]
