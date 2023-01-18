@@ -16,7 +16,7 @@ pub const DEFAULT_UID_ROOT: &str = "1.2.3";
 /// than one digit, it should not start with 0. Maximum allowed length: 64
 /// chars.
 ///
-/// This structure stores it's text in a [Cow] to minimize heap allocations.
+/// This structure stores it's text in a [Cow](std::borrow::Cow) to minimize heap allocations.
 ///
 /// You can create this structure from `&str` or `String` using `from` method.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]

@@ -241,7 +241,7 @@ impl TagKey {
 
     /// Searches and returns Tag name in the current [State](crate::State)
     ///
-    /// See also [search_by_key](crate::uid::Dictionary::search_by_key)
+    /// See also [search_by_key](crate::tag::Dictionary::search_by_key)
     pub fn name(&self) -> Option<Cow<'static, str>> {
         crate::State::with_current(|s| {
             s.tag_dictionary()

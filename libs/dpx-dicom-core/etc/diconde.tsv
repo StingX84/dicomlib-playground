@@ -1,0 +1,189 @@
+# Purpose: DICONDE data dictionary for the dpx-dicom.
+#
+# Dictionary of Digital Imaging and Communication in Nondestructive
+# Evaluation (DICONDE) tags.  Please note that the file "dicom.tsv"
+# contains the non-private DICONDE tag definitions since they are now
+# official part of the DICOM standard (beginning with 2011 edition).
+#
+# Each line represents an entry in the data dictionary. Each line has 6 fields
+# `Tag`, `VR`, `Name`, `Keyword`, `VM` and `Version`.
+#
+# Entries need not be in ascending tag order. Entries may override existing
+# entries. Each field must be separated by a single tab.
+#
+# `Tag` field must in form `(gggg,eeee[,"creator"])` where `gggg`, `eeee` must
+# be in hexadecimal form with exception of `X` character, which denotes
+# "any digit". `creator` string is optional and specifies Private Attribute
+# creator. If present, it must be enclosed in double quotes and separated by
+# comma from an adjacent element number.
+#
+# `VR` field can contain up to three Value Representation names separated with " or "
+# Undefined VR should be written as "--".
+#
+# `Name` field should contain only graphical ASCII characters and white
+# space [\x20-\x7E]. Maximum length is 128 bytes.
+#
+# `Keyword` field should contain only a subset of ASCII characters [A-Za-z0-9_]
+# preferably in CamelCase. Keyword should start with a letter. Maximum length is
+# 64 bytes.
+#
+# `VM` field should contain one of the forms: `B`, `B-E`, `B-n`, `B-Bn`, where
+# `B` - minimum number of repetitions 0 to 255, `E` - maximum number of
+# repetitions 1 to 255, `n` - literal "n" symbol, which denotes "unbounded".
+# Special form `B-Bn` means "arbitrary number multiple of B".
+#
+# `Version` field should contain one of the following terms (case insensitive):
+# - `DICONDE` - standard DICONDE attribute
+# - `Ret` - retired attribute from an unspecified source.
+#
+# Comments have a '#' at the beginning of the line. The file should be encoded
+# as UTF-8 without BOM.
+# Tag		VR	Name			Keyword			VM	Version
+
+# ASTM E2339−15 Standard Practice for Digital Imaging and Communication in Nondestructive Evaluation (DICONDE)
+# Component module
+(0010,0010)	PN	Component Name	ComponentName	1	DICONDE
+(0010,0020)	LO	Component ID Number	ComponentIDNumber	1-n	DICONDE
+(0010,1000)	LO	Other Component IDs	OtherComponentIDs	1-n	DICONDE
+(0010,1001)	PN	Other Component Names	OtherComponentNames	1-n	DICONDE
+(0010,0030)	DA	Component Manufacturing Date	ComponentManufacturingDate	1	DICONDE
+(0010,4000)	LT	Component Notes	ComponentNotes	1	DICONDE
+(0010,2160)	SH	Material Name	MaterialName	1	DICONDE
+# Component Study Module
+(0008,0090)	PN	Component Owner Name	ComponentOwnerName	1	DICONDE
+(0008,1048)	PN	Inspecting Company Name	InspectingCompanyName	1-n	DICONDE
+(0008,1060)	PN	Certifying Inspector Name	CertifyingInspectorName	1-n	DICONDE
+(0032,4000)	LT	Examination Notes	ExaminationNotes	1	DICONDE
+(0008,1050)	PN	Inspector Name	InspectorName	1-n	DICONDE
+# NDE Equipment Module
+(0008,0080)	LO	Company Name	CompanyName	1	DICONDE
+(0008,0081)	ST	Company Address	CompanyAddress	1	DICONDE
+(0008,1040)	LO	Department Name	DepartmentName	1	DICONDE
+(0018,1008)	LO	Scanner ID	ScannerID	1	DICONDE
+# NDE Indication Module
+(0040,A30A)	DS	Property Value	PropertyValue	1-n	DICONDE
+(0040,08EA)	SQ	Property Units Code Sequence	PropertyUnitsCodeSequence	1	DICONDE
+(0070,0023)	CS	Indication ROI Geometric Type	IndicationROIGeometricType	1	DICONDE
+(0040,A040)	CS	Indication ROI Value Type	IndicationROIValueType	1	DICONDE
+(0070,0021)	US	Number of ROI Contour Points	NumberOfROIContourPoints	1	DICONDE
+(0070,0022)	DS	Indication ROI Contour Data	IndicationROIContourData	2-n	DICONDE
+
+# ASTM E2934-14 Standard Practice for Digital Imaging and Communication in Nondestructive Evaluation (DICONDE) for Eddy Current (EC) Test Methods1
+# NDE EC Image Module Attributes
+(0008,2124)	IS	Number of Surfaces	NumberOfSurfaces	1	DICONDE
+(0008,212A)	IS	Number of Total Channels	NumberOfTotalChannels	1	DICONDE
+(0008,2122)	IS	Surface Number	SurfaceNumber	1	DICONDE
+(0008,2127)	SH	Channel Name	ChannelName	1	DICONDE
+(0008,2128)	IS	Channel Number	ChannelNumber	1	DICONDE
+(0018,6014)	US	Pixel Data Type	PixelDataType	1	DICONDE
+
+
+# Ripped from OFFIS DCMTK "diconde.dic" file
+(0009,1020,"astm.org/diconde/iod/ComponentStudy")	DA	Expiry Date	ExpiryDate_CompStudy	1	Ret
+
+(0009,1010,"astm.org/diconde/iod/ComponentSeries")	ST	Actual Environmental Conditions	ActualEnvironmentalConditions_CompSeries	1	Ret
+(0009,1040,"astm.org/diconde/iod/ComponentSeries")	ST	Environmental Conditions	EnvironmentalConditions_CompSeries	1	Ret
+
+(0011,1023,"astm.org/diconde/iod/Component")	ST	CAD File Format	CADFileFormat_Component	1-n	Ret
+(0011,1024,"astm.org/diconde/iod/Component")	ST	Component Ref System	ComponentRefSystem_Component	1-n	Ret
+(0011,1025,"astm.org/diconde/iod/Component")	ST	Component Manufacturing Procedure	ComponentManufacturingProcedure_Component	1-n	Ret
+(0011,1028,"astm.org/diconde/iod/Component")	ST	Component Manufacturer	ComponentManufacturer_Component	1-n	Ret
+(0011,1030,"astm.org/diconde/iod/Component")	DS	Thickness	Thickness_Component	1-n	Ret
+(0011,1032,"astm.org/diconde/iod/Component")	DS	Material Pipe Diameter	MaterialPipeDiameter_Component	1-n	Ret
+(0011,1034,"astm.org/diconde/iod/Component")	DS	Material Isolation Diameter	MaterialIsolationDiameter_Component	1-n	Ret
+(0011,1042,"astm.org/diconde/iod/Component")	ST	Material Grade	MaterialGrade_Component	1-n	Ret
+(0011,1044,"astm.org/diconde/iod/Component")	ST	Material Properties File ID	MaterialPropertiesFileID_Component	1-n	Ret
+(0011,1045,"astm.org/diconde/iod/Component")	ST	Material Properties File Format	MaterialPropertiesFileFormat_Component	1-n	Ret
+(0011,1046,"astm.org/diconde/iod/Component")	LT	Material Notes	MaterialNotes_Component	1	Ret
+(0011,1050,"astm.org/diconde/iod/Component")	CS	Shape	Shape_Component	1	Ret
+(0011,1052,"astm.org/diconde/iod/Component")	CS	Curvature Type	CurvatureType_Component	1	Ret
+(0011,1054,"astm.org/diconde/iod/Component")	DS	Outer Diameter	OuterDiameter_Component	1	Ret
+(0011,1056,"astm.org/diconde/iod/Component")	DS	Inner Diameter	InnerDiameter_Component	1	Ret
+
+(0021,1002,"astm.org/diconde/iod/NdeIndication")	SQ	Evaluator Sequence	EvaluatorSequence_Indication	1	Ret
+(0021,1004,"astm.org/diconde/iod/NdeIndication")	IS	Evaluator Number	EvaluatorNumber_Indication	1	Ret
+(0021,1006,"astm.org/diconde/iod/NdeIndication")	PN	Evaluator Name	EvaluatorName_Indication	1	Ret
+(0021,1008,"astm.org/diconde/iod/NdeIndication")	IS	Evaluation Attempt	EvaluationAttempt_Indication	1	Ret
+(0021,1012,"astm.org/diconde/iod/NdeIndication")	SQ	Indication Sequence	IndicationSequence_Indication	1	Ret
+(0021,1014,"astm.org/diconde/iod/NdeIndication")	IS	Indication Number	IndicationNumber_Indication	1	Ret
+(0021,1016,"astm.org/diconde/iod/NdeIndication")	SH	Indication Label	IndicationLabel_Indication	1	Ret
+(0021,1018,"astm.org/diconde/iod/NdeIndication")	ST	Indication Description	IndicationDescription_Indication	1	Ret
+(0021,101A,"astm.org/diconde/iod/NdeIndication")	CS	Indication Type	IndicationType_Indication	1-n	Ret
+(0021,101C,"astm.org/diconde/iod/NdeIndication")	CS	Indication Disposition	IndicationDisposition_Indication	1	Ret
+(0021,101E,"astm.org/diconde/iod/NdeIndication")	SQ	Indication ROI Sequence	IndicationROISequence_Indication	1	Ret
+(0021,1020,"astm.org/diconde/iod/NdeIndication")	CS	Indication ROI Geometric Type	IndicationROIGeometricType_Indication	1	Ret
+(0021,1022,"astm.org/diconde/iod/NdeIndication")	IS	Number of ROI Contour Points	NumberOfROIContourPoints_Indication	1	Ret
+(0021,1024,"astm.org/diconde/iod/NdeIndication")	DS	Indication ROI Contour Data	IndicationROIContourData_Indication	3-3n	Ret
+(0021,1026,"astm.org/diconde/iod/NdeIndication")	CS	Indication ROI Contour PointUnits	IndicationROIContourPointUnits_Indication	3	Ret
+(0021,1028,"astm.org/diconde/iod/NdeIndication")	IS	Indication ROI Dimensionality	IndicationROIDimensionality_Indication	1	Ret
+(0021,1030,"astm.org/diconde/iod/NdeIndication")	SQ	Indication Physical Property Sequence	IndicationPhysicalPropertySequence_Indication	1	Ret
+(0021,1032,"astm.org/diconde/iod/NdeIndication")	SH	Property Label	PropertyLabel_Indication	1	Ret
+(0021,1034,"astm.org/diconde/iod/NdeIndication")	DS	Property Value	PropertyValue_Indication	1	Ret
+(0021,1036,"astm.org/diconde/iod/NdeIndication")	CS	Property Units	PropertyUnits_Indication	1	Ret
+
+(0021,1002,"astm.org/diconde/iod/NDEGeometry")	IS	Number of Axes	NumberOfAxes_Geometry2	1	Ret
+(0021,1004,"astm.org/diconde/iod/NDEGeometry")	SQ	Axes Sequence	AxesSequence_Geometry	1	Ret
+(0021,1006,"astm.org/diconde/iod/NDEGeometry")	ST	Axis Description	AxisDescription_Geometry	1	Ret
+(0021,1008,"astm.org/diconde/iod/NDEGeometry")	CS	DataSet Mapping	DataSetMapping_Geometry	1	Ret
+(0021,100A,"astm.org/diconde/iod/NDEGeometry")	IS	Axis Number	AxisNumber_Geometry	1	Ret
+(0021,100C,"astm.org/diconde/iod/NDEGeometry")	CS	Axis Type	AxisType_Geometry	1	Ret
+(0021,100E,"astm.org/diconde/iod/NDEGeometry")	CS	Axis Units	AxisUnits_Geometry	1	Ret
+(0021,1010,"astm.org/diconde/iod/NDEGeometry")	OB	Axis Values	AxisValues_Geometry	1	Ret
+(0021,1020,"astm.org/diconde/iod/NDEGeometry")	SQ	Transform Sequence	TransformSequence_Geometry	1	Ret
+(0021,1022,"astm.org/diconde/iod/NDEGeometry")	ST	Transform Description	TransformDescription_Geometry	1	Ret
+(0021,1024,"astm.org/diconde/iod/NDEGeometry")	IS	Number of Axes	NumberOfAxes_Geometry24	1	Ret
+(0021,1026,"astm.org/diconde/iod/NDEGeometry")	IS	Order of Axes	OrderOfAxes_Geometry	1-n	Ret
+(0021,1028,"astm.org/diconde/iod/NDEGeometry")	CS	Transformed Axis Units	TransformedAxisUnits_Geometry	1	Ret
+(0021,102A,"astm.org/diconde/iod/NDEGeometry")	DS	Rotation and Scale Matrix	RotationAndScaleMatrix_Geometry	1-n	Ret
+(0021,102C,"astm.org/diconde/iod/NDEGeometry")	DS	Translation Matrix	TranslationMatrix_Geometry	11	Ret
+
+# X-ray Computed Tomography (CT)
+
+(0009,1002,"astm.org/diconde/iod/NdeCTImage")	IS	LINAC Energy	LINACEnergy_CtImage	1	Ret
+(0009,1004,"astm.org/diconde/iod/NdeCTImage")	IS	LINAC Output	LINACOutput_CtImage	1	Ret
+
+(0009,1011,"astm.org/diconde/iod/NdeCtDetector")	DS	Internal Detector Frame Time	InternalDetectorFrameTime_CtDetector	1	Ret
+(0009,1012,"astm.org/diconde/iod/NdeCtDetector")	DS	Number Of Frames Integrated	NumberOfFramesIntegrated_CtDetector	1	Ret
+(0009,1020,"astm.org/diconde/iod/NdeCtDetector")	SQ	Detector Temperature Sequence	DetectorTemperatureSequence_CtDetector	1	Ret
+(0009,1022,"astm.org/diconde/iod/NdeCtDetector")	DS	Sensor Name	SensorName_CtDetector	1	Ret
+(0009,1024,"astm.org/diconde/iod/NdeCtDetector")	DS	Horizontal Offset	HorizontalOffset_CtDetector	1	Ret
+(0009,1026,"astm.org/diconde/iod/NdeCtDetector")	DS	Vertical Offset	VerticalOffset_CtDetector	1	Ret
+(0009,1028,"astm.org/diconde/iod/NdeCtDetector")	DS	Temperature	Temperature_CtDetector	1	Ret
+
+(0009,1040,"astm.org/diconde/iod/NdeCtCalibrationData")	SQ	Dark Current Sequence	DarkCurrentSequence_CtCalData	1	Ret
+(0009,1050,"astm.org/diconde/iod/NdeCtCalibrationData")	OB or OW	Dark Current Counts	DarkCurrentCounts_CtCalData	1	Ret
+(0009,1060,"astm.org/diconde/iod/NdeCtCalibrationData")	SQ	Gain Correction Reference Sequence	GainCorrectionReferenceSequence_CtCalData	1	Ret
+(0009,1070,"astm.org/diconde/iod/NdeCtCalibrationData")	OB or OW	Air Counts	AirCounts_CtCalData	1	Ret
+(0009,1071,"astm.org/diconde/iod/NdeCtCalibrationData")	DS	KV Used in Gain Calibration	KVUsedInGainCalibration_CtCalData	1	Ret
+(0009,1072,"astm.org/diconde/iod/NdeCtCalibrationData")	DS	MAs Used in Gain Calibration	MAsUsedInGainCalibration_CtCalData	1	Ret
+(0009,1073,"astm.org/diconde/iod/NdeCtCalibrationData")	DS	Number of Frames	NumberOfFrames_CtCalData	1	Ret
+(0009,1074,"astm.org/diconde/iod/NdeCtCalibrationData")	LO	Filter Material Used in Gain Calibration	FilterMaterialUsedInGainCalibration_CtCalData	1	Ret
+(0009,1075,"astm.org/diconde/iod/NdeCtCalibrationData")	DS	Filter Thickness Used in Gain Calibration	FilterThicknessUsedInGainCalibration_CtCalData	1	Ret
+(0009,1076,"astm.org/diconde/iod/NdeCtCalibrationData")	DA	Date of Gain Calibration	DateOfGainCalibration_CtCalData	1-n	Ret
+(0009,1077,"astm.org/diconde/iod/NdeCtCalibrationData")	TM	Time of Gain Calibration	TimeOfGainCalibration_CtCalData	1-n	Ret
+(0009,1080,"astm.org/diconde/iod/NdeCtCalibrationData")	OB	Bad Pixel Image	BadPixelImage_CtCalData	1	Ret
+(0009,1099,"astm.org/diconde/iod/NdeCtCalibrationData")	LT	Calibration Notes	CalibrationNotes_CtCalData	1	Ret
+
+# Digital Radiographic (DR)
+
+(0009,1011,"astm.org/diconde/iod/NdeDxDetector")	DS	Internal Detector Frame Time	InternalDetectorFrameTime_DxDetector	1	Ret
+(0009,1012,"astm.org/diconde/iod/NdeDxDetector")	DS	Number of Frames Integrated	NumberOfFramesIntegrated_DxDetector	1	Ret
+(0009,1020,"astm.org/diconde/iod/NdeDxDetector")	SQ	Detector Temperature Sequence	DetectorTemperatureSequence_DxDetector	1	Ret
+(0009,1022,"astm.org/diconde/iod/NdeDxDetector")	DS	Sensor Name	SensorName_DxDetector	1	Ret
+(0009,1024,"astm.org/diconde/iod/NdeDxDetector")	DS	Horizontal Offset	HorizontalOffset_DxDetector	1	Ret
+(0009,1026,"astm.org/diconde/iod/NdeDxDetector")	DS	Vertical Offset	VerticalOffset_DxDetector	1	Ret
+(0009,1028,"astm.org/diconde/iod/NdeDxDetector")	DS	Temperature	Temperature_DxDetector	1	Ret
+
+(0009,1040,"astm.org/diconde/iod/NdeDxCalibrationData")	SQ	Dark Current Sequence	DarkCurrentSequence_DxCalData	1	Ret
+(0009,1050,"astm.org/diconde/iod/NdeDxCalibrationData")	OB or OW	Dark Current Counts	DarkCurrentCounts_DxCalData	1	Ret
+(0009,1060,"astm.org/diconde/iod/NdeDxCalibrationData")	SQ	Gain Correction Reference Sequence	GainCorrectionReferenceSequence_DxCalData	1	Ret
+(0009,1070,"astm.org/diconde/iod/NdeDxCalibrationData")	OB or OW	Air Counts	AirCounts_DxCalData	1	Ret
+(0009,1071,"astm.org/diconde/iod/NdeDxCalibrationData")	DS	KV Used in Gain Calibration	KVUsedInGainCalibration_DxCalData	1	Ret
+(0009,1072,"astm.org/diconde/iod/NdeDxCalibrationData")	DS	MAs Used In Gain Calibration	MAsUsedInGainCalibration_DxCalData	1	Ret
+(0009,1073,"astm.org/diconde/iod/NdeDxCalibrationData")	DS	Number of Frames	NumberOfFrames_DxCalData	1	Ret
+(0009,1074,"astm.org/diconde/iod/NdeDxCalibrationData")	LO	Filter Material Used in Gain Calibration	FilterMaterialUsedInGainCalibration_DxCalData	1	Ret
+(0009,1075,"astm.org/diconde/iod/NdeDxCalibrationData")	DS	Filter Thickness Used in Gain Calibration	FilterThicknessUsedInGainCalibration_DxCalData	1	Ret
+(0009,1076,"astm.org/diconde/iod/NdeDxCalibrationData")	DA	Date of Gain Calibration	DateOfGainCalibration_DxCalData	1-n	Ret
+(0009,1077,"astm.org/diconde/iod/NdeDxCalibrationData")	TM	Time of Gain Calibration	TimeOfGainCalibration_DxCalData	1-n	Ret
+(0009,1080,"astm.org/diconde/iod/NdeDxCalibrationData")	OB	Bad Pixel Image	BadPixelImage_DxCalData	1	Ret
+(0009,1099,"astm.org/diconde/iod/NdeDxCalibrationData")	LT	Calibration Notes	CalibrationNotes_DxCalData	1	Ret

@@ -8,6 +8,25 @@ use std:: {
 
 // cSpell:ignore ggggeeee
 
+// Public modules
+
+/// Built-in list of all the known DICOM standard Attribute Tags
+pub mod dicom;
+/// Built-in static list of [Meta] descriptions for standard DICOM Tags.
+///
+/// This list is automatically registered in [`Dictionary`]
+pub mod dicom_meta;
+inventory::submit!{dicom_meta::ALL_TAGS_META}
+
+// Built-in list of all DICONDE Attribute Tags not defined by DICOM standard.
+pub mod diconde;
+/// Built-in static list of [Meta] description for DICON attribute tags not defined by DICOM standard.
+///
+/// This list is NOT automatically registered in [`Dictionary`].
+/// To enable all DICONDE-specific naming, you should manually
+/// add this tag to a Dictionary with [add_static_list](Dictionary::add_static_list)
+pub mod diconde_meta;
+
 // Reexports
 pub use tagkey_impl::TagKey;
 pub use tag_impl::Tag;

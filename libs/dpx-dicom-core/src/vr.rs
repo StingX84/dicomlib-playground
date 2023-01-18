@@ -657,7 +657,7 @@ impl Vr {
     /// # let my_vr = dpx_dicom_core::Vr::AE;
     /// std::str::from_utf8(&my_vr.info().code).unwrap();
     /// ```
-    pub const fn name(&self) -> &'static str {
+    pub const fn keyword(&self) -> &'static str {
         // SAFETY: `code` is a static constant under our control.
         // It contains only ASCII characters, so it is a valid UTF-8 sequence.
         unsafe { ::core::str::from_utf8_unchecked(&self.info().code) }
@@ -677,19 +677,19 @@ impl Vr {
 
 impl fmt::Debug for Vr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "VR({})", self.name())
+        write!(f, "VR({})", self.keyword())
     }
 }
 
 impl fmt::Display for Vr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.name())
+        f.write_str(self.keyword())
     }
 }
 
 impl From<Vr> for String {
     fn from(value: Vr) -> Self {
-        value.name().to_owned()
+        value.keyword().to_owned()
     }
 }
 
@@ -815,10 +815,10 @@ mod tests {
 
     #[test]
     fn can_retrieve_info() {
-        assert_eq!(Vr::AE.name(), "AE");
+        assert_eq!(Vr::AE.keyword(), "AE");
         assert_eq!(Vr::AE.code(), [b'A', b'E']);
         assert_eq!(Vr::AE.description(), "Application Entity");
-        assert_eq!(Vr::UV.name(), "UV");
+        assert_eq!(Vr::UV.keyword(), "UV");
         assert_eq!(Vr::UV.code(), [b'U', b'V']);
         assert_eq!(format!("{}", Vr::AE), "AE");
         assert_eq!(format!("{:?}", Vr::AE), "VR(AE)");
