@@ -472,7 +472,11 @@ mod tests {
         assert_err!(Uid::from("1.1z2").validate(), Error::InvalidChar, 3);
         assert_err!(Uid::from(".1").validate(), Error::EmptyComponent, 0);
         assert_err!(Uid::from("1.").validate(), Error::EmptyComponent, 2);
+    }
 
+    #[cfg(not(miri))]
+    #[test]
+    fn is_generated_unique() {
         let uniq1 = Uid::generate_unique(None);
         let uniq2 = Uid::generate_unique(Some(DEFAULT_UID_ROOT));
         let uniq3 = Uid::generate_unique(Some("666"));
