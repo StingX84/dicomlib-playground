@@ -8,4 +8,4 @@ categories = ["network-programming"]
 
 [workspace]
 
-members = [ "libs/dpx-dicom-core" ]
+members = [ "libs/dpx-dicom-core", "utils/mk-dicom-tsv" ]

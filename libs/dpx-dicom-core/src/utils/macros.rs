@@ -122,7 +122,6 @@ macro_rules! declare_uids {
             )*
         )*
         mod _internals {
-            use super::*;
             use core::stringify;
             use $crate::{uid::Category::*, Cow, Uid};
 

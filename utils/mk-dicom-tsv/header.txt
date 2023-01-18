@@ -5,11 +5,11 @@
 # DICONDE (Digital Imaging and Communication in Nondestructive Evaluation) and
 # DICOS (Digital Imaging and Communications in Security) standard.
 #
-# Generated automatically from DICOM PS 3.6-${DICOM_VERSION} and PS 3.7-${DICOM_VERSION}.
-# File created on ${DATE} by ${USER} on ${HOST}.
+# Generated automatically from ${VERSION}.
+# File created on ${DATE} by "${USER}" on "${HOST}".
 #
 # Each line represents an entry in the data dictionary. Each line has 6 fields
-# `Tag`, `Name`, `Keyword`, `VR`, `VM` and `Version`.
+# `Tag`, `VR`, `Name`, `Keyword`, `VM` and `Version`.
 #
 # Entries need not be in ascending tag order. Entries may override existing
 # entries. Each field must be separated by a single tab.
@@ -20,15 +20,15 @@
 # creator. If present, it must be enclosed in double quotes and separated by
 # comma from an adjacent element number.
 #
+# `VR` field can contain up to three Value Representation names separated with " or "
+# Undefined VR should be written as "--".
+#
 # `Name` field should contain only graphical ASCII characters and white
 # space [\x20-\x7E]. Maximum length is 128 bytes.
 #
 # `Keyword` field should contain only a subset of ASCII characters [A-Za-z0-9_]
 # preferably in CamelCase. Keyword should start with a letter. Maximum length is
 # 64 bytes.
-#
-# `VR` field can contain up to three Value Representation names separated with " or "
-# Undefined VR should be written as "--".
 #
 # `VM` field should contain one of the forms: `B`, `B-E`, `B-n`, `B-Bn`, where
 # `B` - minimum number of repetitions 0 to 255, `E` - maximum number of
@@ -56,4 +56,4 @@
 # Comments have a '#' at the beginning of the line. The file should be encoded
 # as UTF-8 without BOM.
 #
-# Tag		Name				Keyword				VR	VM	Version
+# Tag		VR	Name			Keyword			VM	Version

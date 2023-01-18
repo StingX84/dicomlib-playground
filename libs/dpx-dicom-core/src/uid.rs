@@ -2,6 +2,8 @@ use crate::*;
 use snafu::{ensure, Snafu};
 use std::{fmt::Debug, fmt::Display};
 
+pub const DEFAULT_UID_ROOT: &str = "1.2.3";
+
 /// Structure holding an OID (unique identifier)
 ///
 /// A string of characters used to provide global unique identification of a
@@ -13,10 +15,14 @@ use std::{fmt::Debug, fmt::Display};
 /// component must contain only numeric characters. If component contains more
 /// than one digit, it should not start with 0. Maximum allowed length: 64
 /// chars.
+///
+/// This structure stores it's text in a [Cow] to minimize heap allocations.
+///
+/// You can create this structure from `&str` or `String` using `from` method.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Uid<'a>(Cow<'a, str>);
 
-/// Structure
+/// Structure describing properties of a known [Uid]'s
 #[derive(Debug, Clone)]
 pub struct Meta {
     pub uid: Uid<'static>,
@@ -24,17 +30,25 @@ pub struct Meta {
     pub keyword: Cow<'static, str>,
 }
 
+/// Enumeration of [Uid] categories. Used primarily in [Meta]
 #[derive(Debug, Clone, Default)]
 pub enum Category {
+    /// Unknown/other category
     #[default]
     Other,
+    /// This [Uid] represents a Transfer Syntax
     TransferSyntax,
+    /// This [Uid] represents a Service Class.
     ServiceClass,
+    /// This [Uid] is a Storage Class. Any SOP instance having this class could
+    /// be stored on a disk or transferred with C-STORE.
     StorageSopClass {
+        /// Is the object of this class has an image.
         is_imaging: bool,
+        /// Expected value of `Modality (0008,0060)` attribute.
         modality: Option<Cow<'static, str>>,
+        /// Guessed size of the file with this SOP Class
         guessed_size: Option<usize>,
-        subclass_of: Option<Uid<'static>>,
     },
     WellKnownSopInstance,
 }
@@ -81,7 +95,11 @@ impl<'a> Uid<'a> {
         let value = self.0.as_ref();
 
         let to_pos = |s: &str, idx: usize| -> usize {
-            s.as_ptr() as usize - value.as_ptr() as usize + idx
+            let byte_offset = s.as_ptr() as usize - value.as_ptr() as usize + idx;
+            value.char_indices().enumerate()
+                .find_map(|(co, (i,_))| {
+                    if i >= byte_offset { Some(co) } else { None }
+                }).unwrap_or_else(|| value.len())
         };
 
         ensure!(!value.is_empty(), EmptySnafu{});
@@ -104,6 +122,42 @@ impl<'a> Uid<'a> {
         Uid::<'static>(Cow::Owned(self.0.into_owned()))
     }
 
+    pub fn generate_unique(prefix: Option<&str>) -> Uid<'static> {
+        use std::sync::atomic;
+        use std::time;
+        static COUNTER: atomic::AtomicUsize = atomic::AtomicUsize::new(0);
+        static MACHINE_UID_CRC: atomic::AtomicU32 = atomic::AtomicU32::new(0);
+        static ONCE: std::sync::Once = std::sync::Once::new();
+        ONCE.call_once(|| {
+            let new_machine_uid = machine_uid::get().unwrap_or_else(|_| "N/A".to_owned());
+            let new_machine_crc = crc32fast::hash(new_machine_uid.as_bytes());
+            // This will extract only microsecond part of the current time
+            let new_counter = (time::SystemTime::now()
+                .duration_since(time::UNIX_EPOCH)
+                .unwrap()
+                .as_micros()
+                % (999999u128)) as usize;
+
+            MACHINE_UID_CRC.store(new_machine_crc, atomic::Ordering::Relaxed);
+            COUNTER.store(new_counter, atomic::Ordering::Relaxed);
+        });
+
+        let counter = COUNTER.fetch_add(1, atomic::Ordering::Relaxed);
+        let machine_crc = MACHINE_UID_CRC.load(atomic::Ordering::Relaxed);
+
+        let mut rv = format!(
+            "{}.{}.{}.{}",
+            prefix
+                .map(|p| p.as_ref())
+                .unwrap_or_else(|| DEFAULT_UID_ROOT),
+            machine_crc,
+            std::process::id(),
+            counter
+        );
+        rv.truncate(64);
+        rv.into()
+    }
+
     /// Searches Uid information in the current [State](crate::State)
     ///
     /// See also [search](crate::uid::Dictionary::search)
@@ -115,11 +169,12 @@ impl<'a> Uid<'a> {
     ///
     /// See also [search](crate::uid::Dictionary::search)
     pub fn name(&self) -> Option<Cow<'static, str>> {
-        crate::State::with_current(|s| {
-            s.uid_dictionary()
-                .search(self)
-                .map(|m| m.keyword.clone())
-        })
+        crate::State::with_current(|s| s.uid_dictionary().search(self).map(|m| m.keyword.clone()))
+    }
+
+    /// Get the raw string Uid
+    pub fn as_str(&self) -> &str {
+        self.0.as_ref()
     }
 }
 
@@ -129,9 +184,35 @@ impl<'a> From<&'a str> for Uid<'a> {
     }
 }
 
+impl<'a> From<&'_ &'a str> for Uid<'a> {
+    fn from(value: &'_ &'a str) -> Self {
+        Self(Cow::Borrowed(*value))
+    }
+}
+
 impl From<String> for Uid<'static> {
     fn from(value: String) -> Self {
         Self(Cow::Owned(value))
+    }
+}
+
+impl From<&'_ String> for Uid<'static> {
+    fn from(value: &'_ String) -> Self {
+        Self(Cow::Owned(value.clone()))
+    }
+}
+
+impl<'a> From<Uid<'a>> for String {
+    fn from(value: Uid<'a>) -> Self {
+        value.0.into_owned()
+    }
+}
+
+impl<'a, 'b> From<&'b Uid<'a>> for &'b str
+where 'a: 'b
+{
+    fn from(value: &'b Uid<'a>) -> Self {
+        value.as_ref()
     }
 }
 
@@ -282,22 +363,20 @@ mod tests {
     use super::*;
 
     mod uids {
-        use inventory::submit;
         use crate::declare_uids;
+        use inventory::submit;
         declare_uids! {
             pub const TEST_UID_LIST = [
                 XferLittleEndianImplicit: {"1.2.840.10008.1.2", TransferSyntax},
                 SopClassBasicTextSR: {"1.2.840.10008.5.1.4.1.1.88.11", StorageSopClass{
                     is_imaging: false,
-                    modality: Some(Cow::Borrowed("COW")),
+                    modality: Some(Cow::Borrowed("SR")),
                     guessed_size: Some(1024),
-                    subclass_of: None,
                 }},
                 SopClassEnchancedSR: {"1.2.840.10008.5.1.4.1.1.88.11", StorageSopClass{
                     is_imaging: false,
-                    modality: Some(Cow::Borrowed("COW")),
+                    modality: Some(Cow::Borrowed("SR")),
                     guessed_size: Some(1024),
-                    subclass_of: Some(SopClassBasicTextSR),
                 }},
             ];
         }
@@ -342,4 +421,71 @@ mod tests {
         let dict = Dictionary::new();
         search_uids_in_dict(&dict);
     }
+
+    macro_rules! assert_err {
+        ($e:expr, $exp_err:path, $exp_pos:literal) => {
+            match $e {
+                Ok(_) => panic!("{} expected to fail", stringify!($e)),
+                Err($exp_err { pos: pos, .. }) => {
+                    assert_eq!(
+                        pos,
+                        $exp_pos,
+                        "{} expected to fail on pos {}, but got {}",
+                        stringify!($e),
+                        $exp_pos,
+                        pos
+                    )
+                }
+                Err(x) => panic!(
+                    "{} expected to fail with {}, but failed with {:?}",
+                    stringify!($e),
+                    stringify!($exp_err),
+                    x
+                ),
+            }
+        };
+    }
+
+    #[test]
+    fn is_validated_correctly() {
+        assert!(Uid::from("0").validate().is_ok());
+        assert!(Uid::from("1").validate().is_ok());
+        assert!(Uid::from("12334567890").validate().is_ok());
+        assert!(Uid::from("0.1").validate().is_ok());
+        assert!(Uid::from("0.123").validate().is_ok());
+        assert!(Uid::from("123.123.456.7.8.9").validate().is_ok());
+        assert!(Uid::from(std::str::from_utf8(&[b'1'; 64]).unwrap())
+            .validate()
+            .is_ok());
+        assert!(matches!(
+            Uid::from("").validate().unwrap_err(),
+            Error::Empty
+        ));
+        assert!(matches!(
+            Uid::from(std::str::from_utf8(&[b'1'; 65]).unwrap())
+                .validate()
+                .unwrap_err(),
+            Error::Overflow { .. }
+        ));
+        assert_err!(Uid::from("01").validate(), Error::FirstCharIsZero, 0);
+        assert_err!(Uid::from("1.01").validate(), Error::FirstCharIsZero, 2);
+        assert_err!(Uid::from("1.1z2").validate(), Error::InvalidChar, 3);
+        assert_err!(Uid::from(".1").validate(), Error::EmptyComponent, 0);
+        assert_err!(Uid::from("1.").validate(), Error::EmptyComponent, 2);
+
+        let uniq1 = Uid::generate_unique(None);
+        let uniq2 = Uid::generate_unique(Some(DEFAULT_UID_ROOT));
+        let uniq3 = Uid::generate_unique(Some("666"));
+        assert_ne!(uniq1, uniq2);
+        assert_ne!(uniq1, uniq3);
+        assert!(uniq1.validate().is_ok());
+        assert!(uniq2.validate().is_ok());
+        assert!(uniq3.validate().is_ok());
+        assert!(uniq1.value().starts_with(DEFAULT_UID_ROOT));
+        assert!(uniq2.value().starts_with(DEFAULT_UID_ROOT));
+        assert!(uniq3.value().starts_with("666."));
+    }
+
+    #[test]
+    fn fff() {}
 }
