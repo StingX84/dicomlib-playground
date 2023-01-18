@@ -90,8 +90,7 @@ impl<'a> Tag<'a> {
     ///
     /// You better take one of the constantly known tags, than constructing your own.
     pub const fn standard(g: u16, e: u16) -> Self {
-        let key = TagKey::new(g, e);
-        Self { key, creator: None }
+        Self { key: TagKey::new(g, e), creator: None }
     }
 
     /// Construct a Private Attribute Tag with a specified `TagKey` and "Private Creator"
@@ -156,7 +155,7 @@ impl<'a> Tag<'a> {
 
     /// Searches and returns Tag name in the current [State](crate::State)
     ///
-    /// See also [search_by_tag](crate::uid::Dictionary::search_by_tag)
+    /// See also [search_by_tag](crate::tag::Dictionary::search_by_tag)
     pub fn name(&self) -> Option<Cow<'static, str>> {
         State::with_current(|s| {
             s.tag_dictionary()

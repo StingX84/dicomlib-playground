@@ -1,6 +1,11 @@
 use super::*;
 use crate::{utils::unescape::unescape_with_validator, Cow, Vr};
-use std::{cmp::Ordering, fmt::Debug, io::{self, BufRead}, ptr::NonNull};
+use std::{
+    cmp::Ordering,
+    fmt::Debug,
+    io::{self, BufRead},
+    ptr::NonNull,
+};
 
 #[cfg(test)]
 mod tests;
@@ -563,6 +568,35 @@ impl Dictionary {
             static_tags: self.statics.iter().fold(0, |v, c| v + c.0.len()),
             dynamic_tags: self.dynamic.len(),
             cached_tags: self.cache.as_ref().map(|c| c.vec.len()),
+        }
+    }
+
+    /// Returns an iterator over all the static and dynamic [Meta] structs.
+    ///
+    /// Note: no tags deduplication or sorting involved!
+    pub fn iter(&self) -> impl Iterator<Item = &Meta> {
+        self.statics
+            .iter()
+            .map(|m| m.0)
+            .flatten()
+            .chain(self.dynamic.iter())
+    }
+
+    /// Returns an iterator over cached array of [Meta] structs.
+    ///
+    /// If cache was invalidated and not rebuilt, `None` returned.
+    ///
+    /// The returned structures are sorted by key and deduplicated. Structs for
+    /// private attributes, that were given in non
+    /// [canonical](TagKey::to_canonical_if_private) form also present in
+    /// theirs canonical form.
+    pub fn iter_cache(&self) -> Option<impl Iterator<Item = &Meta>> {
+        match &self.cache {
+            // SAFETY: Pointers in cache are always valid until data mutates,
+            // which is not possible while iterator still holds shared reference
+            // to the self.
+            Some(c) => Some(c.vec.iter().map(|v| unsafe { v.2.as_ref() })),
+            None => None,
         }
     }
 }

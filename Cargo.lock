@@ -413,6 +413,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "mk_tags_rs"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "clap",
+ "dpx-dicom-core",
+ "log",
+ "pretty_env_logger",
+ "snafu",
+ "whoami",
+]
+
+[[package]]
 name = "num-integer"
 version = "0.1.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"

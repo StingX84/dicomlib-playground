@@ -323,3 +323,38 @@ fn check_dict_parse_field_source() {
     assert_parser_err!(Dictionary::dict_parse_field_source, "", 0, "unrecognized Source");
     assert_parser_err!(Dictionary::dict_parse_field_source, "priv(t)", 0, "unrecognized Source");
 }
+
+#[test]
+#[cfg(not(miri))]
+fn can_parse_bundled_tsv() {
+    const FILE_NAMES : &[&str] = &[
+        concat!(env!("CARGO_MANIFEST_DIR"), "/etc/dicom.tsv"),
+        concat!(env!("CARGO_MANIFEST_DIR"), "/etc/diconde.tsv"),
+    ];
+
+    for file_name in FILE_NAMES {
+        let mut dict = Dictionary::new_empty();
+        match dict.add_from_file(file_name) {
+            Ok(_) => (),
+            Err(e) => panic!("Unable to parse {file_name}: {e}"),
+        }
+    }
+}
+
+#[test]
+#[cfg(miri)]
+fn can_parse_bundled_tsv() {
+    const FILE_CONTENTS : &[&str] = &[
+        include_str!("../../../etc/dicom.tsv"),
+        include_str!("../../../etc/diconde.tsv"),
+    ];
+
+    for file_content in FILE_CONTENTS {
+        let mut dict = Dictionary::new_empty();
+        let mut cursor = std::io::Cursor::new(file_content);
+        match dict.add_from_memory(&mut cursor) {
+            Ok(_) => (),
+            Err(e) => panic!("Unable to parse: {e}"),
+        }
+    }
+}

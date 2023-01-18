@@ -8,4 +8,11 @@ categories = ["network-programming"]
 
 [workspace]
 
-members = [ "libs/dpx-dicom-core", "utils/mk-dicom-tsv" ]
+members = [
+    # Libraries
+    "libs/dpx-dicom-core",
+
+    # Utilities
+    "utils/mk-dicom-tsv",
+    "utils/mk-tags-rs",
+]
