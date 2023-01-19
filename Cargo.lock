@@ -399,7 +399,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2dffe52ecf27772e601905b7522cb4ef790d2cc203488bbd0e2fe85fcb74566d"
 
 [[package]]
-name = "mk_dicom_tsv"
+name = "mk-dicom-tsv"
 version = "0.1.0"
 dependencies = [
  "chrono",
@@ -413,7 +413,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "mk_tags_rs"
+name = "mk-tags-rs"
 version = "0.1.0"
 dependencies = [
  "chrono",

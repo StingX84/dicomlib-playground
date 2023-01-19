@@ -1,5 +1,5 @@
 [package]
-name = "mk_tags_rs"
+name = "mk-tags-rs"
 description = "Utility to create Tag and tag::Meta constant definition files from tsv dictionary"
 keywords = ["dicom"]
 
@@ -10,8 +10,8 @@ repository.workspace = true
 version.workspace = true
 
 [[bin]]
-name = "mk_tags_rs"
-path = "main.rs"
+name = "mk-tags-rs"
+path = "mk-tags-rs.rs"
 
 [dependencies]
 dpx-dicom-core = { path = "../../libs/dpx-dicom-core" }

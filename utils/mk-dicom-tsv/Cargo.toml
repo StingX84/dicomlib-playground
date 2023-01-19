@@ -1,5 +1,5 @@
 [package]
-name = "mk_dicom_tsv"
+name = "mk-dicom-tsv"
 description = "Utility to parse DICOM standard XML and produce TSV tag dictionary"
 keywords = ["dicom"]
 
@@ -10,8 +10,8 @@ repository.workspace = true
 version.workspace = true
 
 [[bin]]
-name = "mk_dicom_tsv"
-path = "main.rs"
+name = "mk-dicom-tsv"
+path = "mk-dicom-tsv.rs"
 
 [dependencies]
 dpx-dicom-core = { path = "../../libs/dpx-dicom-core" }

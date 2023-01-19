@@ -7,7 +7,6 @@ use std::{
     env, fs,
     io::Write,
     path::{Path, PathBuf},
-    process::ExitCode,
 };
 
 type Result<T, E = Whatever> = std::result::Result<T, E>;
@@ -23,21 +22,14 @@ struct Cli {
     /// Output file name
     #[arg(short, long, default_value_os = "dicom.tsv")]
     output: PathBuf,
+
+    /// Header file name(s)
+    #[arg(short='e', long, default_values_os_t = vec![PathBuf::from("utils/mk-dicom-tsv/header.txt")], num_args(0..))]
+    headers: Vec<PathBuf>,
 }
 
-const HEADER: &str = include_str!("header.txt");
-
-fn main() -> ExitCode {
-    match run() {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(e) => {
-            eprintln!("Error: {}", e.to_string());
-            ExitCode::FAILURE
-        }
-    }
-}
-
-fn run() -> Result<()> {
+#[snafu::report]
+fn main() -> Result<()> {
     let cli = Cli::parse();
 
     if std::env::var_os("RUST_LOG").is_none() {
@@ -49,11 +41,11 @@ fn run() -> Result<()> {
 
     let file_name = &cli.docbook_path.join("part06").join("part06.xml");
     info!("Reading {}...", file_name.to_string_lossy());
-    let content = std::fs::read_to_string(file_name).with_whatever_context(|_| {
-        format!("couldn't open the file {}", file_name.to_string_lossy())
+    let content = std::fs::read_to_string(file_name).with_whatever_context(|e| {
+        format!("couldn't open the file {}: {e}", file_name.to_string_lossy())
     })?;
-    let xml = roxmltree::Document::parse(&content).with_whatever_context(|_| {
-        format!("couldn't parse xml file {}", file_name.to_string_lossy())
+    let xml = roxmltree::Document::parse(&content).with_whatever_context(|e| {
+        format!("couldn't parse xml file {}: {e}", file_name.to_string_lossy())
     })?;
     let version_06 = extract_version(xml.root_element())
         .with_whatever_context(|| "unable to extract version string")?;
@@ -65,12 +57,12 @@ fn run() -> Result<()> {
     parse_table(&mut tags, xml.root_element(), "table_9-1", None)?;
 
     let file_name = &cli.docbook_path.join("part07").join("part07.xml");
-    info!("Reading {}...", file_name.to_string_lossy());
-    let content = std::fs::read_to_string(file_name).with_whatever_context(|_| {
-        format!("couldn't open the file {}", file_name.to_string_lossy())
+    info!("Reading {} ...", file_name.to_string_lossy());
+    let content = std::fs::read_to_string(file_name).with_whatever_context(|e| {
+        format!("couldn't open the file {}: {e}", file_name.to_string_lossy())
     })?;
-    let xml = roxmltree::Document::parse(&content).with_whatever_context(|_| {
-        format!("couldn't parse xml file {}", file_name.to_string_lossy())
+    let xml = roxmltree::Document::parse(&content).with_whatever_context(|e| {
+        format!("couldn't parse xml file {}: {e}", file_name.to_string_lossy())
     })?;
 
     let version_07 = extract_version(xml.root_element())
@@ -92,22 +84,30 @@ fn run() -> Result<()> {
     tags.sort_by(|l, r| l.tag.cmp(&r.tag));
 
     info!("Writing {} ...", output_file_name.to_string_lossy());
-    let header = HEADER
-        .replacen(
-            "${VERSION}",
-            format!("{version_06} and {version_07}").as_str(),
-            1,
-        )
-        .replacen("${DATE}", chrono::Local::now().to_rfc2822().as_str(), 1)
-        .replacen("${USER}", whoami::username().as_str(), 1)
-        .replacen("${HOST}", whoami::hostname().as_str(), 1);
 
     let file = fs::File::create(&output_file_name)
         .with_whatever_context(|e| format!("Unable to open output file({e})"))?;
     let mut writer = std::io::BufWriter::new(file);
-    writer
-        .write(header.as_bytes())
-        .with_whatever_context(|e| format!("Unable to write file({e})"))?;
+
+    for header_file_name in cli.headers {
+        let header = std::fs::read_to_string(header_file_name).with_whatever_context(|e| {
+            format!("couldn't open the file {}: {e}", file_name.to_string_lossy())
+        })?;
+        let header = header
+            .replacen(
+                "${VERSION}",
+                format!("{version_06} and {version_07}").as_str(),
+                1,
+            )
+            .replacen("${DATE}", chrono::Local::now().to_rfc2822().as_str(), 1)
+            .replacen("${USER}", whoami::username().as_str(), 1)
+            .replacen("${HOST}", whoami::hostname().as_str(), 1);
+
+        writer
+            .write(header.as_bytes())
+            .with_whatever_context(|e| format!("Unable to write file: {e}"))?;
+    }
+
     for f in tags.iter() {
         use dpx_dicom_core::tag::PrivateIdentificationAction as V;
         let source = match f.source {
@@ -132,20 +132,20 @@ fn run() -> Result<()> {
             sanitize_string(f.vm),
             source
         )
-        .with_whatever_context(|e| format!("unable to write output file {e}"))?;
+        .with_whatever_context(|_| format!("unable to write output file {output_file_name:?}"))?;
     }
     writer
         .flush()
-        .with_whatever_context(|e| format!("unable to write output file {e}"))?;
+        .with_whatever_context(|_| format!("unable to write output file {output_file_name:?}"))?;
     drop(writer);
 
     info!("Verifying ...");
     let mut dict = dpx_dicom_core::tag::Dictionary::new_empty();
     dict.add_from_file(&output_file_name)
-        .with_whatever_context(|e| format!("Could not load dictionary({e})"))?;
+        .with_whatever_context(|_| format!("Could not load dictionary"))?;
     let metrics = dict.metrics();
     ensure_whatever!(
-        metrics.dynamic_tags == tags.len(),
+        metrics.dynamic_tags >= tags.len(),
         "Unexpected dictionary count of tags {}",
         metrics.dynamic_tags
     );
@@ -256,7 +256,7 @@ fn parse_table<'a, 'input>(
         }
         count = count + 1;
     }
-    info!("... found {count} tags");
+    info!("... processed {count} tags");
     Ok(())
 }
 

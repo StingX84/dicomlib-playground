@@ -9,13 +9,14 @@
 # `Tag`, `VR`, `Name`, `Keyword`, `VM` and `Version`.
 #
 # Entries need not be in ascending tag order. Entries may override existing
-# entries. Each field must be separated by a single tab.
+# entries. Each field must be separated by a single tab. It is assumed, that
+# more general items goes first, than more specific.
 #
 # `Tag` field must in form `(gggg,eeee[,"creator"])` where `gggg`, `eeee` must
-# be in hexadecimal form with exception of `X` character, which denotes
-# "any digit". `creator` string is optional and specifies Private Attribute
-# creator. If present, it must be enclosed in double quotes and separated by
-# comma from an adjacent element number.
+# be in hexadecimal form or one of special characters: `X` = any digit, 'O' -
+# odd digit, 'N' - even digit. `creator` string is optional and specifies Private
+# Attribute creator. If present, it must be enclosed in double quotes and
+# separated by comma from an adjacent element number.
 #
 # `VR` field can contain up to three Value Representation names separated with " or "
 # Undefined VR should be written as "--".
