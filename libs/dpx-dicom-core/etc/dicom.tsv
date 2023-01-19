@@ -6,19 +6,20 @@
 # DICOS (Digital Imaging and Communications in Security) standard.
 #
 # Generated automatically from DICOM PS3.6 2022e and DICOM PS3.7 2022e.
-# File created on Wed, 18 Jan 2023 03:08:35 +0300 by "stingx" on "desktop-2iqn19a".
+# File created on Thu, 19 Jan 2023 23:26:02 +0300 by "stingx" on "desktop-2iqn19a".
 #
 # Each line represents an entry in the data dictionary. Each line has 6 fields
 # `Tag`, `VR`, `Name`, `Keyword`, `VM` and `Version`.
 #
 # Entries need not be in ascending tag order. Entries may override existing
-# entries. Each field must be separated by a single tab.
+# entries. Each field must be separated by a single tab. It is assumed, that
+# more general items goes first, than more specific.
 #
 # `Tag` field must in form `(gggg,eeee[,"creator"])` where `gggg`, `eeee` must
-# be in hexadecimal form with exception of `X` character, which denotes
-# "any digit". `creator` string is optional and specifies Private Attribute
-# creator. If present, it must be enclosed in double quotes and separated by
-# comma from an adjacent element number.
+# be in hexadecimal form or one of special characters: `X` = any digit, 'O' -
+# odd digit, 'N' - even digit. `creator` string is optional and specifies Private
+# Attribute creator. If present, it must be enclosed in double quotes and
+# separated by comma from an adjacent element number.
 #
 # `VR` field can contain up to three Value Representation names separated with " or "
 # Undefined VR should be written as "--".
@@ -57,6 +58,13 @@
 # as UTF-8 without BOM.
 #
 # Tag		VR	Name			Keyword			VM	Version
+
+# Generic elements
+(xxxn,0000)	UL	Group Length	GroupLength	1	Ret
+(xxxo,0000)	UL	Private Group Length	PrivateGroupLength	1	Ret
+(xxxo,00xx)	LO	Private Reservation	PrivateReservation	1	Dicom
+
+# Standard elements
 (0000,0000)	UL	Command Group Length	CommandGroupLength	1	Dicom
 (0000,0001)	UL	Command Length to End	CommandLengthToEnd	1	ret
 (0000,0002)	UI	Affected SOP Class UID	AffectedSOPClassUID	1	Dicom

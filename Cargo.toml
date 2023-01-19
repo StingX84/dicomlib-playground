@@ -10,6 +10,7 @@ categories = ["network-programming"]
 
 members = [
     # Libraries
+    #"libs/dpx-dicom-tags",
     "libs/dpx-dicom-core",
 
     # Utilities

@@ -1,15 +1,16 @@
 #![allow(unused_imports)]
 
 use clap::Parser;
-use dpx_dicom_core:: {tag::*, Vr};
+use dpx_dicom_core::{tag::*, Vr};
 use log::{info, trace};
 use snafu::{prelude::*, Whatever};
 use std::{
     borrow::Cow,
     env, fs,
     io::Write,
+    ops::{Index, IndexMut},
     path::{Path, PathBuf},
-    process::ExitCode, ops::{Index, IndexMut},
+    process::ExitCode,
 };
 
 type Result<T, E = Whatever> = std::result::Result<T, E>;
@@ -117,7 +118,10 @@ fn write_tags_to_file<'a>(tags: impl Iterator<Item = &'a Meta>, file_name: &Path
     write_header(&mut writer, TAGS_HEADER).whatever_context("could not write file")?;
     write!(
         &mut writer,
-        "#![allow(non_upper_case_globals, unused_imports)]\nuse crate::{{Tag, TagKey}};\nuse std::borrow::Cow;\n\n"
+        "\n#![allow(non_upper_case_globals, unused_imports)]\n\
+        use crate::{{Tag, TagKey}};\n\
+        use std::borrow::Cow;\n\
+        // cspell:disable\n\n"
     )
     .whatever_context("could not write file")?;
 
@@ -126,9 +130,9 @@ fn write_tags_to_file<'a>(tags: impl Iterator<Item = &'a Meta>, file_name: &Path
             &mut writer,
             "/// {} {} {} {}{}\
             pub const {} : Tag = {};",
-            tag_to_doc_string(&meta.tag, meta.mask),
-            vr_to_doc_string(&meta.vr),
-            vm_to_text(&meta.vm),
+            meta.tag_string(),
+            meta.vr_string(),
+            meta.vm_string(),
             meta.name.escape_default(),
             match &meta.source {
                 Source::Retired => " RETIRED!\n#[deprecated(note = \"Retired DICOM tag\")]\n",
@@ -158,8 +162,10 @@ fn write_metas_to_file<'a>(
     };
 
     write_header(&mut writer, META_HEADER).whatever_context("could not write file")?;
-    write!(&mut writer, "\
+    write!(&mut writer, "
+#![allow(missing_docs)]
 use crate::tag::StaticMetaList;
+// cspell:disable
 
 mod _internals {{
     #![allow(unused_imports)]
@@ -227,58 +233,20 @@ fn write_header(writer: &mut impl Write, header: &str) -> Result<(), std::io::Er
     Ok(())
 }
 
-fn tag_to_doc_string(tag: &Tag, mask: u32) -> String {
-    let mut base_part = String::new();
-    base_part.reserve(9);
-    const HEX : [char; 16] = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'];
-
-    for index in 0u32..8 {
-        let bit_offset = 28 - 4 * index;
-        if mask & (0xFu32 << bit_offset) == 0 {
-            base_part.push('x');
-        } else {
-            base_part.push(HEX[((tag.key.as_u32() >> bit_offset) & 0xF) as usize])
-        }
-        if index == 3 { base_part.push(','); }
-    }
-    match &tag.creator {
-        Some(x) => format!("({base_part},\"{x}\")"),
-        None => format!("({base_part})"),
-    }
-}
-
 fn tag_to_text(tag: &Tag) -> String {
-    format!("Tag{{ key: TagKey(0x{:>08X}), creator: {}}}",
-            tag.key.as_u32(),
-            match &tag.creator {
-                Some(c) => format!("Some(Cow::Borrowed(\"{}\"))", c.escape_default()),
-                None => "None".to_string(),
-            },
-        )
+    format!(
+        "Tag{{ key: TagKey(0x{:>08X}), creator: {}}}",
+        tag.key.as_u32(),
+        match &tag.creator {
+            Some(c) => format!("Some(Cow::Borrowed(\"{}\"))", c.escape_default()),
+            None => "None".to_string(),
+        },
+    )
 }
 
 fn vr_to_text(vr: Vr) -> &'static str {
     match vr {
         Vr::Undefined => "Undefined",
-        _ => vr.keyword()
-    }
-}
-
-fn vr_to_doc_string(vr: &(Vr, Vr, Vr)) -> String {
-    let mut rv = String::from(vr_to_text(vr.0));
-    if vr.1 != Vr::Undefined { rv += " or "; rv += vr_to_text(vr.1); }
-    if vr.2 != Vr::Undefined { rv += " or "; rv += vr_to_text(vr.2); }
-    rv
-}
-
-fn vm_to_text(vm: &(u8, u8, u8)) -> String {
-    if vm.2 != 1 {
-        format!("{0}-{0}n", vm.2)
-    } else if vm.1 == 0 {
-        format!("{}-n", vm.0)
-    } else if vm.1 == vm.2 {
-        format!("{}", vm.0)
-    } else {
-        format!("{}-{}", vm.0, vm.1)
+        _ => vr.keyword(),
     }
 }

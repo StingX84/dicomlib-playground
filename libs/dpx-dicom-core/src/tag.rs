@@ -1,10 +1,6 @@
-use snafu::{OptionExt, ResultExt, Snafu, ensure};
+use snafu::{ensure, OptionExt, ResultExt, Snafu};
 
-use std:: {
-    io,
-    path::PathBuf,
-    path::Path,
-};
+use std::{io, path::Path, path::PathBuf};
 
 // cSpell:ignore ggggeeee
 
@@ -12,15 +8,17 @@ use std:: {
 
 /// Built-in list of all the known DICOM standard Attribute Tags
 pub mod dicom;
+
 /// Built-in static list of [Meta] descriptions for standard DICOM Tags.
 ///
 /// This list is automatically registered in [`Dictionary`]
 pub mod dicom_meta;
-inventory::submit!{dicom_meta::ALL_TAGS_META}
+// inventory::submit!{dicom_meta::ALL_TAGS_META}
 
-// Built-in list of all DICONDE Attribute Tags not defined by DICOM standard.
+/// Built-in list of all DICONDE Attribute Tags not defined by DICOM standard.
 pub mod diconde;
-/// Built-in static list of [Meta] description for DICON attribute tags not defined by DICOM standard.
+
+/// Built-in static list of [Meta] description for DICOM attribute tags not defined by DICOM standard.
 ///
 /// This list is NOT automatically registered in [`Dictionary`].
 /// To enable all DICONDE-specific naming, you should manually
@@ -28,13 +26,15 @@ pub mod diconde;
 pub mod diconde_meta;
 
 // Reexports
-pub use tagkey_impl::TagKey;
+pub use dict_impl::{DictMetrics, Dictionary};
+pub use meta_impl::{Meta, PrivateIdentificationAction, Source, StaticMetaList};
 pub use tag_impl::Tag;
-pub use dict_impl::{Dictionary, Meta, Source, PrivateIdentificationAction, StaticMetaList, DictMetrics};
+pub use tagkey_impl::TagKey;
 
 pub type Result<T, E = Error> = ::core::result::Result<T, E>;
 
 #[derive(Debug, Snafu)]
+#[allow(missing_docs)]
 pub enum Error {
     #[snafu(display("missing opening brace for TagKey (expecting: `(gggg,eeee)`)"))]
     TagKeyMissingOpeningBrace,
@@ -46,7 +46,7 @@ pub enum Error {
     TagKeyMissingComponents,
 
     #[snafu(display("unable to parse hexadecimal numeric in Tag: {source:?}"))]
-    TagKeyContainsNonHexCharacters{source: std::num::ParseIntError},
+    TagKeyContainsNonHexCharacters { source: std::num::ParseIntError },
 
     #[snafu(display("missing opening brace for Tag (expecting: `(gggg,eeee[,\"creator\"])`)"))]
     TagMissingOpeningBrace,
@@ -60,26 +60,42 @@ pub enum Error {
     #[snafu(display("missing opening double quote in creator part of a Tag (expecting: `(gggg,eeee[,\"creator\"])`)"))]
     TagMissingCreatorClosingQuote,
 
-    #[snafu(display("unable to parse Tag's creator: {message} (expecting: `(gggg,eeee[,\"creator\"])`)"))]
-    TagInvalidCreatorString{message: String},
+    #[snafu(display(
+        "unable to parse Tag's creator: {message} (expecting: `(gggg,eeee[,\"creator\"])`)"
+    ))]
+    TagInvalidCreatorString { message: String },
 
     #[snafu(display("not enough components for Tag (expecting: `(gggg,eeee[,\"creator\"])`)"))]
     TagMissingComponents,
 
     #[snafu(display("unable to parse hexadecimal numeric in Tag: {source:?}"))]
-    TagContainsNonHexCharacters{source: std::num::ParseIntError},
+    TagContainsNonHexCharacters { source: std::num::ParseIntError },
+
+    #[snafu(display("{msg} at pos {char_pos}"))]
+    MetaParseFailed {
+        char_pos: usize,
+        msg: String,
+    },
 
     #[snafu(display("unable to open file({})", source))]
-    DictFileOpenFailed{file_name: PathBuf, source: io::Error},
+    DictFileOpenFailed {
+        file_name: PathBuf,
+        source: io::Error,
+    },
 
     #[snafu(display("unable to read file({})", source))]
-    DictFileReadFailed{source: io::Error},
+    DictFileReadFailed { source: io::Error },
 
     #[snafu(display("{msg} on line {line_number} pos {char_pos} in dictionary file"))]
-    DictParseFailed{line_number: usize, char_pos: usize, msg: String},
+    DictParseFailed {
+        line_number: usize,
+        char_pos: usize,
+        msg: String,
+    },
 }
 
 // Private modules
-mod tagkey_impl;
-mod tag_impl;
 mod dict_impl;
+mod meta_impl;
+mod tag_impl;
+mod tagkey_impl;

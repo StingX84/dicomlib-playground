@@ -1,34 +1,36 @@
 #![allow(dead_code)]
-#![cfg_attr(feature = "unstable",
+#![cfg_attr(
+    feature = "unstable",
     feature(debugger_visualizer),
     debugger_visualizer(natvis_file = "../dpx_dicom_core.natvis"),
     feature(is_sorted),
     feature(test),
-    feature(once_cell),
+    feature(once_cell)
 )]
 #![deny(clippy::all)]
+//#![warn(missing_docs)]
 
 // Module declarations
-pub mod tag;
 pub mod charset;
 pub mod config;
 pub mod settings;
-pub mod vr;
-mod utils;
 pub mod state;
+pub mod tag;
 pub mod uid;
+mod utils;
+pub mod vr;
 
 // Public re-exports
 #[doc(no_inline)]
-pub use vr::Vr;
+pub use state::State;
 #[doc(no_inline)]
 pub use tag::Tag;
 #[doc(no_inline)]
 pub use tag::TagKey;
 #[doc(no_inline)]
-pub use state::State;
-#[doc(no_inline)]
 pub use uid::Uid;
+#[doc(no_inline)]
+pub use vr::Vr;
 
 // Crate STD lib types
 pub(crate) type Arc<T> = std::sync::Arc<T>;

@@ -4,6 +4,27 @@ use std::{fmt::Debug, fmt::Display};
 
 pub const DEFAULT_UID_ROOT: &str = "1.2.3";
 
+type Result<T> = core::result::Result<T, Error>;
+
+#[derive(Debug, Snafu)]
+#[allow(missing_docs)]
+pub enum Error {
+    #[snafu(display("Uid is empty"))]
+    Empty,
+
+    #[snafu(display("Uid is too long ({len} chars), allowed 64"))]
+    Overflow { len: usize },
+
+    #[snafu(display("invalid character in Uid {c} at {pos}"))]
+    InvalidChar { pos: usize, c: char },
+
+    #[snafu(display("empty component in Uid at {pos}"))]
+    EmptyComponent { pos: usize },
+
+    #[snafu(display("Uid component starts with zero at {pos}"))]
+    FirstCharIsZero { pos: usize },
+}
+
 /// Structure holding an OID (unique identifier)
 ///
 /// A string of characters used to provide global unique identification of a
@@ -65,21 +86,7 @@ pub struct Dictionary {
     cache: Vec<Meta>,
 }
 
-type Result<T> = core::result::Result<T, Error>;
 
-#[derive(Debug, Snafu)]
-pub enum Error {
-    #[snafu(display("Uid is empty"))]
-    Empty,
-    #[snafu(display("Uid is too long ({len} chars), allowed 64"))]
-    Overflow { len: usize },
-    #[snafu(display("invalid character in Uid {c} at {pos}"))]
-    InvalidChar { pos: usize, c: char },
-    #[snafu(display("empty component in Uid at {pos}"))]
-    EmptyComponent { pos: usize },
-    #[snafu(display("Uid component starts with zero at {pos}"))]
-    FirstCharIsZero { pos: usize },
-}
 
 // ---------------------------------------------------------------------------
 // Uid struct implementation
