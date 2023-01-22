@@ -1,15 +1,5 @@
-# Purpose: This is the global standard DICOM data dictionary for the dpx-dicom.
-#
-# This file contains the complete data dictionary from the latest edition of
-# the DICOM standard. This also includes the non-private definitions from the
-# DICONDE (Digital Imaging and Communication in Nondestructive Evaluation) and
-# DICOS (Digital Imaging and Communications in Security) standard.
-#
-# Generated automatically from ${VERSION}.
-# File created on ${DATE} by "${USER}" on "${HOST}".
-#
-# Full command line:
-# ${CMD_LINE}
+# Purpose: This is the most generic "catch-all" attributes that are
+# always compiled in to the dpx-dicom-core library.
 #
 # Each line represents an entry in the data dictionary. Each line has 6 fields
 # `Tag`, `VR`, `Name`, `Keyword`, `VM` and `Version`.
@@ -40,9 +30,10 @@
 # Special form `B-Bn` means "arbitrary number multiple of B".
 #
 # `Version` field should contain one of the following terms (case insensitive):
-# - `DICOM` - standard DICOM attribute
-# - `DICONDE` - standard DICONDE attribute
-# - `DICOS` - standard DICOS attribute
+# - `Invalid` - invalid attribute
+# - `Dicom` - standard DICOM attribute
+# - `Diconde` - standard DICONDE attribute
+# - `Dicos` - standard DICOS attribute
 # - `Ret` - retired attribute from an unspecified source.
 # - `Priv` - This is a private attribute known not to contain any patient
 #   identifying information.
@@ -61,3 +52,8 @@
 # as UTF-8 without BOM.
 #
 # Tag		VR	Name			Keyword			VM	Version
+
+(xxxx,xxxx)	UN	Unknown	Unknown	0-n	Invalid
+(xxxn,0000)	UL	Group Length	GroupLength	1	Ret
+(xxxo,0000)	UL	Private Group Length	PrivateGroupLength	1	Ret
+(xxxo,00xx)	LO	Private Reservation	PrivateReservation	1	Dicom

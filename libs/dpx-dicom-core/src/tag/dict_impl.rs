@@ -12,8 +12,8 @@ use std::{
 /// This structure is rarely accessed by the application. All the functions
 /// provided by this struct are mirrored in higher-level abstractions.
 ///
-/// The structure itself contains a vector of statically allocated tag
-/// description ([`Meta`]) lists and dynamically registered individual tag
+/// The structure itself holds a vector of statically allocated tag
+/// description ([Meta]) lists and dynamically registered individual tag
 /// descriptions.
 ///
 /// Search in the directory is carried out by calling methods
@@ -28,36 +28,45 @@ use std::{
 /// [add_from_memory](Self::add_from_memory) or
 /// [add_from_file](Self::add_from_file).
 ///
+/// See [Dictionary::new] for details on built-in static lists.
+///
 /// Dictionary lookup by higher-level abstractions forwarded through
-/// [`State`](crate::State)
+/// [State](crate::State) struct.
 ///
 /// This class supports "automatic" registration of static descriptions list
-/// using crate [`inventory`]. Built-in standard DICOM attributes are already
-/// registered automatically.
+/// using crate [`inventory`]. Use [StaticMetaList] struct with [inventory::submit!].
 ///
-/// Example of application custom dictionary loaded automatically:
 /// ```
 /// // Declare your attributes and register them in the Dictionary
 /// mod app {
-///     use dpx_dicom_core::declare_tags;
-///     use inventory::submit;
-///     declare_tags!{
+///     dpx_dicom_core::declare_tags!{
+///         /// Meta information list on my custom app attribute tags.
 ///         pub const ALL_APP_TAGS = [
+///             /// (4321,100,"CoolApp Group1") LO "Patient's Spacecraft License" 1 Vendored(x) \
+///             /// Here you can provide some useful usage documentation for your tag.
 ///             PatientSpacecraftLicense: { (0x4321, 0x1000, "CoolApp Group1"), LO, 1-n, "Patient's Spacecraft License", Vendored(X) },
 ///             IssuerOfPatientSpacecraftLicense: { (0x4321, 0x1001, "CoolApp Group1"), LO, 1-n, "Issuer of Patient's Spacecraft License", Vendored(None) },
 ///             DoctorCryingReason: { (0x4323, 0x10BB, "CoolApp Group2"), UT, 1, "Doctor Crying Reason", Vendored(None) },
 ///         ];
 ///     }
-///     submit!(ALL_APP_TAGS);
+///     inventory::submit!(ALL_APP_TAGS);
 /// }
 ///
-/// // Use your attributes anywhere in the application
-/// use dpx_dicom_core::tag::Dictionary;
+/// # use dpx_dicom_core::tag::Dictionary;
+/// // Example of direct Dictionary invocation without global State:
 /// # #[cfg(not(miri))]
 /// # fn main() {
 /// let dict = Dictionary::new();
 /// assert_eq!(
 ///     dict.search_by_tag(&app::DoctorCryingReason).unwrap().name,
+///     "Doctor Crying Reason"
+/// );
+///
+/// // Example of recommended Dictionary interaction:
+/// // Note: here a global Dictionary will be automatically
+/// // constructed on first use.
+/// assert_eq!(
+///     app::DoctorCryingReason.name().unwrap(),
 ///     "Doctor Crying Reason"
 /// );
 /// # }
@@ -67,7 +76,6 @@ use std::{
 ///
 /// Note: automatic registration is currently unsupported under
 /// [Miri](https://github.com/rust-lang/miri).
-#[derive(Default)]
 pub struct Dictionary {
     /// Vector of statically defined attribute lists added with
     /// [add_static_list](Self::add_static_list) or gathered in [new](Self::new)
@@ -124,25 +132,41 @@ pub struct DictMetrics {
 // Dictionary public interface methods implementation
 // ---------------------------------------------------------------------------
 impl Dictionary {
-    /// Constructs the class gathering all the [`StaticMetaList`] objects
+    /// Constructs the struct gathering all the [`StaticMetaList`] objects
     /// registered with [`inventory::submit!`].
+    ///
+    /// Built-in dictionaries:
+    /// - `META_LIST_GENERIC` is registered always.
+    /// - `META_LIST_DICOM` is registered if available.
+    /// - `META_LIST_DICONDE` is never automatically registered, because
+    ///   it will "override" some DICOM tags, that shares same Tag Key. For
+    ///   example, "Patient Name" becomes "Component Name". You may manually
+    ///   register it if your application works with DICONDE datasets.
+    ///
+    /// `META_LIST_DICOM` and `META_LIST_DICONDE` lists are available only if
+    /// crate was built with feature `static_dictionary`.
     ///
     /// Note: See struct-level [documentation](Self) for examples.
     ///
-    /// Note: The created dictionary has no "cache". To speed up searches,
-    /// you should call [rebuild_cache](Self::rebuild_cache) after any
-    /// mutating functions.
+    /// Note: The created dictionary has no "cache". To speed up searches, you
+    /// may call [rebuild_cache](Self::rebuild_cache) after creation or any
+    /// mutating function call.
     pub fn new() -> Self {
+        let mut statics: Vec<&'static StaticMetaList> = inventory::iter::<StaticMetaList>.into_iter().collect();
+        statics.insert(0, &META_LIST_GENERIC);
         Self {
-            statics: inventory::iter::<StaticMetaList>.into_iter().collect(),
-            ..Default::default()
+            statics,
+            dynamic: Vec::new(),
+            cache: None
         }
     }
 
-    /// Constructs the empty class without any statically registered lists.
+    /// Constructs the empty struct without any statically registered lists.
     pub fn new_empty() -> Self {
         Self {
-            ..Default::default()
+            statics: Vec::new(),
+            dynamic: Vec::new(),
+            cache: None
         }
     }
 
@@ -166,7 +190,7 @@ impl Dictionary {
         }
     }
 
-    /// Adds custom constant list of ['Meta'] objects.
+    /// Adds custom list of ['Meta'] objects.
     ///
     /// Note: as any other mutating method, this invalidates a cache. To speed
     /// up searches after mutation, you should call
@@ -255,7 +279,7 @@ impl Dictionary {
     /// letter. Maximum length is 64 bytes.
     ///
     /// `VR` field can contain up to three Value Representation names separated
-    /// with " or " Undefined VR should be written as "--".
+    /// with " or " Undefined VR should be written as "??".
     ///
     /// `VM` field should contain one of the forms: `B`, `B-E`, `B-n`, `B-Bn`,
     /// where `B` - minimum number of repetitions 0 to 255, `E` - maximum number
@@ -531,6 +555,12 @@ impl Debug for Dictionary {
             "tag::Dictionary(tags: {} lists, {} static, {} dynamic, {:?} cached)",
             m.static_lists, m.static_tags, m.dynamic_tags, m.cached_tags
         )
+    }
+}
+
+impl Default for Dictionary {
+    fn default() -> Self {
+        Dictionary::new()
     }
 }
 
@@ -834,6 +864,8 @@ impl Dictionary {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tags;
+
     mod keys {
         use crate::declare_tags;
         use inventory::submit;
@@ -946,13 +978,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg_attr(miri, ignore)]
-    fn is_dict_auto_collects_statics() {
-        let dict = Dictionary::new();
-        search_tags_in_dict(&dict);
-    }
-
-    #[test]
     #[cfg(not(miri))]
     #[allow(deprecated)]
     fn can_parse_bundled_tsv() {
@@ -962,6 +987,7 @@ mod tests {
         ];
 
         let mut dict = Dictionary::new_empty();
+        dict.add_static_list(&META_LIST_GENERIC);
         for file_name in FILE_NAMES {
             match dict.add_from_file(file_name) {
                 Ok(_) => (),
@@ -970,12 +996,12 @@ mod tests {
         }
         fn check_attributes(dict: &Dictionary) {
             // Should find masked tags
-            assert_eq!(dict.search_by_tag(&dicom::EscapeTriplet).unwrap().tag.key, dicom::EscapeTriplet);
-            assert_eq!(dict.search_by_tag(&Tag::standard(0x1221, 0x0022)).unwrap().tag.key, dicom::PrivateReservation);
+            assert_eq!(dict.search_by_tag(&tags::EscapeTriplet).unwrap().tag.key, tags::EscapeTriplet);
+            assert_eq!(dict.search_by_tag(&Tag::standard(0x1221, 0x0022)).unwrap().tag.key, tags::generic::PrivateReservation);
             // Should find arbitrary group length
-            assert_eq!(dict.search_by_tag(&Tag::standard(0xB00A, 0x0000)).unwrap().tag.key, dicom::GroupLength);
+            assert_eq!(dict.search_by_tag(&Tag::standard(0xB00A, 0x0000)).unwrap().tag.key, tags::generic::GroupLength);
             // Should find private group length
-            assert_eq!(dict.search_by_tag(&Tag::standard(0xB00B, 0x0000)).unwrap().tag.key, dicom::PrivateGroupLength);
+            assert_eq!(dict.search_by_tag(&Tag::standard(0xB00B, 0x0000)).unwrap().tag.key, tags::generic::PrivateGroupLength);
         }
         check_attributes(&dict);
         dict.rebuild_cache();

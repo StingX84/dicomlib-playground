@@ -16,9 +16,12 @@ pub mod config;
 pub mod settings;
 pub mod state;
 pub mod tag;
+pub mod tags;
 pub mod uid;
 mod utils;
 pub mod vr;
+pub mod uids;
+
 
 // Public re-exports
 #[doc(no_inline)]

@@ -17,9 +17,9 @@ Legend:
 - Define Tag dictionary format
 - Dictionary class and static data / file loader
 
-### ☐ Uid and Dictionary - module "uid"
-- Basic classes for Uid handling
-- Define UID dictionary format
+### ☐ Oid and Dictionary - module "oid"
+- Basic classes for Oid handling
+- Define Oid dictionary format
 - Dictionary class and static data
 
 ### ☐ Charset encoding - module "charset"

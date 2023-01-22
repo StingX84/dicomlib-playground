@@ -34,49 +34,49 @@
 # Special form `B-Bn` means "arbitrary number multiple of B".
 #
 # `Version` field should contain one of the following terms (case insensitive):
-# - `DICONDE` - standard DICONDE attribute
+# - `Diconde` - standard DICONDE attribute
 # - `Ret` - retired attribute from an unspecified source.
 #
 # Comments have a '#' at the beginning of the line. The file should be encoded
 # as UTF-8 without BOM.
 # Tag		VR	Name			Keyword			VM	Version
 
-# ASTM E2339−15 Standard Practice for Digital Imaging and Communication in Nondestructive Evaluation (DICONDE)
+# ASTM E2339−15 Standard Practice for Digital Imaging and Communication in Nondestructive Evaluation (Diconde)
 # Component module
-(0010,0010)	PN	Component Name	ComponentName	1	DICONDE
-(0010,0020)	LO	Component ID Number	ComponentIDNumber	1-n	DICONDE
-(0010,1000)	LO	Other Component IDs	OtherComponentIDs	1-n	DICONDE
-(0010,1001)	PN	Other Component Names	OtherComponentNames	1-n	DICONDE
-(0010,0030)	DA	Component Manufacturing Date	ComponentManufacturingDate	1	DICONDE
-(0010,4000)	LT	Component Notes	ComponentNotes	1	DICONDE
-(0010,2160)	SH	Material Name	MaterialName	1	DICONDE
+(0010,0010)	PN	Component Name	ComponentName	1	Diconde
+(0010,0020)	LO	Component ID Number	ComponentIDNumber	1-n	Diconde
+(0010,1000)	LO	Other Component IDs	OtherComponentIDs	1-n	Diconde
+(0010,1001)	PN	Other Component Names	OtherComponentNames	1-n	Diconde
+(0010,0030)	DA	Component Manufacturing Date	ComponentManufacturingDate	1	Diconde
+(0010,4000)	LT	Component Notes	ComponentNotes	1	Diconde
+(0010,2160)	SH	Material Name	MaterialName	1	Diconde
 # Component Study Module
-(0008,0090)	PN	Component Owner Name	ComponentOwnerName	1	DICONDE
-(0008,1048)	PN	Inspecting Company Name	InspectingCompanyName	1-n	DICONDE
-(0008,1060)	PN	Certifying Inspector Name	CertifyingInspectorName	1-n	DICONDE
-(0032,4000)	LT	Examination Notes	ExaminationNotes	1	DICONDE
-(0008,1050)	PN	Inspector Name	InspectorName	1-n	DICONDE
+(0008,0090)	PN	Component Owner Name	ComponentOwnerName	1	Diconde
+(0008,1048)	PN	Inspecting Company Name	InspectingCompanyName	1-n	Diconde
+(0008,1060)	PN	Certifying Inspector Name	CertifyingInspectorName	1-n	Diconde
+(0032,4000)	LT	Examination Notes	ExaminationNotes	1	Diconde
+(0008,1050)	PN	Inspector Name	InspectorName	1-n	Diconde
 # NDE Equipment Module
-(0008,0080)	LO	Company Name	CompanyName	1	DICONDE
-(0008,0081)	ST	Company Address	CompanyAddress	1	DICONDE
-(0008,1040)	LO	Department Name	DepartmentName	1	DICONDE
-(0018,1008)	LO	Scanner ID	ScannerID	1	DICONDE
+(0008,0080)	LO	Company Name	CompanyName	1	Diconde
+(0008,0081)	ST	Company Address	CompanyAddress	1	Diconde
+(0008,1040)	LO	Department Name	DepartmentName	1	Diconde
+(0018,1008)	LO	Scanner ID	ScannerID	1	Diconde
 # NDE Indication Module
-(0040,A30A)	DS	Property Value	PropertyValue	1-n	DICONDE
-(0040,08EA)	SQ	Property Units Code Sequence	PropertyUnitsCodeSequence	1	DICONDE
-(0070,0023)	CS	Indication ROI Geometric Type	IndicationROIGeometricType	1	DICONDE
-(0040,A040)	CS	Indication ROI Value Type	IndicationROIValueType	1	DICONDE
-(0070,0021)	US	Number of ROI Contour Points	NumberOfROIContourPoints	1	DICONDE
-(0070,0022)	DS	Indication ROI Contour Data	IndicationROIContourData	2-n	DICONDE
+(0040,A30A)	DS	Property Value	PropertyValue	1-n	Diconde
+(0040,08EA)	SQ	Property Units Code Sequence	PropertyUnitsCodeSequence	1	Diconde
+(0070,0023)	CS	Indication ROI Geometric Type	IndicationROIGeometricType	1	Diconde
+(0040,A040)	CS	Indication ROI Value Type	IndicationROIValueType	1	Diconde
+(0070,0021)	US	Number of ROI Contour Points	NumberOfROIContourPoints	1	Diconde
+(0070,0022)	DS	Indication ROI Contour Data	IndicationROIContourData	2-n	Diconde
 
-# ASTM E2934-14 Standard Practice for Digital Imaging and Communication in Nondestructive Evaluation (DICONDE) for Eddy Current (EC) Test Methods1
+# ASTM E2934-14 Standard Practice for Digital Imaging and Communication in Nondestructive Evaluation (Diconde) for Eddy Current (EC) Test Methods1
 # NDE EC Image Module Attributes
-(0008,2124)	IS	Number of Surfaces	NumberOfSurfaces	1	DICONDE
-(0008,212A)	IS	Number of Total Channels	NumberOfTotalChannels	1	DICONDE
-(0008,2122)	IS	Surface Number	SurfaceNumber	1	DICONDE
-(0008,2127)	SH	Channel Name	ChannelName	1	DICONDE
-(0008,2128)	IS	Channel Number	ChannelNumber	1	DICONDE
-(0018,6014)	US	Pixel Data Type	PixelDataType	1	DICONDE
+(0008,2124)	IS	Number of Surfaces	NumberOfSurfaces	1	Diconde
+(0008,212A)	IS	Number of Total Channels	NumberOfTotalChannels	1	Diconde
+(0008,2122)	IS	Surface Number	SurfaceNumber	1	Diconde
+(0008,2127)	SH	Channel Name	ChannelName	1	Diconde
+(0008,2128)	IS	Channel Number	ChannelNumber	1	Diconde
+(0018,6014)	US	Pixel Data Type	PixelDataType	1	Diconde
 
 
 # Ripped from OFFIS DCMTK "diconde.dic" file

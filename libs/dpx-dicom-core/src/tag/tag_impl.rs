@@ -156,11 +156,11 @@ impl<'a> Tag<'a> {
     /// Searches and returns Tag name in the current [State](crate::State)
     ///
     /// See also [search_by_tag](crate::tag::Dictionary::search_by_tag)
-    pub fn name(&self) -> Option<Cow<'static, str>> {
+    pub fn name(&self) -> Option<String> {
         State::with_current(|s| {
             s.tag_dictionary()
                 .search_by_tag(self)
-                .map(|m| m.name.clone())
+                .map(|m| m.name.to_string())
         })
     }
 }
@@ -410,7 +410,7 @@ mod tests {
 
         // Test tag should not be found again, because outside of
         // "provide_current_for" scope
-        assert!(TestTag.meta().is_none());
+        assert_eq!(TestTag.meta().unwrap().name, "Unknown");
 
         state.into_global();
 
@@ -421,6 +421,6 @@ mod tests {
         State::default().into_global();
 
         // Test tag should not present in the default global state
-        assert!(TestTag.meta().is_none());
+        assert_eq!(TestTag.meta().unwrap().name, "Unknown");
     }
 }

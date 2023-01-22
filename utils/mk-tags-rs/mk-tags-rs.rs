@@ -19,38 +19,31 @@ type Result<T, E = Whatever> = std::result::Result<T, E>;
 
 #[derive(Parser, Debug)]
 #[command(about, long_about = None)]
+#[rustfmt::skip]
 struct Cli {
     /// tsv dictionary file name
-    #[arg(
-        short = 'i',
-        long,
-        default_value_os = "libs/dpx-dicom-core/etc/dicom.tsv"
-    )]
+    #[arg(short = 'i', long, default_value_os = "libs/dpx-dicom-core/etc/dicom.tsv" )]
     input_tsv: PathBuf,
 
     /// Output file name for Tag constants
-    #[arg(short = 't', long, default_value_os = "const_tags.rs")]
-    output_tags: PathBuf,
+    #[arg(short = 't', long, default_value_os = "tags.rs")]
+    tags_file_name: PathBuf,
 
     /// Output file name for tag::Meta constants
-    #[arg(short = 'm', long, default_value_os = "const_metas.rs")]
-    output_metas: PathBuf,
+    #[arg(short = 'm', long, default_value_os = "metas.rs")]
+    metas_file_name: PathBuf,
+
+    /// Header file name(s) for output_tags file
+    #[arg(short='a', long, default_values_os_t = vec![PathBuf::from("utils/mk-tags-rs/dicom_tags_header.txt")], num_args(0..))]
+    tags_header_file_name: Vec<PathBuf>,
+
+    /// Header file name(s) for output_tags file
+    #[arg(short='e', long, default_values_os_t = vec![PathBuf::from("utils/mk-tags-rs/metas_header.txt")], num_args(0..))]
+    metas_header_file_name: Vec<PathBuf>,
 }
 
-const TAGS_HEADER: &str = include_str!("meta_header.rs");
-const META_HEADER: &str = include_str!("meta_header.rs");
-
-fn main() -> ExitCode {
-    match run() {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(e) => {
-            eprintln!("Error: {}", e.to_string());
-            ExitCode::FAILURE
-        }
-    }
-}
-
-fn run() -> Result<()> {
+#[snafu::report]
+fn main() -> Result<()> {
     let cli = Cli::parse();
 
     if std::env::var_os("RUST_LOG").is_none() {
@@ -58,25 +51,43 @@ fn run() -> Result<()> {
     }
     pretty_env_logger::try_init().with_whatever_context(|_| "could not initialize logger")?;
 
-    let output_tags_file_name = abs_path(&cli.output_tags)?;
-    let output_metas_file_name = abs_path(&cli.output_metas)?;
+    let output_tags_file_name = abs_path(&cli.tags_file_name)?;
+    let output_metas_file_name = abs_path(&cli.metas_file_name)?;
 
     info!("Reading tsv file {} ...", cli.input_tsv.to_string_lossy());
     let mut dict = Dictionary::new_empty();
     dict.add_from_file(&cli.input_tsv)
-        .with_whatever_context(|e| format!("Unable to parse dictionary: {e}"))?;
+        .with_whatever_context(|e| {
+            match e {
+                dpx_dicom_core::tag::Error::DictParseFailed {line_number, char_pos, msg} => {
+                    format!(
+                        "Unable to parse dictionary: {msg}\n--> {}:{line_number}:{char_pos}",
+                        cli.input_tsv.to_string_lossy(),
+                    )
+                },
+                _ => format!("Unable to parse dictionary: {e}"),
+            }
+        })?;
 
     info!(
         "Writing tags to {} ...",
         output_tags_file_name.to_string_lossy()
     );
-    write_tags_to_file(dict.iter(), &output_tags_file_name)?;
+    write_tags_to_file(
+        dict.iter(),
+        &cli.tags_header_file_name,
+        &output_tags_file_name,
+    )?;
 
     info!(
         "Writing metas to {} ...",
         output_metas_file_name.to_string_lossy()
     );
-    write_metas_to_file(dict.iter(), &output_metas_file_name)?;
+    write_metas_to_file(
+        dict.iter(),
+        &cli.metas_header_file_name,
+        &output_metas_file_name,
+    )?;
 
     info!("Done");
 
@@ -106,26 +117,31 @@ fn abs_path<T: AsRef<Path>>(f: T) -> Result<PathBuf> {
     }
 }
 
-fn write_tags_to_file<'a>(tags: impl Iterator<Item = &'a Meta>, file_name: &PathBuf) -> Result<()> {
-    let file = fs::File::create(&file_name).with_whatever_context(|e| {
+fn write_tags_to_file<'a>(
+    tags: impl Iterator<Item = &'a Meta>,
+    header_file_names: &Vec<PathBuf>,
+    output_file_name: &PathBuf,
+) -> Result<()> {
+    let file = fs::File::create(&output_file_name).with_whatever_context(|e| {
         format!(
             "Unable to open output file \"{}\": {e}",
-            file_name.to_string_lossy()
+            output_file_name.to_string_lossy()
         )
     })?;
     let mut writer = std::io::BufWriter::new(file);
 
-    write_header(&mut writer, TAGS_HEADER).whatever_context("could not write file")?;
+    write_headers(&mut writer, header_file_names)?;
+
     write!(
         &mut writer,
-        "\n#![allow(non_upper_case_globals, unused_imports)]\n\
+        "\n\
         use crate::{{Tag, TagKey}};\n\
         use std::borrow::Cow;\n\
         // cspell:disable\n\n"
     )
     .whatever_context("could not write file")?;
 
-    for meta in tags {
+    for meta in tags.filter(|t| t.source != Source::Invalid) {
         writeln!(
             &mut writer,
             "/// {} {} {} {}{}\
@@ -150,9 +166,10 @@ fn write_tags_to_file<'a>(tags: impl Iterator<Item = &'a Meta>, file_name: &Path
 #[rustfmt::skip]
 fn write_metas_to_file<'a>(
     tags: impl Iterator<Item = &'a Meta>,
-    file_name: &PathBuf,
+    header_file_names: &Vec<PathBuf>,
+    output_file_name: &PathBuf,
 ) -> Result<()> {
-    let file = fs::File::create(&file_name)
+    let file = fs::File::create(&output_file_name)
         .whatever_context("could not create file")?;
     let mut writer = std::io::BufWriter::new(file);
 
@@ -161,9 +178,9 @@ fn write_metas_to_file<'a>(
         _ => whatever!("invalid iterator")
     };
 
-    write_header(&mut writer, META_HEADER).whatever_context("could not write file")?;
+    write_headers(&mut writer, header_file_names)?;
+
     write!(&mut writer, "
-#![allow(missing_docs)]
 use crate::tag::StaticMetaList;
 // cspell:disable
 
@@ -217,19 +234,29 @@ pub static ALL_TAGS_META: StaticMetaList = StaticMetaList::new(&_internals::ALL_
     Ok(())
 }
 
-fn write_header(writer: &mut impl Write, header: &str) -> Result<(), std::io::Error> {
-    writer.write(
-        header
-            .replacen("${DATE}", chrono::Local::now().to_rfc2822().as_str(), 1)
-            .replacen("${USER}", whoami::username().as_str(), 1)
-            .replacen("${HOST}", whoami::hostname().as_str(), 1)
-            .replacen(
-                "${CMD_LINE}",
-                env::args().collect::<Vec<String>>().join(" ").as_str(),
-                1,
+fn write_headers(writer: &mut impl Write, header_file_names: &Vec<PathBuf>) -> Result<()> {
+    for file_name in header_file_names {
+        let header = std::fs::read_to_string(file_name).with_whatever_context(|e| {
+            format!(
+                "couldn't open the file {}: {e}",
+                file_name.to_string_lossy()
             )
-            .as_bytes(),
-    )?;
+        })?;
+        writer
+            .write(
+                header
+                    .replacen("${DATE}", chrono::Local::now().to_rfc2822().as_str(), 1)
+                    .replacen("${USER}", whoami::username().as_str(), 1)
+                    .replacen("${HOST}", whoami::hostname().as_str(), 1)
+                    .replacen(
+                        "${CMD_LINE}",
+                        env::args().collect::<Vec<String>>().join(" ").as_str(),
+                        1,
+                    )
+                    .as_bytes(),
+            )
+            .whatever_context("could not write file")?;
+    }
     Ok(())
 }
 
