@@ -90,8 +90,8 @@ fn main() -> Result<()> {
     let mut writer = std::io::BufWriter::new(file);
 
     for header_file_name in cli.headers {
-        let header = std::fs::read_to_string(header_file_name).with_whatever_context(|e| {
-            format!("couldn't open the file {}: {e}", file_name.to_string_lossy())
+        let header = std::fs::read_to_string(&header_file_name).with_whatever_context(|e| {
+            format!("couldn't open the file {}: {e}", header_file_name.to_string_lossy())
         })?;
         let header = header
             .replacen(
@@ -101,7 +101,12 @@ fn main() -> Result<()> {
             )
             .replacen("${DATE}", chrono::Local::now().to_rfc2822().as_str(), 1)
             .replacen("${USER}", whoami::username().as_str(), 1)
-            .replacen("${HOST}", whoami::hostname().as_str(), 1);
+            .replacen("${HOST}", whoami::hostname().as_str(), 1)
+            .replacen(
+                "${CMD_LINE}",
+                env::args().collect::<Vec<String>>().join(" ").as_str(),
+                1,
+            );
 
         writer
             .write(header.as_bytes())
@@ -115,7 +120,7 @@ fn main() -> Result<()> {
             Source::Dicom => "Dicom",
             Source::Dicos => "Dicos",
             Source::Diconde => "Diconde",
-            Source::Retired => "ret",
+            Source::Retired => "Ret",
             Source::Vendored(V::None) => "Priv",
             Source::Vendored(V::D) => "Priv(D)",
             Source::Vendored(V::Z) => "Priv(Z)",
@@ -292,7 +297,7 @@ fn get_cell_text<'a, 'input>(td: roxmltree::Node<'a, 'input>) -> &'a str {
 
 fn parse_field_vr(s: &str) -> Result<&str> {
     if s.starts_with("See") || s.is_empty() {
-        Ok("--")
+        Ok("??")
     } else {
         Ok(s)
     }

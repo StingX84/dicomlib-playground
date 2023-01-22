@@ -737,6 +737,8 @@ impl Meta {
             Ok(Source::Vendored(PrivateIdentificationAction::X))
         } else if s.eq_ignore_ascii_case("priv(u)") {
             Ok(Source::Vendored(PrivateIdentificationAction::U))
+        } else if s.eq_ignore_ascii_case("invalid") {
+            Ok(Source::Invalid)
         } else {
             Err(mk_parse_err!(
                 s,
@@ -891,6 +893,16 @@ mod tests {
                 keyword: Cow::Borrowed("PatientID"),
                 source: Source::Dicom
             });
+        assert_eq!(Meta::parse_tsv_line("(xxxo,00xx)\tLO\tPrivate Reservation\tPrivateReservation\t1\tDicom").unwrap().unwrap(),
+            Meta{
+                tag: Tag::standard(0x0001, 0x0000),
+                mask: 0x0001FF00u32,
+                vr: (Vr::LO, Vr::Undefined, Vr::Undefined),
+                vm: (1, 1, 1),
+                name: Cow::Borrowed("Private	Reservation"),
+                keyword: Cow::Borrowed("PrivateReservation"),
+                source: Source::Dicom
+            });
         assert_parser_err!(Meta::parse_tsv_line, "a", 0, "unexpected end of line");
         assert_parser_err!(Meta::parse_tsv_line, "(0010,0020)\tLO\tPatient ID\tPatientID\t1", 36, "unexpected end of line");
         assert_parser_err!(Meta::parse_tsv_line, "(0010,0020)\tLO\tPatient ID\tPatientID\t1\t", 38, "unrecognized Source");
@@ -1018,7 +1030,7 @@ mod tests {
     #[rustfmt::skip]
     fn check_dict_parse_field_vr() {
         assert_eq!(Meta::parse_field_vr("UT").unwrap(), (Vr::UT, Vr::Undefined, Vr::Undefined));
-        assert_eq!(Meta::parse_field_vr("--").unwrap(), (Vr::Undefined, Vr::Undefined, Vr::Undefined));
+        assert_eq!(Meta::parse_field_vr("??").unwrap(), (Vr::Undefined, Vr::Undefined, Vr::Undefined));
         assert_eq!(Meta::parse_field_vr("OB or OW").unwrap(), (Vr::OB, Vr::OW, Vr::Undefined));
         assert_eq!(Meta::parse_field_vr("US or SS or OW").unwrap(), (Vr::US, Vr::SS, Vr::OW));
         assert_eq!(Meta::parse_field_vr("  OB  or  OW  ").unwrap(), (Vr::OB, Vr::OW, Vr::Undefined));

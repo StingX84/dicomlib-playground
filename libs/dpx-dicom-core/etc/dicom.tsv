@@ -6,7 +6,10 @@
 # DICOS (Digital Imaging and Communications in Security) standard.
 #
 # Generated automatically from DICOM PS3.6 2022e and DICOM PS3.7 2022e.
-# File created on Thu, 19 Jan 2023 23:26:02 +0300 by "stingx" on "desktop-2iqn19a".
+# File created on Fri, 20 Jan 2023 16:03:03 +0300 by "stingx" on "desktop-2iqn19a".
+#
+# Full command line:
+# target\debug\mk-dicom-tsv.exe D:\pc\rust\dicom-standard-xml\docbook
 #
 # Each line represents an entry in the data dictionary. Each line has 6 fields
 # `Tag`, `VR`, `Name`, `Keyword`, `VM` and `Version`.
@@ -22,7 +25,7 @@
 # separated by comma from an adjacent element number.
 #
 # `VR` field can contain up to three Value Representation names separated with " or "
-# Undefined VR should be written as "--".
+# Undefined VR should be written as "??".
 #
 # `Name` field should contain only graphical ASCII characters and white
 # space [\x20-\x7E]. Maximum length is 128 bytes.
@@ -37,9 +40,10 @@
 # Special form `B-Bn` means "arbitrary number multiple of B".
 #
 # `Version` field should contain one of the following terms (case insensitive):
-# - `DICOM` - standard DICOM attribute
-# - `DICONDE` - standard DICONDE attribute
-# - `DICOS` - standard DICOS attribute
+# - `Invalid` - invalid attribute
+# - `Dicom` - standard DICOM attribute
+# - `Diconde` - standard DICONDE attribute
+# - `Dicos` - standard DICOS attribute
 # - `Ret` - retired attribute from an unspecified source.
 # - `Priv` - This is a private attribute known not to contain any patient
 #   identifying information.
@@ -58,29 +62,22 @@
 # as UTF-8 without BOM.
 #
 # Tag		VR	Name			Keyword			VM	Version
-
-# Generic elements
-(xxxn,0000)	UL	Group Length	GroupLength	1	Ret
-(xxxo,0000)	UL	Private Group Length	PrivateGroupLength	1	Ret
-(xxxo,00xx)	LO	Private Reservation	PrivateReservation	1	Dicom
-
-# Standard elements
 (0000,0000)	UL	Command Group Length	CommandGroupLength	1	Dicom
-(0000,0001)	UL	Command Length to End	CommandLengthToEnd	1	ret
+(0000,0001)	UL	Command Length to End	CommandLengthToEnd	1	Ret
 (0000,0002)	UI	Affected SOP Class UID	AffectedSOPClassUID	1	Dicom
 (0000,0003)	UI	Requested SOP Class UID	RequestedSOPClassUID	1	Dicom
-(0000,0010)	SH	Command Recognition Code	CommandRecognitionCode	1	ret
+(0000,0010)	SH	Command Recognition Code	CommandRecognitionCode	1	Ret
 (0000,0100)	US	Command Field	CommandField	1	Dicom
 (0000,0110)	US	Message ID	MessageID	1	Dicom
 (0000,0120)	US	Message ID Being Responded To	MessageIDBeingRespondedTo	1	Dicom
-(0000,0200)	AE	Initiator	Initiator	1	ret
-(0000,0300)	AE	Receiver	Receiver	1	ret
-(0000,0400)	AE	Find Location	FindLocation	1	ret
+(0000,0200)	AE	Initiator	Initiator	1	Ret
+(0000,0300)	AE	Receiver	Receiver	1	Ret
+(0000,0400)	AE	Find Location	FindLocation	1	Ret
 (0000,0600)	AE	Move Destination	MoveDestination	1	Dicom
 (0000,0700)	US	Priority	Priority	1	Dicom
 (0000,0800)	US	Command Data Set Type	CommandDataSetType	1	Dicom
-(0000,0850)	US	Number of Matches	NumberOfMatches	1	ret
-(0000,0860)	US	Response Sequence Number	ResponseSequenceNumber	1	ret
+(0000,0850)	US	Number of Matches	NumberOfMatches	1	Ret
+(0000,0860)	US	Response Sequence Number	ResponseSequenceNumber	1	Ret
 (0000,0900)	US	Status	Status	1	Dicom
 (0000,0901)	AT	Offending Element	OffendingElement	1-n	Dicom
 (0000,0902)	LO	Error Comment	ErrorComment	1	Dicom
@@ -96,21 +93,21 @@
 (0000,1023)	US	Number of Warning Sub-operations	NumberOfWarningSuboperations	1	Dicom
 (0000,1030)	AE	Move Originator Application Entity Title	MoveOriginatorApplicationEntityTitle	1	Dicom
 (0000,1031)	US	Move Originator Message ID	MoveOriginatorMessageID	1	Dicom
-(0000,4000)	LT	Dialog Receiver	DialogReceiver	1	ret
-(0000,4010)	LT	Terminal Type	TerminalType	1	ret
-(0000,5010)	SH	Message Set ID	MessageSetID	1	ret
-(0000,5020)	SH	End Message ID	EndMessageID	1	ret
-(0000,5110)	LT	Display Format	DisplayFormat	1	ret
-(0000,5120)	LT	Page Position ID	PagePositionID	1	ret
-(0000,5130)	CS	Text Format ID	TextFormatID	1	ret
-(0000,5140)	CS	Normal/Reverse	NormalReverse	1	ret
-(0000,5150)	CS	Add Gray Scale	AddGrayScale	1	ret
-(0000,5160)	CS	Borders	Borders	1	ret
-(0000,5170)	IS	Copies	Copies	1	ret
-(0000,5180)	CS	Command Magnification Type	CommandMagnificationType	1	ret
-(0000,5190)	CS	Erase	Erase	1	ret
-(0000,51A0)	CS	Print	Print	1	ret
-(0000,51B0)	US	Overlays	Overlays	1-n	ret
+(0000,4000)	LT	Dialog Receiver	DialogReceiver	1	Ret
+(0000,4010)	LT	Terminal Type	TerminalType	1	Ret
+(0000,5010)	SH	Message Set ID	MessageSetID	1	Ret
+(0000,5020)	SH	End Message ID	EndMessageID	1	Ret
+(0000,5110)	LT	Display Format	DisplayFormat	1	Ret
+(0000,5120)	LT	Page Position ID	PagePositionID	1	Ret
+(0000,5130)	CS	Text Format ID	TextFormatID	1	Ret
+(0000,5140)	CS	Normal/Reverse	NormalReverse	1	Ret
+(0000,5150)	CS	Add Gray Scale	AddGrayScale	1	Ret
+(0000,5160)	CS	Borders	Borders	1	Ret
+(0000,5170)	IS	Copies	Copies	1	Ret
+(0000,5180)	CS	Command Magnification Type	CommandMagnificationType	1	Ret
+(0000,5190)	CS	Erase	Erase	1	Ret
+(0000,51A0)	CS	Print	Print	1	Ret
+(0000,51B0)	US	Overlays	Overlays	1-n	Ret
 (0002,0000)	UL	File Meta Information Group Length	FileMetaInformationGroupLength	1	Dicom
 (0002,0001)	OB	File Meta Information Version	FileMetaInformationVersion	1	Dicom
 (0002,0002)	UI	Media Storage SOP Class UID	MediaStorageSOPClassUID	1	Dicom
@@ -146,18 +143,18 @@
 (0004,1430)	CS	Directory Record Type	DirectoryRecordType	1	Dicom
 (0004,1432)	UI	Private Record UID	PrivateRecordUID	1	Dicom
 (0004,1500)	CS	Referenced File ID	ReferencedFileID	1-8	Dicom
-(0004,1504)	UL	MRDR Directory Record Offset	MRDRDirectoryRecordOffset	1	ret
+(0004,1504)	UL	MRDR Directory Record Offset	MRDRDirectoryRecordOffset	1	Ret
 (0004,1510)	UI	Referenced SOP Class UID in File	ReferencedSOPClassUIDInFile	1	Dicom
 (0004,1511)	UI	Referenced SOP Instance UID in File	ReferencedSOPInstanceUIDInFile	1	Dicom
 (0004,1512)	UI	Referenced Transfer Syntax UID in File	ReferencedTransferSyntaxUIDInFile	1	Dicom
 (0004,151A)	UI	Referenced Related General SOP Class UID in File	ReferencedRelatedGeneralSOPClassUIDInFile	1-n	Dicom
-(0004,1600)	UL	Number of References	NumberOfReferences	1	ret
+(0004,1600)	UL	Number of References	NumberOfReferences	1	Ret
 (0006,0001)	SQ	Current Frame Functional Groups Sequence	CurrentFrameFunctionalGroupsSequence	1	Dicom
-(0008,0001)	UL	Length to End	LengthToEnd	1	ret
+(0008,0001)	UL	Length to End	LengthToEnd	1	Ret
 (0008,0005)	CS	Specific Character Set	SpecificCharacterSet	1-n	Dicom
 (0008,0006)	SQ	Language Code Sequence	LanguageCodeSequence	1	Dicom
 (0008,0008)	CS	Image Type	ImageType	2-n	Dicom
-(0008,0010)	SH	Recognition Code	RecognitionCode	1	ret
+(0008,0010)	SH	Recognition Code	RecognitionCode	1	Ret
 (0008,0012)	DA	Instance Creation Date	InstanceCreationDate	1	Dicom
 (0008,0013)	TM	Instance Creation Time	InstanceCreationTime	1	Dicom
 (0008,0014)	UI	Instance Creator UID	InstanceCreatorUID	1	Dicom
@@ -172,18 +169,18 @@
 (0008,0021)	DA	Series Date	SeriesDate	1	Dicom
 (0008,0022)	DA	Acquisition Date	AcquisitionDate	1	Dicom
 (0008,0023)	DA	Content Date	ContentDate	1	Dicom
-(0008,0024)	DA	Overlay Date	OverlayDate	1	ret
-(0008,0025)	DA	Curve Date	CurveDate	1	ret
+(0008,0024)	DA	Overlay Date	OverlayDate	1	Ret
+(0008,0025)	DA	Curve Date	CurveDate	1	Ret
 (0008,002A)	DT	Acquisition DateTime	AcquisitionDateTime	1	Dicom
 (0008,0030)	TM	Study Time	StudyTime	1	Dicom
 (0008,0031)	TM	Series Time	SeriesTime	1	Dicom
 (0008,0032)	TM	Acquisition Time	AcquisitionTime	1	Dicom
 (0008,0033)	TM	Content Time	ContentTime	1	Dicom
-(0008,0034)	TM	Overlay Time	OverlayTime	1	ret
-(0008,0035)	TM	Curve Time	CurveTime	1	ret
-(0008,0040)	US	Data Set Type	DataSetType	1	ret
-(0008,0041)	LO	Data Set Subtype	DataSetSubtype	1	ret
-(0008,0042)	CS	Nuclear Medicine Series Type	NuclearMedicineSeriesType	1	ret
+(0008,0034)	TM	Overlay Time	OverlayTime	1	Ret
+(0008,0035)	TM	Curve Time	CurveTime	1	Ret
+(0008,0040)	US	Data Set Type	DataSetType	1	Ret
+(0008,0041)	LO	Data Set Subtype	DataSetSubtype	1	Ret
+(0008,0042)	CS	Nuclear Medicine Series Type	NuclearMedicineSeriesType	1	Ret
 (0008,0050)	SH	Accession Number	AccessionNumber	1	Dicom
 (0008,0051)	SQ	Issuer of Accession Number Sequence	IssuerOfAccessionNumberSequence	1	Dicom
 (0008,0052)	CS	Query/Retrieve Level	QueryRetrieveLevel	1	Dicom
@@ -300,7 +297,7 @@
 (0008,0427)	UL	Number of Study Records in Instance	NumberOfStudyRecordsInInstance	1	Dicom
 (0008,0428)	UV	Total Number of Study Records	TotalNumberOfStudyRecords	1	Dicom
 (0008,0429)	UV	Maximum Number of Records	MaximumNumberOfRecords	1	Dicom
-(0008,1000)	AE	Network ID	NetworkID	1	ret
+(0008,1000)	AE	Network ID	NetworkID	1	Ret
 (0008,1010)	SH	Station Name	StationName	1	Dicom
 (0008,1030)	LO	Study Description	StudyDescription	1	Dicom
 (0008,1032)	SQ	Procedure Code Sequence	ProcedureCodeSequence	1	Dicom
@@ -320,17 +317,17 @@
 (0008,1084)	SQ	Admitting Diagnoses Code Sequence	AdmittingDiagnosesCodeSequence	1	Dicom
 (0008,1088)	LO	Pyramid Description	PyramidDescription	1	Dicom
 (0008,1090)	LO	Manufacturer's Model Name	ManufacturerModelName	1	Dicom
-(0008,1100)	SQ	Referenced Results Sequence	ReferencedResultsSequence	1	ret
+(0008,1100)	SQ	Referenced Results Sequence	ReferencedResultsSequence	1	Ret
 (0008,1110)	SQ	Referenced Study Sequence	ReferencedStudySequence	1	Dicom
 (0008,1111)	SQ	Referenced Performed Procedure Step Sequence	ReferencedPerformedProcedureStepSequence	1	Dicom
 (0008,1115)	SQ	Referenced Series Sequence	ReferencedSeriesSequence	1	Dicom
 (0008,1120)	SQ	Referenced Patient Sequence	ReferencedPatientSequence	1	Dicom
 (0008,1125)	SQ	Referenced Visit Sequence	ReferencedVisitSequence	1	Dicom
-(0008,1130)	SQ	Referenced Overlay Sequence	ReferencedOverlaySequence	1	ret
+(0008,1130)	SQ	Referenced Overlay Sequence	ReferencedOverlaySequence	1	Ret
 (0008,1134)	SQ	Referenced Stereometric Instance Sequence	ReferencedStereometricInstanceSequence	1	Dicom
 (0008,113A)	SQ	Referenced Waveform Sequence	ReferencedWaveformSequence	1	Dicom
 (0008,1140)	SQ	Referenced Image Sequence	ReferencedImageSequence	1	Dicom
-(0008,1145)	SQ	Referenced Curve Sequence	ReferencedCurveSequence	1	ret
+(0008,1145)	SQ	Referenced Curve Sequence	ReferencedCurveSequence	1	Ret
 (0008,114A)	SQ	Referenced Instance Sequence	ReferencedInstanceSequence	1	Dicom
 (0008,114B)	SQ	Referenced Real World Value Mapping Instance Sequence	ReferencedRealWorldValueMappingInstanceSequence	1	Dicom
 (0008,1150)	UI	Referenced SOP Class UID	ReferencedSOPClassUID	1	Dicom
@@ -352,7 +349,7 @@
 (0008,119A)	SQ	Other Failures Sequence	OtherFailuresSequence	1	Dicom
 (0008,1200)	SQ	Studies Containing Other Referenced Instances Sequence	StudiesContainingOtherReferencedInstancesSequence	1	Dicom
 (0008,1250)	SQ	Related Series Sequence	RelatedSeriesSequence	1	Dicom
-(0008,2110)	CS	Lossy Image Compression (Retired)	LossyImageCompressionRetired	1	ret
+(0008,2110)	CS	Lossy Image Compression (Retired)	LossyImageCompressionRetired	1	Ret
 (0008,2111)	ST	Derivation Description	DerivationDescription	1	Dicom
 (0008,2112)	SQ	Source Image Sequence	SourceImageSequence	1	Dicom
 (0008,2120)	SH	Stage Name	StageName	1	Dicom
@@ -370,33 +367,33 @@
 (0008,2142)	IS	Start Trim	StartTrim	1	Dicom
 (0008,2143)	IS	Stop Trim	StopTrim	1	Dicom
 (0008,2144)	IS	Recommended Display Frame Rate	RecommendedDisplayFrameRate	1	Dicom
-(0008,2200)	CS	Transducer Position	TransducerPosition	1	ret
-(0008,2204)	CS	Transducer Orientation	TransducerOrientation	1	ret
-(0008,2208)	CS	Anatomic Structure	AnatomicStructure	1	ret
+(0008,2200)	CS	Transducer Position	TransducerPosition	1	Ret
+(0008,2204)	CS	Transducer Orientation	TransducerOrientation	1	Ret
+(0008,2208)	CS	Anatomic Structure	AnatomicStructure	1	Ret
 (0008,2218)	SQ	Anatomic Region Sequence	AnatomicRegionSequence	1	Dicom
 (0008,2220)	SQ	Anatomic Region Modifier Sequence	AnatomicRegionModifierSequence	1	Dicom
 (0008,2228)	SQ	Primary Anatomic Structure Sequence	PrimaryAnatomicStructureSequence	1	Dicom
-(0008,2229)	SQ	Anatomic Structure, Space or Region Sequence	AnatomicStructureSpaceOrRegionSequence	1	ret
+(0008,2229)	SQ	Anatomic Structure, Space or Region Sequence	AnatomicStructureSpaceOrRegionSequence	1	Ret
 (0008,2230)	SQ	Primary Anatomic Structure Modifier Sequence	PrimaryAnatomicStructureModifierSequence	1	Dicom
-(0008,2240)	SQ	Transducer Position Sequence	TransducerPositionSequence	1	ret
-(0008,2242)	SQ	Transducer Position Modifier Sequence	TransducerPositionModifierSequence	1	ret
-(0008,2244)	SQ	Transducer Orientation Sequence	TransducerOrientationSequence	1	ret
-(0008,2246)	SQ	Transducer Orientation Modifier Sequence	TransducerOrientationModifierSequence	1	ret
-(0008,2251)	SQ	Anatomic Structure Space Or Region Code Sequence (Trial)	AnatomicStructureSpaceOrRegionCodeSequenceTrial	1	ret
-(0008,2253)	SQ	Anatomic Portal Of Entrance Code Sequence (Trial)	AnatomicPortalOfEntranceCodeSequenceTrial	1	ret
-(0008,2255)	SQ	Anatomic Approach Direction Code Sequence (Trial)	AnatomicApproachDirectionCodeSequenceTrial	1	ret
-(0008,2256)	ST	Anatomic Perspective Description (Trial)	AnatomicPerspectiveDescriptionTrial	1	ret
-(0008,2257)	SQ	Anatomic Perspective Code Sequence (Trial)	AnatomicPerspectiveCodeSequenceTrial	1	ret
-(0008,2258)	ST	Anatomic Location Of Examining Instrument Description (Trial)	AnatomicLocationOfExaminingInstrumentDescriptionTrial	1	ret
-(0008,2259)	SQ	Anatomic Location Of Examining Instrument Code Sequence (Trial)	AnatomicLocationOfExaminingInstrumentCodeSequenceTrial	1	ret
-(0008,225A)	SQ	Anatomic Structure Space Or Region Modifier Code Sequence (Trial)	AnatomicStructureSpaceOrRegionModifierCodeSequenceTrial	1	ret
-(0008,225C)	SQ	On Axis Background Anatomic Structure Code Sequence (Trial)	OnAxisBackgroundAnatomicStructureCodeSequenceTrial	1	ret
+(0008,2240)	SQ	Transducer Position Sequence	TransducerPositionSequence	1	Ret
+(0008,2242)	SQ	Transducer Position Modifier Sequence	TransducerPositionModifierSequence	1	Ret
+(0008,2244)	SQ	Transducer Orientation Sequence	TransducerOrientationSequence	1	Ret
+(0008,2246)	SQ	Transducer Orientation Modifier Sequence	TransducerOrientationModifierSequence	1	Ret
+(0008,2251)	SQ	Anatomic Structure Space Or Region Code Sequence (Trial)	AnatomicStructureSpaceOrRegionCodeSequenceTrial	1	Ret
+(0008,2253)	SQ	Anatomic Portal Of Entrance Code Sequence (Trial)	AnatomicPortalOfEntranceCodeSequenceTrial	1	Ret
+(0008,2255)	SQ	Anatomic Approach Direction Code Sequence (Trial)	AnatomicApproachDirectionCodeSequenceTrial	1	Ret
+(0008,2256)	ST	Anatomic Perspective Description (Trial)	AnatomicPerspectiveDescriptionTrial	1	Ret
+(0008,2257)	SQ	Anatomic Perspective Code Sequence (Trial)	AnatomicPerspectiveCodeSequenceTrial	1	Ret
+(0008,2258)	ST	Anatomic Location Of Examining Instrument Description (Trial)	AnatomicLocationOfExaminingInstrumentDescriptionTrial	1	Ret
+(0008,2259)	SQ	Anatomic Location Of Examining Instrument Code Sequence (Trial)	AnatomicLocationOfExaminingInstrumentCodeSequenceTrial	1	Ret
+(0008,225A)	SQ	Anatomic Structure Space Or Region Modifier Code Sequence (Trial)	AnatomicStructureSpaceOrRegionModifierCodeSequenceTrial	1	Ret
+(0008,225C)	SQ	On Axis Background Anatomic Structure Code Sequence (Trial)	OnAxisBackgroundAnatomicStructureCodeSequenceTrial	1	Ret
 (0008,3001)	SQ	Alternate Representation Sequence	AlternateRepresentationSequence	1	Dicom
 (0008,3002)	UI	Available Transfer Syntax UID	AvailableTransferSyntaxUID	1-n	Dicom
 (0008,3010)	UI	Irradiation Event UID	IrradiationEventUID	1-n	Dicom
 (0008,3011)	SQ	Source Irradiation Event Sequence	SourceIrradiationEventSequence	1	Dicom
 (0008,3012)	UI	Radiopharmaceutical Administration Event UID	RadiopharmaceuticalAdministrationEventUID	1	Dicom
-(0008,4000)	LT	Identifying Comments	IdentifyingComments	1	ret
+(0008,4000)	LT	Identifying Comments	IdentifyingComments	1	Ret
 (0008,9007)	CS	Frame Type	FrameType	4-5	Dicom
 (0008,9092)	SQ	Referenced Image Evidence Sequence	ReferencedImageEvidenceSequence	1	Dicom
 (0008,9121)	SQ	Referenced Raw Data Sequence	ReferencedRawDataSequence	1	Dicom
@@ -445,7 +442,7 @@
 (0010,0222)	UC	Genetic Modifications Description	GeneticModificationsDescription	1	Dicom
 (0010,0223)	LO	Genetic Modifications Nomenclature	GeneticModificationsNomenclature	1	Dicom
 (0010,0229)	SQ	Genetic Modifications Code Sequence	GeneticModificationsCodeSequence	1	Dicom
-(0010,1000)	LO	Other Patient IDs	OtherPatientIDs	1-n	ret
+(0010,1000)	LO	Other Patient IDs	OtherPatientIDs	1-n	Ret
 (0010,1001)	PN	Other Patient Names	OtherPatientNames	1-n	Dicom
 (0010,1002)	SQ	Other Patient IDs Sequence	OtherPatientIDsSequence	1	Dicom
 (0010,1005)	PN	Patient's Birth Name	PatientBirthName	1	Dicom
@@ -457,11 +454,11 @@
 (0010,1024)	DS	Measured Lateral Dimension	MeasuredLateralDimension	1	Dicom
 (0010,1030)	DS	Patient's Weight	PatientWeight	1	Dicom
 (0010,1040)	LO	Patient's Address	PatientAddress	1	Dicom
-(0010,1050)	LO	Insurance Plan Identification	InsurancePlanIdentification	1-n	ret
+(0010,1050)	LO	Insurance Plan Identification	InsurancePlanIdentification	1-n	Ret
 (0010,1060)	PN	Patient's Mother's Birth Name	PatientMotherBirthName	1	Dicom
 (0010,1080)	LO	Military Rank	MilitaryRank	1	Dicom
 (0010,1081)	LO	Branch of Service	BranchOfService	1	Dicom
-(0010,1090)	LO	Medical Record Locator	MedicalRecordLocator	1	ret
+(0010,1090)	LO	Medical Record Locator	MedicalRecordLocator	1	Ret
 (0010,1100)	SQ	Referenced Patient Photo Sequence	ReferencedPatientPhotoSequence	1	Dicom
 (0010,2000)	LO	Medical Alerts	MedicalAlerts	1-n	Dicom
 (0010,2110)	LO	Allergies	Allergies	1-n	Dicom
@@ -515,8 +512,8 @@
 (0012,0085)	CS	Consent for Distribution Flag	ConsentForDistributionFlag	1	Dicom
 (0012,0086)	DA	Ethics Committee Approval Effectiveness Start Date	EthicsCommitteeApprovalEffectivenessStartDate	1	Dicom
 (0012,0087)	DA	Ethics Committee Approval Effectiveness End Date	EthicsCommitteeApprovalEffectivenessEndDate	1	Dicom
-(0014,0023)	ST	CAD File Format	CADFileFormat	1	ret
-(0014,0024)	ST	Component Reference System	ComponentReferenceSystem	1	ret
+(0014,0023)	ST	CAD File Format	CADFileFormat	1	Ret
+(0014,0024)	ST	Component Reference System	ComponentReferenceSystem	1	Ret
 (0014,0025)	ST	Component Manufacturing Procedure	ComponentManufacturingProcedure	1	Diconde
 (0014,0028)	ST	Component Manufacturer	ComponentManufacturer	1	Diconde
 (0014,0030)	DS	Material Thickness	MaterialThickness	1-n	Diconde
@@ -524,7 +521,7 @@
 (0014,0034)	DS	Material Isolation Diameter	MaterialIsolationDiameter	1-n	Diconde
 (0014,0042)	ST	Material Grade	MaterialGrade	1	Diconde
 (0014,0044)	ST	Material Properties Description	MaterialPropertiesDescription	1	Diconde
-(0014,0045)	ST	Material Properties File Format (Retired)	MaterialPropertiesFileFormatRetired	1	ret
+(0014,0045)	ST	Material Properties File Format (Retired)	MaterialPropertiesFileFormatRetired	1	Ret
 (0014,0046)	LT	Material Notes	MaterialNotes	1	Diconde
 (0014,0050)	CS	Component Shape	ComponentShape	1	Diconde
 (0014,0052)	CS	Curvature Type	CurvatureType	1	Diconde
@@ -843,16 +840,16 @@
 (0018,0028)	DS	Intervention Drug Dose	InterventionDrugDose	1	Dicom
 (0018,0029)	SQ	Intervention Drug Code Sequence	InterventionDrugCodeSequence	1	Dicom
 (0018,002A)	SQ	Additional Drug Sequence	AdditionalDrugSequence	1	Dicom
-(0018,0030)	LO	Radionuclide	Radionuclide	1-n	ret
+(0018,0030)	LO	Radionuclide	Radionuclide	1-n	Ret
 (0018,0031)	LO	Radiopharmaceutical	Radiopharmaceutical	1	Dicom
-(0018,0032)	DS	Energy Window Centerline	EnergyWindowCenterline	1	ret
-(0018,0033)	DS	Energy Window Total Width	EnergyWindowTotalWidth	1-n	ret
+(0018,0032)	DS	Energy Window Centerline	EnergyWindowCenterline	1	Ret
+(0018,0033)	DS	Energy Window Total Width	EnergyWindowTotalWidth	1-n	Ret
 (0018,0034)	LO	Intervention Drug Name	InterventionDrugName	1	Dicom
 (0018,0035)	TM	Intervention Drug Start Time	InterventionDrugStartTime	1	Dicom
 (0018,0036)	SQ	Intervention Sequence	InterventionSequence	1	Dicom
-(0018,0037)	CS	Therapy Type	TherapyType	1	ret
+(0018,0037)	CS	Therapy Type	TherapyType	1	Ret
 (0018,0038)	CS	Intervention Status	InterventionStatus	1	Dicom
-(0018,0039)	CS	Therapy Description	TherapyDescription	1	ret
+(0018,0039)	CS	Therapy Description	TherapyDescription	1	Ret
 (0018,003A)	ST	Intervention Description	InterventionDescription	1	Dicom
 (0018,0040)	IS	Cine Rate	CineRate	1	Dicom
 (0018,0042)	CS	Initial Cine Run State	InitialCineRunState	1	Dicom
@@ -891,15 +888,15 @@
 (0018,100A)	SQ	UDI Sequence	UDISequence	1	Dicom
 (0018,100B)	UI	Manufacturer's Device Class UID	ManufacturerDeviceClassUID	1-n	Dicom
 (0018,1010)	LO	Secondary Capture Device ID	SecondaryCaptureDeviceID	1	Dicom
-(0018,1011)	LO	Hardcopy Creation Device ID	HardcopyCreationDeviceID	1	ret
+(0018,1011)	LO	Hardcopy Creation Device ID	HardcopyCreationDeviceID	1	Ret
 (0018,1012)	DA	Date of Secondary Capture	DateOfSecondaryCapture	1	Dicom
 (0018,1014)	TM	Time of Secondary Capture	TimeOfSecondaryCapture	1	Dicom
 (0018,1016)	LO	Secondary Capture Device Manufacturer	SecondaryCaptureDeviceManufacturer	1	Dicom
-(0018,1017)	LO	Hardcopy Device Manufacturer	HardcopyDeviceManufacturer	1	ret
+(0018,1017)	LO	Hardcopy Device Manufacturer	HardcopyDeviceManufacturer	1	Ret
 (0018,1018)	LO	Secondary Capture Device Manufacturer's Model Name	SecondaryCaptureDeviceManufacturerModelName	1	Dicom
 (0018,1019)	LO	Secondary Capture Device Software Versions	SecondaryCaptureDeviceSoftwareVersions	1-n	Dicom
-(0018,101A)	LO	Hardcopy Device Software Version	HardcopyDeviceSoftwareVersion	1-n	ret
-(0018,101B)	LO	Hardcopy Device Manufacturer's Model Name	HardcopyDeviceManufacturerModelName	1	ret
+(0018,101A)	LO	Hardcopy Device Software Version	HardcopyDeviceSoftwareVersion	1-n	Ret
+(0018,101B)	LO	Hardcopy Device Manufacturer's Model Name	HardcopyDeviceManufacturerModelName	1	Ret
 (0018,1020)	LO	Software Versions	SoftwareVersions	1-n	Dicom
 (0018,1022)	SH	Video Image Format Acquired	VideoImageFormatAcquired	1	Dicom
 (0018,1023)	LO	Digital Image Format Acquired	DigitalImageFormatAcquired	1	Dicom
@@ -963,12 +960,12 @@
 (0018,1138)	DS	Table Angle	TableAngle	1	Dicom
 (0018,113A)	CS	Table Type	TableType	1	Dicom
 (0018,1140)	CS	Rotation Direction	RotationDirection	1	Dicom
-(0018,1141)	DS	Angular Position	AngularPosition	1	ret
+(0018,1141)	DS	Angular Position	AngularPosition	1	Ret
 (0018,1142)	DS	Radial Position	RadialPosition	1-n	Dicom
 (0018,1143)	DS	Scan Arc	ScanArc	1	Dicom
 (0018,1144)	DS	Angular Step	AngularStep	1	Dicom
 (0018,1145)	DS	Center of Rotation Offset	CenterOfRotationOffset	1	Dicom
-(0018,1146)	DS	Rotation Offset	RotationOffset	1-n	ret
+(0018,1146)	DS	Rotation Offset	RotationOffset	1-n	Ret
 (0018,1147)	CS	Field of View Shape	FieldOfViewShape	1	Dicom
 (0018,1149)	IS	Field of View Dimension(s)	FieldOfViewDimensions	1-2	Dicom
 (0018,1150)	IS	Exposure Time	ExposureTime	1	Dicom
@@ -1021,7 +1018,7 @@
 (0018,1202)	DT	DateTime of Last Calibration	DateTimeOfLastCalibration	1	Dicom
 (0018,1203)	DT	Calibration DateTime	CalibrationDateTime	1	Dicom
 (0018,1210)	SH	Convolution Kernel	ConvolutionKernel	1-n	Dicom
-(0018,1240)	IS	Upper/Lower Pixel Values	UpperLowerPixelValues	1-n	ret
+(0018,1240)	IS	Upper/Lower Pixel Values	UpperLowerPixelValues	1-n	Ret
 (0018,1242)	IS	Actual Frame Duration	ActualFrameDuration	1	Dicom
 (0018,1243)	IS	Count Rate	CountRate	1	Dicom
 (0018,1244)	US	Preferred Playback Sequencing	PreferredPlaybackSequencing	1	Dicom
@@ -1118,27 +1115,27 @@
 (0018,3103)	IS	IVUS Pullback Start Frame Number	IVUSPullbackStartFrameNumber	1	Dicom
 (0018,3104)	IS	IVUS Pullback Stop Frame Number	IVUSPullbackStopFrameNumber	1	Dicom
 (0018,3105)	IS	Lesion Number	LesionNumber	1-n	Dicom
-(0018,4000)	LT	Acquisition Comments	AcquisitionComments	1	ret
+(0018,4000)	LT	Acquisition Comments	AcquisitionComments	1	Ret
 (0018,5000)	SH	Output Power	OutputPower	1-n	Dicom
 (0018,5010)	LO	Transducer Data	TransducerData	1-n	Dicom
 (0018,5011)	SQ	Transducer Identification Sequence	TransducerIdentificationSequence	1	Dicom
 (0018,5012)	DS	Focus Depth	FocusDepth	1	Dicom
 (0018,5020)	LO	Processing Function	ProcessingFunction	1	Dicom
-(0018,5021)	LO	Postprocessing Function	PostprocessingFunction	1	ret
+(0018,5021)	LO	Postprocessing Function	PostprocessingFunction	1	Ret
 (0018,5022)	DS	Mechanical Index	MechanicalIndex	1	Dicom
 (0018,5024)	DS	Bone Thermal Index	BoneThermalIndex	1	Dicom
 (0018,5026)	DS	Cranial Thermal Index	CranialThermalIndex	1	Dicom
 (0018,5027)	DS	Soft Tissue Thermal Index	SoftTissueThermalIndex	1	Dicom
 (0018,5028)	DS	Soft Tissue-focus Thermal Index	SoftTissueFocusThermalIndex	1	Dicom
 (0018,5029)	DS	Soft Tissue-surface Thermal Index	SoftTissueSurfaceThermalIndex	1	Dicom
-(0018,5030)	DS	Dynamic Range	DynamicRange	1	ret
-(0018,5040)	DS	Total Gain	TotalGain	1	ret
+(0018,5030)	DS	Dynamic Range	DynamicRange	1	Ret
+(0018,5040)	DS	Total Gain	TotalGain	1	Ret
 (0018,5050)	IS	Depth of Scan Field	DepthOfScanField	1	Dicom
 (0018,5100)	CS	Patient Position	PatientPosition	1	Dicom
 (0018,5101)	CS	View Position	ViewPosition	1	Dicom
 (0018,5104)	SQ	Projection Eponymous Name Code Sequence	ProjectionEponymousNameCodeSequence	1	Dicom
-(0018,5210)	DS	Image Transformation Matrix	ImageTransformationMatrix	6	ret
-(0018,5212)	DS	Image Translation Vector	ImageTranslationVector	3	ret
+(0018,5210)	DS	Image Transformation Matrix	ImageTransformationMatrix	6	Ret
+(0018,5212)	DS	Image Translation Vector	ImageTranslationVector	3	Ret
 (0018,6000)	DS	Sensitivity	Sensitivity	1	Dicom
 (0018,6011)	SQ	Sequence of Ultrasound Regions	SequenceOfUltrasoundRegions	1	Dicom
 (0018,6012)	US	Region Spatial Format	RegionSpatialFormat	1	Dicom
@@ -1161,17 +1158,17 @@
 (0018,6032)	UL	Pulse Repetition Frequency	PulseRepetitionFrequency	1	Dicom
 (0018,6034)	FD	Doppler Correction Angle	DopplerCorrectionAngle	1	Dicom
 (0018,6036)	FD	Steering Angle	SteeringAngle	1	Dicom
-(0018,6038)	UL	Doppler Sample Volume X Position (Retired)	DopplerSampleVolumeXPositionRetired	1	ret
+(0018,6038)	UL	Doppler Sample Volume X Position (Retired)	DopplerSampleVolumeXPositionRetired	1	Ret
 (0018,6039)	SL	Doppler Sample Volume X Position	DopplerSampleVolumeXPosition	1	Dicom
-(0018,603A)	UL	Doppler Sample Volume Y Position (Retired)	DopplerSampleVolumeYPositionRetired	1	ret
+(0018,603A)	UL	Doppler Sample Volume Y Position (Retired)	DopplerSampleVolumeYPositionRetired	1	Ret
 (0018,603B)	SL	Doppler Sample Volume Y Position	DopplerSampleVolumeYPosition	1	Dicom
-(0018,603C)	UL	TM-Line Position X0 (Retired)	TMLinePositionX0Retired	1	ret
+(0018,603C)	UL	TM-Line Position X0 (Retired)	TMLinePositionX0Retired	1	Ret
 (0018,603D)	SL	TM-Line Position X0	TMLinePositionX0	1	Dicom
-(0018,603E)	UL	TM-Line Position Y0 (Retired)	TMLinePositionY0Retired	1	ret
+(0018,603E)	UL	TM-Line Position Y0 (Retired)	TMLinePositionY0Retired	1	Ret
 (0018,603F)	SL	TM-Line Position Y0	TMLinePositionY0	1	Dicom
-(0018,6040)	UL	TM-Line Position X1 (Retired)	TMLinePositionX1Retired	1	ret
+(0018,6040)	UL	TM-Line Position X1 (Retired)	TMLinePositionX1Retired	1	Ret
 (0018,6041)	SL	TM-Line Position X1	TMLinePositionX1	1	Dicom
-(0018,6042)	UL	TM-Line Position Y1 (Retired)	TMLinePositionY1Retired	1	ret
+(0018,6042)	UL	TM-Line Position Y1 (Retired)	TMLinePositionY1Retired	1	Ret
 (0018,6043)	SL	TM-Line Position Y1	TMLinePositionY1	1	Dicom
 (0018,6044)	US	Pixel Component Organization	PixelComponentOrganization	1	Dicom
 (0018,6046)	UL	Pixel Component Mask	PixelComponentMask	1	Dicom
@@ -1309,7 +1306,7 @@
 (0018,9093)	US	Number of k-Space Trajectories	NumberOfKSpaceTrajectories	1	Dicom
 (0018,9094)	CS	Coverage of k-Space	CoverageOfKSpace	1	Dicom
 (0018,9095)	UL	Spectroscopy Acquisition Phase Rows	SpectroscopyAcquisitionPhaseRows	1	Dicom
-(0018,9096)	FD	Parallel Reduction Factor In-plane (Retired)	ParallelReductionFactorInPlaneRetired	1	ret
+(0018,9096)	FD	Parallel Reduction Factor In-plane (Retired)	ParallelReductionFactorInPlaneRetired	1	Ret
 (0018,9098)	FD	Transmitter Frequency	TransmitterFrequency	1-2	Dicom
 (0018,9100)	CS	Resonant Nucleus	ResonantNucleus	1-2	Dicom
 (0018,9101)	CS	Frequency Correction	FrequencyCorrection	1	Dicom
@@ -1332,7 +1329,7 @@
 (0018,9152)	SQ	MR Metabolite Map Sequence	MRMetaboliteMapSequence	1	Dicom
 (0018,9155)	FD	Parallel Reduction Factor out-of-plane	ParallelReductionFactorOutOfPlane	1	Dicom
 (0018,9159)	UL	Spectroscopy Acquisition Out-of-plane Phase Steps	SpectroscopyAcquisitionOutOfPlanePhaseSteps	1	Dicom
-(0018,9166)	CS	Bulk Motion Status	BulkMotionStatus	1	ret
+(0018,9166)	CS	Bulk Motion Status	BulkMotionStatus	1	Ret
 (0018,9168)	FD	Parallel Reduction Factor Second In-plane	ParallelReductionFactorSecondInPlane	1	Dicom
 (0018,9169)	CS	Cardiac Beat Rejection Technique	CardiacBeatRejectionTechnique	1	Dicom
 (0018,9170)	CS	Respiratory Motion Compensation Technique	RespiratoryMotionCompensationTechnique	1	Dicom
@@ -1352,8 +1349,8 @@
 (0018,9184)	FD	Tagging Delay	TaggingDelay	1	Dicom
 (0018,9185)	ST	Respiratory Motion Compensation Technique Description	RespiratoryMotionCompensationTechniqueDescription	1	Dicom
 (0018,9186)	SH	Respiratory Signal Source ID	RespiratorySignalSourceID	1	Dicom
-(0018,9195)	FD	Chemical Shift Minimum Integration Limit in Hz	ChemicalShiftMinimumIntegrationLimitInHz	1	ret
-(0018,9196)	FD	Chemical Shift Maximum Integration Limit in Hz	ChemicalShiftMaximumIntegrationLimitInHz	1	ret
+(0018,9195)	FD	Chemical Shift Minimum Integration Limit in Hz	ChemicalShiftMinimumIntegrationLimitInHz	1	Ret
+(0018,9196)	FD	Chemical Shift Maximum Integration Limit in Hz	ChemicalShiftMaximumIntegrationLimitInHz	1	Ret
 (0018,9197)	SQ	MR Velocity Encoding Sequence	MRVelocityEncodingSequence	1	Dicom
 (0018,9198)	CS	First Order Phase Correction	FirstOrderPhaseCorrection	1	Dicom
 (0018,9199)	CS	Water Referenced Phase Correction	WaterReferencedPhaseCorrection	1	Dicom
@@ -1416,7 +1413,7 @@
 (0018,9321)	SQ	CT Exposure Sequence	CTExposureSequence	1	Dicom
 (0018,9322)	FD	Reconstruction Pixel Spacing	ReconstructionPixelSpacing	2	Dicom
 (0018,9323)	CS	Exposure Modulation Type	ExposureModulationType	1-n	Dicom
-(0018,9324)	FD	Estimated Dose Saving	EstimatedDoseSaving	1	ret
+(0018,9324)	FD	Estimated Dose Saving	EstimatedDoseSaving	1	Ret
 (0018,9325)	SQ	CT X-Ray Details Sequence	CTXRayDetailsSequence	1	Dicom
 (0018,9326)	SQ	CT Position Sequence	CTPositionSequence	1	Dicom
 (0018,9327)	FD	Table Position	TablePosition	1	Dicom
@@ -1705,60 +1702,60 @@
 (0020,0011)	IS	Series Number	SeriesNumber	1	Dicom
 (0020,0012)	IS	Acquisition Number	AcquisitionNumber	1	Dicom
 (0020,0013)	IS	Instance Number	InstanceNumber	1	Dicom
-(0020,0014)	IS	Isotope Number	IsotopeNumber	1	ret
-(0020,0015)	IS	Phase Number	PhaseNumber	1	ret
-(0020,0016)	IS	Interval Number	IntervalNumber	1	ret
-(0020,0017)	IS	Time Slot Number	TimeSlotNumber	1	ret
-(0020,0018)	IS	Angle Number	AngleNumber	1	ret
+(0020,0014)	IS	Isotope Number	IsotopeNumber	1	Ret
+(0020,0015)	IS	Phase Number	PhaseNumber	1	Ret
+(0020,0016)	IS	Interval Number	IntervalNumber	1	Ret
+(0020,0017)	IS	Time Slot Number	TimeSlotNumber	1	Ret
+(0020,0018)	IS	Angle Number	AngleNumber	1	Ret
 (0020,0019)	IS	Item Number	ItemNumber	1	Dicom
 (0020,0020)	CS	Patient Orientation	PatientOrientation	2	Dicom
-(0020,0022)	IS	Overlay Number	OverlayNumber	1	ret
-(0020,0024)	IS	Curve Number	CurveNumber	1	ret
-(0020,0026)	IS	LUT Number	LUTNumber	1	ret
+(0020,0022)	IS	Overlay Number	OverlayNumber	1	Ret
+(0020,0024)	IS	Curve Number	CurveNumber	1	Ret
+(0020,0026)	IS	LUT Number	LUTNumber	1	Ret
 (0020,0027)	LO	Pyramid Label	PyramidLabel	1	Dicom
-(0020,0030)	DS	Image Position	ImagePosition	3	ret
+(0020,0030)	DS	Image Position	ImagePosition	3	Ret
 (0020,0032)	DS	Image Position (Patient)	ImagePositionPatient	3	Dicom
-(0020,0035)	DS	Image Orientation	ImageOrientation	6	ret
+(0020,0035)	DS	Image Orientation	ImageOrientation	6	Ret
 (0020,0037)	DS	Image Orientation (Patient)	ImageOrientationPatient	6	Dicom
-(0020,0050)	DS	Location	Location	1	ret
+(0020,0050)	DS	Location	Location	1	Ret
 (0020,0052)	UI	Frame of Reference UID	FrameOfReferenceUID	1	Dicom
 (0020,0060)	CS	Laterality	Laterality	1	Dicom
 (0020,0062)	CS	Image Laterality	ImageLaterality	1	Dicom
-(0020,0070)	LO	Image Geometry Type	ImageGeometryType	1	ret
-(0020,0080)	CS	Masking Image	MaskingImage	1-n	ret
-(0020,00AA)	IS	Report Number	ReportNumber	1	ret
+(0020,0070)	LO	Image Geometry Type	ImageGeometryType	1	Ret
+(0020,0080)	CS	Masking Image	MaskingImage	1-n	Ret
+(0020,00AA)	IS	Report Number	ReportNumber	1	Ret
 (0020,0100)	IS	Temporal Position Identifier	TemporalPositionIdentifier	1	Dicom
 (0020,0105)	IS	Number of Temporal Positions	NumberOfTemporalPositions	1	Dicom
 (0020,0110)	DS	Temporal Resolution	TemporalResolution	1	Dicom
 (0020,0200)	UI	Synchronization Frame of Reference UID	SynchronizationFrameOfReferenceUID	1	Dicom
 (0020,0242)	UI	SOP Instance UID of Concatenation Source	SOPInstanceUIDOfConcatenationSource	1	Dicom
-(0020,1000)	IS	Series in Study	SeriesInStudy	1	ret
-(0020,1001)	IS	Acquisitions in Series	AcquisitionsInSeries	1	ret
+(0020,1000)	IS	Series in Study	SeriesInStudy	1	Ret
+(0020,1001)	IS	Acquisitions in Series	AcquisitionsInSeries	1	Ret
 (0020,1002)	IS	Images in Acquisition	ImagesInAcquisition	1	Dicom
-(0020,1003)	IS	Images in Series	ImagesInSeries	1	ret
-(0020,1004)	IS	Acquisitions in Study	AcquisitionsInStudy	1	ret
-(0020,1005)	IS	Images in Study	ImagesInStudy	1	ret
-(0020,1020)	LO	Reference	Reference	1-n	ret
+(0020,1003)	IS	Images in Series	ImagesInSeries	1	Ret
+(0020,1004)	IS	Acquisitions in Study	AcquisitionsInStudy	1	Ret
+(0020,1005)	IS	Images in Study	ImagesInStudy	1	Ret
+(0020,1020)	LO	Reference	Reference	1-n	Ret
 (0020,103F)	LO	Target Position Reference Indicator	TargetPositionReferenceIndicator	1	Dicom
 (0020,1040)	LO	Position Reference Indicator	PositionReferenceIndicator	1	Dicom
 (0020,1041)	DS	Slice Location	SliceLocation	1	Dicom
-(0020,1070)	IS	Other Study Numbers	OtherStudyNumbers	1-n	ret
+(0020,1070)	IS	Other Study Numbers	OtherStudyNumbers	1-n	Ret
 (0020,1200)	IS	Number of Patient Related Studies	NumberOfPatientRelatedStudies	1	Dicom
 (0020,1202)	IS	Number of Patient Related Series	NumberOfPatientRelatedSeries	1	Dicom
 (0020,1204)	IS	Number of Patient Related Instances	NumberOfPatientRelatedInstances	1	Dicom
 (0020,1206)	IS	Number of Study Related Series	NumberOfStudyRelatedSeries	1	Dicom
 (0020,1208)	IS	Number of Study Related Instances	NumberOfStudyRelatedInstances	1	Dicom
 (0020,1209)	IS	Number of Series Related Instances	NumberOfSeriesRelatedInstances	1	Dicom
-(0020,31xx)	CS	Source Image IDs	SourceImageIDs	1-n	ret
-(0020,3401)	CS	Modifying Device ID	ModifyingDeviceID	1	ret
-(0020,3402)	CS	Modified Image ID	ModifiedImageID	1	ret
-(0020,3403)	DA	Modified Image Date	ModifiedImageDate	1	ret
-(0020,3404)	LO	Modifying Device Manufacturer	ModifyingDeviceManufacturer	1	ret
-(0020,3405)	TM	Modified Image Time	ModifiedImageTime	1	ret
-(0020,3406)	LO	Modified Image Description	ModifiedImageDescription	1	ret
+(0020,31xx)	CS	Source Image IDs	SourceImageIDs	1-n	Ret
+(0020,3401)	CS	Modifying Device ID	ModifyingDeviceID	1	Ret
+(0020,3402)	CS	Modified Image ID	ModifiedImageID	1	Ret
+(0020,3403)	DA	Modified Image Date	ModifiedImageDate	1	Ret
+(0020,3404)	LO	Modifying Device Manufacturer	ModifyingDeviceManufacturer	1	Ret
+(0020,3405)	TM	Modified Image Time	ModifiedImageTime	1	Ret
+(0020,3406)	LO	Modified Image Description	ModifiedImageDescription	1	Ret
 (0020,4000)	LT	Image Comments	ImageComments	1	Dicom
-(0020,5000)	AT	Original Image Identification	OriginalImageIdentification	1-n	ret
-(0020,5002)	LO	Original Image Identification Nomenclature	OriginalImageIdentificationNomenclature	1-n	ret
+(0020,5000)	AT	Original Image Identification	OriginalImageIdentification	1-n	Ret
+(0020,5002)	LO	Original Image Identification Nomenclature	OriginalImageIdentificationNomenclature	1-n	Ret
 (0020,9056)	SH	Stack ID	StackID	1	Dicom
 (0020,9057)	UL	In-Stack Position Number	InStackPositionNumber	1	Dicom
 (0020,9071)	SQ	Frame Anatomy Sequence	FrameAnatomySequence	1	Dicom
@@ -1905,7 +1902,7 @@
 (0022,1090)	SQ	IOL Power Sequence	IOLPowerSequence	1	Dicom
 (0022,1092)	SQ	Lens Constant Sequence	LensConstantSequence	1	Dicom
 (0022,1093)	LO	IOL Manufacturer	IOLManufacturer	1	Dicom
-(0022,1094)	LO	Lens Constant Description	LensConstantDescription	1	ret
+(0022,1094)	LO	Lens Constant Description	LensConstantDescription	1	Ret
 (0022,1095)	LO	Implant Name	ImplantName	1	Dicom
 (0022,1096)	SQ	Keratometry Measurement Type Code Sequence	KeratometryMeasurementTypeCodeSequence	1	Dicom
 (0022,1097)	LO	Implant Part Number	ImplantPartNumber	1	Dicom
@@ -1928,7 +1925,7 @@
 (0022,1135)	SQ	Source of Refractive Measurements Code Sequence	SourceOfRefractiveMeasurementsCodeSequence	1	Dicom
 (0022,1140)	CS	Ophthalmic Axial Length Measurement Modified	OphthalmicAxialLengthMeasurementModified	1	Dicom
 (0022,1150)	SQ	Ophthalmic Axial Length Data Source Code Sequence	OphthalmicAxialLengthDataSourceCodeSequence	1	Dicom
-(0022,1153)	SQ	Ophthalmic Axial Length Acquisition Method Code Sequence	OphthalmicAxialLengthAcquisitionMethodCodeSequence	1	ret
+(0022,1153)	SQ	Ophthalmic Axial Length Acquisition Method Code Sequence	OphthalmicAxialLengthAcquisitionMethodCodeSequence	1	Ret
 (0022,1155)	FL	Signal to Noise Ratio	SignalToNoiseRatio	1	Dicom
 (0022,1159)	LO	Ophthalmic Axial Length Data Source Description	OphthalmicAxialLengthDataSourceDescription	1	Dicom
 (0022,1210)	SQ	Ophthalmic Axial Length Measurements Total Length Sequence	OphthalmicAxialLengthMeasurementsTotalLengthSequence	1	Dicom
@@ -1942,8 +1939,8 @@
 (0022,1257)	SQ	Selected Segmental Ophthalmic Axial Length Sequence	SelectedSegmentalOphthalmicAxialLengthSequence	1	Dicom
 (0022,1260)	SQ	Selected Total Ophthalmic Axial Length Sequence	SelectedTotalOphthalmicAxialLengthSequence	1	Dicom
 (0022,1262)	SQ	Ophthalmic Axial Length Quality Metric Sequence	OphthalmicAxialLengthQualityMetricSequence	1	Dicom
-(0022,1265)	SQ	Ophthalmic Axial Length Quality Metric Type Code Sequence	OphthalmicAxialLengthQualityMetricTypeCodeSequence	1	ret
-(0022,1273)	LO	Ophthalmic Axial Length Quality Metric Type Description	OphthalmicAxialLengthQualityMetricTypeDescription	1	ret
+(0022,1265)	SQ	Ophthalmic Axial Length Quality Metric Type Code Sequence	OphthalmicAxialLengthQualityMetricTypeCodeSequence	1	Ret
+(0022,1273)	LO	Ophthalmic Axial Length Quality Metric Type Description	OphthalmicAxialLengthQualityMetricTypeDescription	1	Ret
 (0022,1300)	SQ	Intraocular Lens Calculations Right Eye Sequence	IntraocularLensCalculationsRightEyeSequence	1	Dicom
 (0022,1310)	SQ	Intraocular Lens Calculations Left Eye Sequence	IntraocularLensCalculationsLeftEyeSequence	1	Dicom
 (0022,1330)	SQ	Referenced Ophthalmic Axial Length Measurement QC Image Sequence	ReferencedOphthalmicAxialLengthMeasurementQCImageSequence	1	Dicom
@@ -2100,88 +2097,88 @@
 (0028,0002)	US	Samples per Pixel	SamplesPerPixel	1	Dicom
 (0028,0003)	US	Samples per Pixel Used	SamplesPerPixelUsed	1	Dicom
 (0028,0004)	CS	Photometric Interpretation	PhotometricInterpretation	1	Dicom
-(0028,0005)	US	Image Dimensions	ImageDimensions	1	ret
+(0028,0005)	US	Image Dimensions	ImageDimensions	1	Ret
 (0028,0006)	US	Planar Configuration	PlanarConfiguration	1	Dicom
 (0028,0008)	IS	Number of Frames	NumberOfFrames	1	Dicom
 (0028,0009)	AT	Frame Increment Pointer	FrameIncrementPointer	1-n	Dicom
 (0028,000A)	AT	Frame Dimension Pointer	FrameDimensionPointer	1-n	Dicom
 (0028,0010)	US	Rows	Rows	1	Dicom
 (0028,0011)	US	Columns	Columns	1	Dicom
-(0028,0012)	US	Planes	Planes	1	ret
+(0028,0012)	US	Planes	Planes	1	Ret
 (0028,0014)	US	Ultrasound Color Data Present	UltrasoundColorDataPresent	1	Dicom
 (0028,0030)	DS	Pixel Spacing	PixelSpacing	2	Dicom
 (0028,0031)	DS	Zoom Factor	ZoomFactor	2	Dicom
 (0028,0032)	DS	Zoom Center	ZoomCenter	2	Dicom
 (0028,0034)	IS	Pixel Aspect Ratio	PixelAspectRatio	2	Dicom
-(0028,0040)	CS	Image Format	ImageFormat	1	ret
-(0028,0050)	LO	Manipulated Image	ManipulatedImage	1-n	ret
+(0028,0040)	CS	Image Format	ImageFormat	1	Ret
+(0028,0050)	LO	Manipulated Image	ManipulatedImage	1-n	Ret
 (0028,0051)	CS	Corrected Image	CorrectedImage	1-n	Dicom
-(0028,005F)	LO	Compression Recognition Code	CompressionRecognitionCode	1	ret
-(0028,0060)	CS	Compression Code	CompressionCode	1	ret
-(0028,0061)	SH	Compression Originator	CompressionOriginator	1	ret
-(0028,0062)	LO	Compression Label	CompressionLabel	1	ret
-(0028,0063)	SH	Compression Description	CompressionDescription	1	ret
-(0028,0065)	CS	Compression Sequence	CompressionSequence	1-n	ret
-(0028,0066)	AT	Compression Step Pointers	CompressionStepPointers	1-n	ret
-(0028,0068)	US	Repeat Interval	RepeatInterval	1	ret
-(0028,0069)	US	Bits Grouped	BitsGrouped	1	ret
-(0028,0070)	US	Perimeter Table	PerimeterTable	1-n	ret
-(0028,0071)	US or SS	Perimeter Value	PerimeterValue	1	ret
-(0028,0080)	US	Predictor Rows	PredictorRows	1	ret
-(0028,0081)	US	Predictor Columns	PredictorColumns	1	ret
-(0028,0082)	US	Predictor Constants	PredictorConstants	1-n	ret
-(0028,0090)	CS	Blocked Pixels	BlockedPixels	1	ret
-(0028,0091)	US	Block Rows	BlockRows	1	ret
-(0028,0092)	US	Block Columns	BlockColumns	1	ret
-(0028,0093)	US	Row Overlap	RowOverlap	1	ret
-(0028,0094)	US	Column Overlap	ColumnOverlap	1	ret
+(0028,005F)	LO	Compression Recognition Code	CompressionRecognitionCode	1	Ret
+(0028,0060)	CS	Compression Code	CompressionCode	1	Ret
+(0028,0061)	SH	Compression Originator	CompressionOriginator	1	Ret
+(0028,0062)	LO	Compression Label	CompressionLabel	1	Ret
+(0028,0063)	SH	Compression Description	CompressionDescription	1	Ret
+(0028,0065)	CS	Compression Sequence	CompressionSequence	1-n	Ret
+(0028,0066)	AT	Compression Step Pointers	CompressionStepPointers	1-n	Ret
+(0028,0068)	US	Repeat Interval	RepeatInterval	1	Ret
+(0028,0069)	US	Bits Grouped	BitsGrouped	1	Ret
+(0028,0070)	US	Perimeter Table	PerimeterTable	1-n	Ret
+(0028,0071)	US or SS	Perimeter Value	PerimeterValue	1	Ret
+(0028,0080)	US	Predictor Rows	PredictorRows	1	Ret
+(0028,0081)	US	Predictor Columns	PredictorColumns	1	Ret
+(0028,0082)	US	Predictor Constants	PredictorConstants	1-n	Ret
+(0028,0090)	CS	Blocked Pixels	BlockedPixels	1	Ret
+(0028,0091)	US	Block Rows	BlockRows	1	Ret
+(0028,0092)	US	Block Columns	BlockColumns	1	Ret
+(0028,0093)	US	Row Overlap	RowOverlap	1	Ret
+(0028,0094)	US	Column Overlap	ColumnOverlap	1	Ret
 (0028,0100)	US	Bits Allocated	BitsAllocated	1	Dicom
 (0028,0101)	US	Bits Stored	BitsStored	1	Dicom
 (0028,0102)	US	High Bit	HighBit	1	Dicom
 (0028,0103)	US	Pixel Representation	PixelRepresentation	1	Dicom
-(0028,0104)	US or SS	Smallest Valid Pixel Value	SmallestValidPixelValue	1	ret
-(0028,0105)	US or SS	Largest Valid Pixel Value	LargestValidPixelValue	1	ret
+(0028,0104)	US or SS	Smallest Valid Pixel Value	SmallestValidPixelValue	1	Ret
+(0028,0105)	US or SS	Largest Valid Pixel Value	LargestValidPixelValue	1	Ret
 (0028,0106)	US or SS	Smallest Image Pixel Value	SmallestImagePixelValue	1	Dicom
 (0028,0107)	US or SS	Largest Image Pixel Value	LargestImagePixelValue	1	Dicom
 (0028,0108)	US or SS	Smallest Pixel Value in Series	SmallestPixelValueInSeries	1	Dicom
 (0028,0109)	US or SS	Largest Pixel Value in Series	LargestPixelValueInSeries	1	Dicom
-(0028,0110)	US or SS	Smallest Image Pixel Value in Plane	SmallestImagePixelValueInPlane	1	ret
-(0028,0111)	US or SS	Largest Image Pixel Value in Plane	LargestImagePixelValueInPlane	1	ret
+(0028,0110)	US or SS	Smallest Image Pixel Value in Plane	SmallestImagePixelValueInPlane	1	Ret
+(0028,0111)	US or SS	Largest Image Pixel Value in Plane	LargestImagePixelValueInPlane	1	Ret
 (0028,0120)	US or SS	Pixel Padding Value	PixelPaddingValue	1	Dicom
 (0028,0121)	US or SS	Pixel Padding Range Limit	PixelPaddingRangeLimit	1	Dicom
 (0028,0122)	FL	Float Pixel Padding Value	FloatPixelPaddingValue	1	Dicom
 (0028,0123)	FD	Double Float Pixel Padding Value	DoubleFloatPixelPaddingValue	1	Dicom
 (0028,0124)	FL	Float Pixel Padding Range Limit	FloatPixelPaddingRangeLimit	1	Dicom
 (0028,0125)	FD	Double Float Pixel Padding Range Limit	DoubleFloatPixelPaddingRangeLimit	1	Dicom
-(0028,0200)	US	Image Location	ImageLocation	1	ret
+(0028,0200)	US	Image Location	ImageLocation	1	Ret
 (0028,0300)	CS	Quality Control Image	QualityControlImage	1	Dicom
 (0028,0301)	CS	Burned In Annotation	BurnedInAnnotation	1	Dicom
 (0028,0302)	CS	Recognizable Visual Features	RecognizableVisualFeatures	1	Dicom
 (0028,0303)	CS	Longitudinal Temporal Information Modified	LongitudinalTemporalInformationModified	1	Dicom
 (0028,0304)	UI	Referenced Color Palette Instance UID	ReferencedColorPaletteInstanceUID	1	Dicom
-(0028,0400)	LO	Transform Label	TransformLabel	1	ret
-(0028,0401)	LO	Transform Version Number	TransformVersionNumber	1	ret
-(0028,0402)	US	Number of Transform Steps	NumberOfTransformSteps	1	ret
-(0028,0403)	LO	Sequence of Compressed Data	SequenceOfCompressedData	1-n	ret
-(0028,0404)	AT	Details of Coefficients	DetailsOfCoefficients	1-n	ret
-(0028,04x0)	US	Rows For Nth Order Coefficients	RowsForNthOrderCoefficients	1	ret
-(0028,04x1)	US	Columns For Nth Order Coefficients	ColumnsForNthOrderCoefficients	1	ret
-(0028,04x2)	LO	Coefficient Coding	CoefficientCoding	1-n	ret
-(0028,04x3)	AT	Coefficient Coding Pointers	CoefficientCodingPointers	1-n	ret
-(0028,0700)	LO	DCT Label	DCTLabel	1	ret
-(0028,0701)	CS	Data Block Description	DataBlockDescription	1-n	ret
-(0028,0702)	AT	Data Block	DataBlock	1-n	ret
-(0028,0710)	US	Normalization Factor Format	NormalizationFactorFormat	1	ret
-(0028,0720)	US	Zonal Map Number Format	ZonalMapNumberFormat	1	ret
-(0028,0721)	AT	Zonal Map Location	ZonalMapLocation	1-n	ret
-(0028,0722)	US	Zonal Map Format	ZonalMapFormat	1	ret
-(0028,0730)	US	Adaptive Map Format	AdaptiveMapFormat	1	ret
-(0028,0740)	US	Code Number Format	CodeNumberFormat	1	ret
-(0028,08x0)	CS	Code Label	CodeLabel	1-n	ret
-(0028,08x2)	US	Number of Tables	NumberOfTables	1	ret
-(0028,08x3)	AT	Code Table Location	CodeTableLocation	1-n	ret
-(0028,08x4)	US	Bits For Code Word	BitsForCodeWord	1	ret
-(0028,08x8)	AT	Image Data Location	ImageDataLocation	1-n	ret
+(0028,0400)	LO	Transform Label	TransformLabel	1	Ret
+(0028,0401)	LO	Transform Version Number	TransformVersionNumber	1	Ret
+(0028,0402)	US	Number of Transform Steps	NumberOfTransformSteps	1	Ret
+(0028,0403)	LO	Sequence of Compressed Data	SequenceOfCompressedData	1-n	Ret
+(0028,0404)	AT	Details of Coefficients	DetailsOfCoefficients	1-n	Ret
+(0028,04x0)	US	Rows For Nth Order Coefficients	RowsForNthOrderCoefficients	1	Ret
+(0028,04x1)	US	Columns For Nth Order Coefficients	ColumnsForNthOrderCoefficients	1	Ret
+(0028,04x2)	LO	Coefficient Coding	CoefficientCoding	1-n	Ret
+(0028,04x3)	AT	Coefficient Coding Pointers	CoefficientCodingPointers	1-n	Ret
+(0028,0700)	LO	DCT Label	DCTLabel	1	Ret
+(0028,0701)	CS	Data Block Description	DataBlockDescription	1-n	Ret
+(0028,0702)	AT	Data Block	DataBlock	1-n	Ret
+(0028,0710)	US	Normalization Factor Format	NormalizationFactorFormat	1	Ret
+(0028,0720)	US	Zonal Map Number Format	ZonalMapNumberFormat	1	Ret
+(0028,0721)	AT	Zonal Map Location	ZonalMapLocation	1-n	Ret
+(0028,0722)	US	Zonal Map Format	ZonalMapFormat	1	Ret
+(0028,0730)	US	Adaptive Map Format	AdaptiveMapFormat	1	Ret
+(0028,0740)	US	Code Number Format	CodeNumberFormat	1	Ret
+(0028,08x0)	CS	Code Label	CodeLabel	1-n	Ret
+(0028,08x2)	US	Number of Tables	NumberOfTables	1	Ret
+(0028,08x3)	AT	Code Table Location	CodeTableLocation	1-n	Ret
+(0028,08x4)	US	Bits For Code Word	BitsForCodeWord	1	Ret
+(0028,08x8)	AT	Image Data Location	ImageDataLocation	1-n	Ret
 (0028,0A02)	CS	Pixel Spacing Calibration Type	PixelSpacingCalibrationType	1	Dicom
 (0028,0A04)	LO	Pixel Spacing Calibration Description	PixelSpacingCalibrationDescription	1	Dicom
 (0028,1040)	CS	Pixel Intensity Relationship	PixelIntensityRelationship	1	Dicom
@@ -2193,26 +2190,26 @@
 (0028,1054)	LO	Rescale Type	RescaleType	1	Dicom
 (0028,1055)	LO	Window Center & Width Explanation	WindowCenterWidthExplanation	1-n	Dicom
 (0028,1056)	CS	VOI LUT Function	VOILUTFunction	1	Dicom
-(0028,1080)	CS	Gray Scale	GrayScale	1	ret
+(0028,1080)	CS	Gray Scale	GrayScale	1	Ret
 (0028,1090)	CS	Recommended Viewing Mode	RecommendedViewingMode	1	Dicom
-(0028,1100)	US or SS	Gray Lookup Table Descriptor	GrayLookupTableDescriptor	3	ret
+(0028,1100)	US or SS	Gray Lookup Table Descriptor	GrayLookupTableDescriptor	3	Ret
 (0028,1101)	US or SS	Red Palette Color Lookup Table Descriptor	RedPaletteColorLookupTableDescriptor	3	Dicom
 (0028,1102)	US or SS	Green Palette Color Lookup Table Descriptor	GreenPaletteColorLookupTableDescriptor	3	Dicom
 (0028,1103)	US or SS	Blue Palette Color Lookup Table Descriptor	BluePaletteColorLookupTableDescriptor	3	Dicom
 (0028,1104)	US	Alpha Palette Color Lookup Table Descriptor	AlphaPaletteColorLookupTableDescriptor	3	Dicom
-(0028,1111)	US or SS	Large Red Palette Color Lookup Table Descriptor	LargeRedPaletteColorLookupTableDescriptor	4	ret
-(0028,1112)	US or SS	Large Green Palette Color Lookup Table Descriptor	LargeGreenPaletteColorLookupTableDescriptor	4	ret
-(0028,1113)	US or SS	Large Blue Palette Color Lookup Table Descriptor	LargeBluePaletteColorLookupTableDescriptor	4	ret
+(0028,1111)	US or SS	Large Red Palette Color Lookup Table Descriptor	LargeRedPaletteColorLookupTableDescriptor	4	Ret
+(0028,1112)	US or SS	Large Green Palette Color Lookup Table Descriptor	LargeGreenPaletteColorLookupTableDescriptor	4	Ret
+(0028,1113)	US or SS	Large Blue Palette Color Lookup Table Descriptor	LargeBluePaletteColorLookupTableDescriptor	4	Ret
 (0028,1199)	UI	Palette Color Lookup Table UID	PaletteColorLookupTableUID	1	Dicom
-(0028,1200)	US or SS or OW	Gray Lookup Table Data	GrayLookupTableData	1-n	ret
+(0028,1200)	US or SS or OW	Gray Lookup Table Data	GrayLookupTableData	1-n	Ret
 (0028,1201)	OW	Red Palette Color Lookup Table Data	RedPaletteColorLookupTableData	1	Dicom
 (0028,1202)	OW	Green Palette Color Lookup Table Data	GreenPaletteColorLookupTableData	1	Dicom
 (0028,1203)	OW	Blue Palette Color Lookup Table Data	BluePaletteColorLookupTableData	1	Dicom
 (0028,1204)	OW	Alpha Palette Color Lookup Table Data	AlphaPaletteColorLookupTableData	1	Dicom
-(0028,1211)	OW	Large Red Palette Color Lookup Table Data	LargeRedPaletteColorLookupTableData	1	ret
-(0028,1212)	OW	Large Green Palette Color Lookup Table Data	LargeGreenPaletteColorLookupTableData	1	ret
-(0028,1213)	OW	Large Blue Palette Color Lookup Table Data	LargeBluePaletteColorLookupTableData	1	ret
-(0028,1214)	UI	Large Palette Color Lookup Table UID	LargePaletteColorLookupTableUID	1	ret
+(0028,1211)	OW	Large Red Palette Color Lookup Table Data	LargeRedPaletteColorLookupTableData	1	Ret
+(0028,1212)	OW	Large Green Palette Color Lookup Table Data	LargeGreenPaletteColorLookupTableData	1	Ret
+(0028,1213)	OW	Large Blue Palette Color Lookup Table Data	LargeBluePaletteColorLookupTableData	1	Ret
+(0028,1214)	UI	Large Palette Color Lookup Table UID	LargePaletteColorLookupTableUID	1	Ret
 (0028,1221)	OW	Segmented Red Palette Color Lookup Table Data	SegmentedRedPaletteColorLookupTableData	1	Dicom
 (0028,1222)	OW	Segmented Green Palette Color Lookup Table Data	SegmentedGreenPaletteColorLookupTableData	1	Dicom
 (0028,1223)	OW	Segmented Blue Palette Color Lookup Table Data	SegmentedBluePaletteColorLookupTableData	1	Dicom
@@ -2251,13 +2248,13 @@
 (0028,3006)	US or OW	LUT Data	LUTData	1-n	Dicom
 (0028,3010)	SQ	VOI LUT Sequence	VOILUTSequence	1	Dicom
 (0028,3110)	SQ	Softcopy VOI LUT Sequence	SoftcopyVOILUTSequence	1	Dicom
-(0028,4000)	LT	Image Presentation Comments	ImagePresentationComments	1	ret
-(0028,5000)	SQ	Bi-Plane Acquisition Sequence	BiPlaneAcquisitionSequence	1	ret
+(0028,4000)	LT	Image Presentation Comments	ImagePresentationComments	1	Ret
+(0028,5000)	SQ	Bi-Plane Acquisition Sequence	BiPlaneAcquisitionSequence	1	Ret
 (0028,6010)	US	Representative Frame Number	RepresentativeFrameNumber	1	Dicom
 (0028,6020)	US	Frame Numbers of Interest (FOI)	FrameNumbersOfInterest	1-n	Dicom
 (0028,6022)	LO	Frame of Interest Description	FrameOfInterestDescription	1-n	Dicom
 (0028,6023)	CS	Frame of Interest Type	FrameOfInterestType	1-n	Dicom
-(0028,6030)	US	Mask Pointer(s)	MaskPointers	1-n	ret
+(0028,6030)	US	Mask Pointer(s)	MaskPointers	1-n	Ret
 (0028,6040)	US	R Wave Pointer	RWavePointer	1-n	Dicom
 (0028,6100)	SQ	Mask Subtraction Sequence	MaskSubtractionSequence	1	Dicom
 (0028,6101)	CS	Mask Operation	MaskOperation	1	Dicom
@@ -2318,7 +2315,7 @@
 (0028,9001)	UL	Data Point Rows	DataPointRows	1	Dicom
 (0028,9002)	UL	Data Point Columns	DataPointColumns	1	Dicom
 (0028,9003)	CS	Signal Domain Columns	SignalDomainColumns	1	Dicom
-(0028,9099)	US	Largest Monochrome Pixel Value	LargestMonochromePixelValue	1	ret
+(0028,9099)	US	Largest Monochrome Pixel Value	LargestMonochromePixelValue	1	Ret
 (0028,9108)	CS	Data Representation	DataRepresentation	1	Dicom
 (0028,9110)	SQ	Pixel Measures Sequence	PixelMeasuresSequence	1	Dicom
 (0028,9132)	SQ	Frame VOI LUT Sequence	FrameVOILUTSequence	1	Dicom
@@ -2343,36 +2340,36 @@
 (0028,9507)	US	LUT Frame Range	LUTFrameRange	2-2n	Dicom
 (0028,9520)	DS	Image to Equipment Mapping Matrix	ImageToEquipmentMappingMatrix	16	Dicom
 (0028,9537)	CS	Equipment Coordinate System Identification	EquipmentCoordinateSystemIdentification	1	Dicom
-(0032,000A)	CS	Study Status ID	StudyStatusID	1	ret
-(0032,000C)	CS	Study Priority ID	StudyPriorityID	1	ret
-(0032,0012)	LO	Study ID Issuer	StudyIDIssuer	1	ret
-(0032,0032)	DA	Study Verified Date	StudyVerifiedDate	1	ret
-(0032,0033)	TM	Study Verified Time	StudyVerifiedTime	1	ret
-(0032,0034)	DA	Study Read Date	StudyReadDate	1	ret
-(0032,0035)	TM	Study Read Time	StudyReadTime	1	ret
-(0032,1000)	DA	Scheduled Study Start Date	ScheduledStudyStartDate	1	ret
-(0032,1001)	TM	Scheduled Study Start Time	ScheduledStudyStartTime	1	ret
-(0032,1010)	DA	Scheduled Study Stop Date	ScheduledStudyStopDate	1	ret
-(0032,1011)	TM	Scheduled Study Stop Time	ScheduledStudyStopTime	1	ret
-(0032,1020)	LO	Scheduled Study Location	ScheduledStudyLocation	1	ret
-(0032,1021)	AE	Scheduled Study Location AE Title	ScheduledStudyLocationAETitle	1-n	ret
-(0032,1030)	LO	Reason for Study	ReasonForStudy	1	ret
+(0032,000A)	CS	Study Status ID	StudyStatusID	1	Ret
+(0032,000C)	CS	Study Priority ID	StudyPriorityID	1	Ret
+(0032,0012)	LO	Study ID Issuer	StudyIDIssuer	1	Ret
+(0032,0032)	DA	Study Verified Date	StudyVerifiedDate	1	Ret
+(0032,0033)	TM	Study Verified Time	StudyVerifiedTime	1	Ret
+(0032,0034)	DA	Study Read Date	StudyReadDate	1	Ret
+(0032,0035)	TM	Study Read Time	StudyReadTime	1	Ret
+(0032,1000)	DA	Scheduled Study Start Date	ScheduledStudyStartDate	1	Ret
+(0032,1001)	TM	Scheduled Study Start Time	ScheduledStudyStartTime	1	Ret
+(0032,1010)	DA	Scheduled Study Stop Date	ScheduledStudyStopDate	1	Ret
+(0032,1011)	TM	Scheduled Study Stop Time	ScheduledStudyStopTime	1	Ret
+(0032,1020)	LO	Scheduled Study Location	ScheduledStudyLocation	1	Ret
+(0032,1021)	AE	Scheduled Study Location AE Title	ScheduledStudyLocationAETitle	1-n	Ret
+(0032,1030)	LO	Reason for Study	ReasonForStudy	1	Ret
 (0032,1031)	SQ	Requesting Physician Identification Sequence	RequestingPhysicianIdentificationSequence	1	Dicom
 (0032,1032)	PN	Requesting Physician	RequestingPhysician	1	Dicom
 (0032,1033)	LO	Requesting Service	RequestingService	1	Dicom
 (0032,1034)	SQ	Requesting Service Code Sequence	RequestingServiceCodeSequence	1	Dicom
-(0032,1040)	DA	Study Arrival Date	StudyArrivalDate	1	ret
-(0032,1041)	TM	Study Arrival Time	StudyArrivalTime	1	ret
-(0032,1050)	DA	Study Completion Date	StudyCompletionDate	1	ret
-(0032,1051)	TM	Study Completion Time	StudyCompletionTime	1	ret
-(0032,1055)	CS	Study Component Status ID	StudyComponentStatusID	1	ret
+(0032,1040)	DA	Study Arrival Date	StudyArrivalDate	1	Ret
+(0032,1041)	TM	Study Arrival Time	StudyArrivalTime	1	Ret
+(0032,1050)	DA	Study Completion Date	StudyCompletionDate	1	Ret
+(0032,1051)	TM	Study Completion Time	StudyCompletionTime	1	Ret
+(0032,1055)	CS	Study Component Status ID	StudyComponentStatusID	1	Ret
 (0032,1060)	LO	Requested Procedure Description	RequestedProcedureDescription	1	Dicom
 (0032,1064)	SQ	Requested Procedure Code Sequence	RequestedProcedureCodeSequence	1	Dicom
 (0032,1065)	SQ	Requested Laterality Code Sequence	RequestedLateralityCodeSequence	1	Dicom
 (0032,1066)	UT	Reason for Visit	ReasonForVisit	1	Dicom
 (0032,1067)	SQ	Reason for Visit Code Sequence	ReasonForVisitCodeSequence	1	Dicom
 (0032,1070)	LO	Requested Contrast Agent	RequestedContrastAgent	1	Dicom
-(0032,4000)	LT	Study Comments	StudyComments	1	ret
+(0032,4000)	LT	Study Comments	StudyComments	1	Ret
 (0034,0001)	SQ	Flow Identifier Sequence	FlowIdentifierSequence	1	Dicom
 (0034,0002)	OB	Flow Identifier	FlowIdentifier	1	Dicom
 (0034,0003)	UI	Flow Transfer Syntax UID	FlowTransferSyntaxUID	1	Dicom
@@ -2388,23 +2385,23 @@
 (0038,0004)	SQ	Referenced Patient Alias Sequence	ReferencedPatientAliasSequence	1	Dicom
 (0038,0008)	CS	Visit Status ID	VisitStatusID	1	Dicom
 (0038,0010)	LO	Admission ID	AdmissionID	1	Dicom
-(0038,0011)	LO	Issuer of Admission ID	IssuerOfAdmissionID	1	ret
+(0038,0011)	LO	Issuer of Admission ID	IssuerOfAdmissionID	1	Ret
 (0038,0014)	SQ	Issuer of Admission ID Sequence	IssuerOfAdmissionIDSequence	1	Dicom
 (0038,0016)	LO	Route of Admissions	RouteOfAdmissions	1	Dicom
-(0038,001A)	DA	Scheduled Admission Date	ScheduledAdmissionDate	1	ret
-(0038,001B)	TM	Scheduled Admission Time	ScheduledAdmissionTime	1	ret
-(0038,001C)	DA	Scheduled Discharge Date	ScheduledDischargeDate	1	ret
-(0038,001D)	TM	Scheduled Discharge Time	ScheduledDischargeTime	1	ret
-(0038,001E)	LO	Scheduled Patient Institution Residence	ScheduledPatientInstitutionResidence	1	ret
+(0038,001A)	DA	Scheduled Admission Date	ScheduledAdmissionDate	1	Ret
+(0038,001B)	TM	Scheduled Admission Time	ScheduledAdmissionTime	1	Ret
+(0038,001C)	DA	Scheduled Discharge Date	ScheduledDischargeDate	1	Ret
+(0038,001D)	TM	Scheduled Discharge Time	ScheduledDischargeTime	1	Ret
+(0038,001E)	LO	Scheduled Patient Institution Residence	ScheduledPatientInstitutionResidence	1	Ret
 (0038,0020)	DA	Admitting Date	AdmittingDate	1	Dicom
 (0038,0021)	TM	Admitting Time	AdmittingTime	1	Dicom
-(0038,0030)	DA	Discharge Date	DischargeDate	1	ret
-(0038,0032)	TM	Discharge Time	DischargeTime	1	ret
-(0038,0040)	LO	Discharge Diagnosis Description	DischargeDiagnosisDescription	1	ret
-(0038,0044)	SQ	Discharge Diagnosis Code Sequence	DischargeDiagnosisCodeSequence	1	ret
+(0038,0030)	DA	Discharge Date	DischargeDate	1	Ret
+(0038,0032)	TM	Discharge Time	DischargeTime	1	Ret
+(0038,0040)	LO	Discharge Diagnosis Description	DischargeDiagnosisDescription	1	Ret
+(0038,0044)	SQ	Discharge Diagnosis Code Sequence	DischargeDiagnosisCodeSequence	1	Ret
 (0038,0050)	LO	Special Needs	SpecialNeeds	1	Dicom
 (0038,0060)	LO	Service Episode ID	ServiceEpisodeID	1	Dicom
-(0038,0061)	LO	Issuer of Service Episode ID	IssuerOfServiceEpisodeID	1	ret
+(0038,0061)	LO	Issuer of Service Episode ID	IssuerOfServiceEpisodeID	1	Ret
 (0038,0062)	LO	Service Episode Description	ServiceEpisodeDescription	1	Dicom
 (0038,0064)	SQ	Issuer of Service Episode ID Sequence	IssuerOfServiceEpisodeIDSequence	1	Dicom
 (0038,0100)	SQ	Pertinent Documents Sequence	PertinentDocumentsSequence	1	Dicom
@@ -2525,13 +2522,13 @@
 (0040,0294)	DS	Quantity	Quantity	1	Dicom
 (0040,0295)	SQ	Measuring Units Sequence	MeasuringUnitsSequence	1	Dicom
 (0040,0296)	SQ	Billing Item Sequence	BillingItemSequence	1	Dicom
-(0040,0300)	US	Total Time of Fluoroscopy	TotalTimeOfFluoroscopy	1	ret
-(0040,0301)	US	Total Number of Exposures	TotalNumberOfExposures	1	ret
+(0040,0300)	US	Total Time of Fluoroscopy	TotalTimeOfFluoroscopy	1	Ret
+(0040,0301)	US	Total Number of Exposures	TotalNumberOfExposures	1	Ret
 (0040,0302)	US	Entrance Dose	EntranceDose	1	Dicom
 (0040,0303)	US	Exposed Area	ExposedArea	1-2	Dicom
 (0040,0306)	DS	Distance Source to Entrance	DistanceSourceToEntrance	1	Dicom
-(0040,0307)	DS	Distance Source to Support	DistanceSourceToSupport	1	ret
-(0040,030E)	SQ	Exposure Dose Sequence	ExposureDoseSequence	1	ret
+(0040,0307)	DS	Distance Source to Support	DistanceSourceToSupport	1	Ret
+(0040,030E)	SQ	Exposure Dose Sequence	ExposureDoseSequence	1	Ret
 (0040,0310)	ST	Comments on Radiation Dose	CommentsOnRadiationDose	1	Dicom
 (0040,0312)	DS	X-Ray Output	XRayOutput	1	Dicom
 (0040,0314)	DS	Half Value Layer	HalfValueLayer	1	Dicom
@@ -2540,23 +2537,23 @@
 (0040,0320)	SQ	Billing Procedure Step Sequence	BillingProcedureStepSequence	1	Dicom
 (0040,0321)	SQ	Film Consumption Sequence	FilmConsumptionSequence	1	Dicom
 (0040,0324)	SQ	Billing Supplies and Devices Sequence	BillingSuppliesAndDevicesSequence	1	Dicom
-(0040,0330)	SQ	Referenced Procedure Step Sequence	ReferencedProcedureStepSequence	1	ret
+(0040,0330)	SQ	Referenced Procedure Step Sequence	ReferencedProcedureStepSequence	1	Ret
 (0040,0340)	SQ	Performed Series Sequence	PerformedSeriesSequence	1	Dicom
 (0040,0400)	LT	Comments on the Scheduled Procedure Step	CommentsOnTheScheduledProcedureStep	1	Dicom
 (0040,0440)	SQ	Protocol Context Sequence	ProtocolContextSequence	1	Dicom
 (0040,0441)	SQ	Content Item Modifier Sequence	ContentItemModifierSequence	1	Dicom
 (0040,0500)	SQ	Scheduled Specimen Sequence	ScheduledSpecimenSequence	1	Dicom
-(0040,050A)	LO	Specimen Accession Number	SpecimenAccessionNumber	1	ret
+(0040,050A)	LO	Specimen Accession Number	SpecimenAccessionNumber	1	Ret
 (0040,0512)	LO	Container Identifier	ContainerIdentifier	1	Dicom
 (0040,0513)	SQ	Issuer of the Container Identifier Sequence	IssuerOfTheContainerIdentifierSequence	1	Dicom
 (0040,0515)	SQ	Alternate Container Identifier Sequence	AlternateContainerIdentifierSequence	1	Dicom
 (0040,0518)	SQ	Container Type Code Sequence	ContainerTypeCodeSequence	1	Dicom
 (0040,051A)	LO	Container Description	ContainerDescription	1	Dicom
 (0040,0520)	SQ	Container Component Sequence	ContainerComponentSequence	1	Dicom
-(0040,0550)	SQ	Specimen Sequence	SpecimenSequence	1	ret
+(0040,0550)	SQ	Specimen Sequence	SpecimenSequence	1	Ret
 (0040,0551)	LO	Specimen Identifier	SpecimenIdentifier	1	Dicom
-(0040,0552)	SQ	Specimen Description Sequence (Trial)	SpecimenDescriptionSequenceTrial	1	ret
-(0040,0553)	ST	Specimen Description (Trial)	SpecimenDescriptionTrial	1	ret
+(0040,0552)	SQ	Specimen Description Sequence (Trial)	SpecimenDescriptionSequenceTrial	1	Ret
+(0040,0553)	ST	Specimen Description (Trial)	SpecimenDescriptionTrial	1	Ret
 (0040,0554)	UI	Specimen UID	SpecimenUID	1	Dicom
 (0040,0555)	SQ	Acquisition Context Sequence	AcquisitionContextSequence	1	Dicom
 (0040,0556)	ST	Acquisition Context Description	AcquisitionContextDescription	1	Dicom
@@ -2568,40 +2565,40 @@
 (0040,0610)	SQ	Specimen Preparation Sequence	SpecimenPreparationSequence	1	Dicom
 (0040,0612)	SQ	Specimen Preparation Step Content Item Sequence	SpecimenPreparationStepContentItemSequence	1	Dicom
 (0040,0620)	SQ	Specimen Localization Content Item Sequence	SpecimenLocalizationContentItemSequence	1	Dicom
-(0040,06FA)	LO	Slide Identifier	SlideIdentifier	1	ret
+(0040,06FA)	LO	Slide Identifier	SlideIdentifier	1	Ret
 (0040,0710)	SQ	Whole Slide Microscopy Image Frame Type Sequence	WholeSlideMicroscopyImageFrameTypeSequence	1	Dicom
 (0040,071A)	SQ	Image Center Point Coordinates Sequence	ImageCenterPointCoordinatesSequence	1	Dicom
 (0040,072A)	DS	X Offset in Slide Coordinate System	XOffsetInSlideCoordinateSystem	1	Dicom
 (0040,073A)	DS	Y Offset in Slide Coordinate System	YOffsetInSlideCoordinateSystem	1	Dicom
 (0040,074A)	DS	Z Offset in Slide Coordinate System	ZOffsetInSlideCoordinateSystem	1	Dicom
-(0040,08D8)	SQ	Pixel Spacing Sequence	PixelSpacingSequence	1	ret
-(0040,08DA)	SQ	Coordinate System Axis Code Sequence	CoordinateSystemAxisCodeSequence	1	ret
+(0040,08D8)	SQ	Pixel Spacing Sequence	PixelSpacingSequence	1	Ret
+(0040,08DA)	SQ	Coordinate System Axis Code Sequence	CoordinateSystemAxisCodeSequence	1	Ret
 (0040,08EA)	SQ	Measurement Units Code Sequence	MeasurementUnitsCodeSequence	1	Dicom
-(0040,09F8)	SQ	Vital Stain Code Sequence (Trial)	VitalStainCodeSequenceTrial	1	ret
+(0040,09F8)	SQ	Vital Stain Code Sequence (Trial)	VitalStainCodeSequenceTrial	1	Ret
 (0040,1001)	SH	Requested Procedure ID	RequestedProcedureID	1	Dicom
 (0040,1002)	LO	Reason for the Requested Procedure	ReasonForTheRequestedProcedure	1	Dicom
 (0040,1003)	SH	Requested Procedure Priority	RequestedProcedurePriority	1	Dicom
 (0040,1004)	LO	Patient Transport Arrangements	PatientTransportArrangements	1	Dicom
 (0040,1005)	LO	Requested Procedure Location	RequestedProcedureLocation	1	Dicom
-(0040,1006)	SH	Placer Order Number / Procedure	PlacerOrderNumberProcedure	1	ret
-(0040,1007)	SH	Filler Order Number / Procedure	FillerOrderNumberProcedure	1	ret
+(0040,1006)	SH	Placer Order Number / Procedure	PlacerOrderNumberProcedure	1	Ret
+(0040,1007)	SH	Filler Order Number / Procedure	FillerOrderNumberProcedure	1	Ret
 (0040,1008)	LO	Confidentiality Code	ConfidentialityCode	1	Dicom
 (0040,1009)	SH	Reporting Priority	ReportingPriority	1	Dicom
 (0040,100A)	SQ	Reason for Requested Procedure Code Sequence	ReasonForRequestedProcedureCodeSequence	1	Dicom
 (0040,1010)	PN	Names of Intended Recipients of Results	NamesOfIntendedRecipientsOfResults	1-n	Dicom
 (0040,1011)	SQ	Intended Recipients of Results Identification Sequence	IntendedRecipientsOfResultsIdentificationSequence	1	Dicom
 (0040,1012)	SQ	Reason For Performed Procedure Code Sequence	ReasonForPerformedProcedureCodeSequence	1	Dicom
-(0040,1060)	LO	Requested Procedure Description (Trial)	RequestedProcedureDescriptionTrial	1	ret
+(0040,1060)	LO	Requested Procedure Description (Trial)	RequestedProcedureDescriptionTrial	1	Ret
 (0040,1101)	SQ	Person Identification Code Sequence	PersonIdentificationCodeSequence	1	Dicom
 (0040,1102)	ST	Person's Address	PersonAddress	1	Dicom
 (0040,1103)	LO	Person's Telephone Numbers	PersonTelephoneNumbers	1-n	Dicom
 (0040,1104)	LT	Person's Telecom Information	PersonTelecomInformation	1	Dicom
 (0040,1400)	LT	Requested Procedure Comments	RequestedProcedureComments	1	Dicom
-(0040,2001)	LO	Reason for the Imaging Service Request	ReasonForTheImagingServiceRequest	1	ret
+(0040,2001)	LO	Reason for the Imaging Service Request	ReasonForTheImagingServiceRequest	1	Ret
 (0040,2004)	DA	Issue Date of Imaging Service Request	IssueDateOfImagingServiceRequest	1	Dicom
 (0040,2005)	TM	Issue Time of Imaging Service Request	IssueTimeOfImagingServiceRequest	1	Dicom
-(0040,2006)	SH	Placer Order Number / Imaging Service Request (Retired)	PlacerOrderNumberImagingServiceRequestRetired	1	ret
-(0040,2007)	SH	Filler Order Number / Imaging Service Request (Retired)	FillerOrderNumberImagingServiceRequestRetired	1	ret
+(0040,2006)	SH	Placer Order Number / Imaging Service Request (Retired)	PlacerOrderNumberImagingServiceRequestRetired	1	Ret
+(0040,2007)	SH	Filler Order Number / Imaging Service Request (Retired)	FillerOrderNumberImagingServiceRequestRetired	1	Ret
 (0040,2008)	PN	Order Entered By	OrderEnteredBy	1	Dicom
 (0040,2009)	SH	Order Enterer's Location	OrderEntererLocation	1	Dicom
 (0040,2010)	SH	Order Callback Phone Number	OrderCallbackPhoneNumber	1	Dicom
@@ -2610,33 +2607,33 @@
 (0040,2017)	LO	Filler Order Number / Imaging Service Request	FillerOrderNumberImagingServiceRequest	1	Dicom
 (0040,2400)	LT	Imaging Service Request Comments	ImagingServiceRequestComments	1	Dicom
 (0040,3001)	LO	Confidentiality Constraint on Patient Data Description	ConfidentialityConstraintOnPatientDataDescription	1	Dicom
-(0040,4001)	CS	General Purpose Scheduled Procedure Step Status	GeneralPurposeScheduledProcedureStepStatus	1	ret
-(0040,4002)	CS	General Purpose Performed Procedure Step Status	GeneralPurposePerformedProcedureStepStatus	1	ret
-(0040,4003)	CS	General Purpose Scheduled Procedure Step Priority	GeneralPurposeScheduledProcedureStepPriority	1	ret
-(0040,4004)	SQ	Scheduled Processing Applications Code Sequence	ScheduledProcessingApplicationsCodeSequence	1	ret
+(0040,4001)	CS	General Purpose Scheduled Procedure Step Status	GeneralPurposeScheduledProcedureStepStatus	1	Ret
+(0040,4002)	CS	General Purpose Performed Procedure Step Status	GeneralPurposePerformedProcedureStepStatus	1	Ret
+(0040,4003)	CS	General Purpose Scheduled Procedure Step Priority	GeneralPurposeScheduledProcedureStepPriority	1	Ret
+(0040,4004)	SQ	Scheduled Processing Applications Code Sequence	ScheduledProcessingApplicationsCodeSequence	1	Ret
 (0040,4005)	DT	Scheduled Procedure Step Start DateTime	ScheduledProcedureStepStartDateTime	1	Dicom
-(0040,4006)	CS	Multiple Copies Flag	MultipleCopiesFlag	1	ret
-(0040,4007)	SQ	Performed Processing Applications Code Sequence	PerformedProcessingApplicationsCodeSequence	1	ret
+(0040,4006)	CS	Multiple Copies Flag	MultipleCopiesFlag	1	Ret
+(0040,4007)	SQ	Performed Processing Applications Code Sequence	PerformedProcessingApplicationsCodeSequence	1	Ret
 (0040,4008)	DT	Scheduled Procedure Step Expiration DateTime	ScheduledProcedureStepExpirationDateTime	1	Dicom
 (0040,4009)	SQ	Human Performer Code Sequence	HumanPerformerCodeSequence	1	Dicom
 (0040,4010)	DT	Scheduled Procedure Step Modification DateTime	ScheduledProcedureStepModificationDateTime	1	Dicom
 (0040,4011)	DT	Expected Completion DateTime	ExpectedCompletionDateTime	1	Dicom
-(0040,4015)	SQ	Resulting General Purpose Performed Procedure Steps Sequence	ResultingGeneralPurposePerformedProcedureStepsSequence	1	ret
-(0040,4016)	SQ	Referenced General Purpose Scheduled Procedure Step Sequence	ReferencedGeneralPurposeScheduledProcedureStepSequence	1	ret
+(0040,4015)	SQ	Resulting General Purpose Performed Procedure Steps Sequence	ResultingGeneralPurposePerformedProcedureStepsSequence	1	Ret
+(0040,4016)	SQ	Referenced General Purpose Scheduled Procedure Step Sequence	ReferencedGeneralPurposeScheduledProcedureStepSequence	1	Ret
 (0040,4018)	SQ	Scheduled Workitem Code Sequence	ScheduledWorkitemCodeSequence	1	Dicom
 (0040,4019)	SQ	Performed Workitem Code Sequence	PerformedWorkitemCodeSequence	1	Dicom
-(0040,4020)	CS	Input Availability Flag	InputAvailabilityFlag	1	ret
+(0040,4020)	CS	Input Availability Flag	InputAvailabilityFlag	1	Ret
 (0040,4021)	SQ	Input Information Sequence	InputInformationSequence	1	Dicom
-(0040,4022)	SQ	Relevant Information Sequence	RelevantInformationSequence	1	ret
-(0040,4023)	UI	Referenced General Purpose Scheduled Procedure Step Transaction UID	ReferencedGeneralPurposeScheduledProcedureStepTransactionUID	1	ret
+(0040,4022)	SQ	Relevant Information Sequence	RelevantInformationSequence	1	Ret
+(0040,4023)	UI	Referenced General Purpose Scheduled Procedure Step Transaction UID	ReferencedGeneralPurposeScheduledProcedureStepTransactionUID	1	Ret
 (0040,4025)	SQ	Scheduled Station Name Code Sequence	ScheduledStationNameCodeSequence	1	Dicom
 (0040,4026)	SQ	Scheduled Station Class Code Sequence	ScheduledStationClassCodeSequence	1	Dicom
 (0040,4027)	SQ	Scheduled Station Geographic Location Code Sequence	ScheduledStationGeographicLocationCodeSequence	1	Dicom
 (0040,4028)	SQ	Performed Station Name Code Sequence	PerformedStationNameCodeSequence	1	Dicom
 (0040,4029)	SQ	Performed Station Class Code Sequence	PerformedStationClassCodeSequence	1	Dicom
 (0040,4030)	SQ	Performed Station Geographic Location Code Sequence	PerformedStationGeographicLocationCodeSequence	1	Dicom
-(0040,4031)	SQ	Requested Subsequent Workitem Code Sequence	RequestedSubsequentWorkitemCodeSequence	1	ret
-(0040,4032)	SQ	Non-DICOM Output Code Sequence	NonDICOMOutputCodeSequence	1	ret
+(0040,4031)	SQ	Requested Subsequent Workitem Code Sequence	RequestedSubsequentWorkitemCodeSequence	1	Ret
+(0040,4032)	SQ	Non-DICOM Output Code Sequence	NonDICOMOutputCodeSequence	1	Ret
 (0040,4033)	SQ	Output Information Sequence	OutputInformationSequence	1	Dicom
 (0040,4034)	SQ	Scheduled Human Performers Sequence	ScheduledHumanPerformersSequence	1	Dicom
 (0040,4035)	SQ	Actual Human Performers Sequence	ActualHumanPerformersSequence	1	Dicom
@@ -2667,100 +2664,100 @@
 (0040,9220)	SQ	Quantity Definition Sequence	QuantityDefinitionSequence	1	Dicom
 (0040,9224)	FD	Real World Value Intercept	RealWorldValueIntercept	1	Dicom
 (0040,9225)	FD	Real World Value Slope	RealWorldValueSlope	1	Dicom
-(0040,A007)	CS	Findings Flag (Trial)	FindingsFlagTrial	1	ret
+(0040,A007)	CS	Findings Flag (Trial)	FindingsFlagTrial	1	Ret
 (0040,A010)	CS	Relationship Type	RelationshipType	1	Dicom
-(0040,A020)	SQ	Findings Sequence (Trial)	FindingsSequenceTrial	1	ret
-(0040,A021)	UI	Findings Group UID (Trial)	FindingsGroupUIDTrial	1	ret
-(0040,A022)	UI	Referenced Findings Group UID (Trial)	ReferencedFindingsGroupUIDTrial	1	ret
-(0040,A023)	DA	Findings Group Recording Date (Trial)	FindingsGroupRecordingDateTrial	1	ret
-(0040,A024)	TM	Findings Group Recording Time (Trial)	FindingsGroupRecordingTimeTrial	1	ret
-(0040,A026)	SQ	Findings Source Category Code Sequence (Trial)	FindingsSourceCategoryCodeSequenceTrial	1	ret
+(0040,A020)	SQ	Findings Sequence (Trial)	FindingsSequenceTrial	1	Ret
+(0040,A021)	UI	Findings Group UID (Trial)	FindingsGroupUIDTrial	1	Ret
+(0040,A022)	UI	Referenced Findings Group UID (Trial)	ReferencedFindingsGroupUIDTrial	1	Ret
+(0040,A023)	DA	Findings Group Recording Date (Trial)	FindingsGroupRecordingDateTrial	1	Ret
+(0040,A024)	TM	Findings Group Recording Time (Trial)	FindingsGroupRecordingTimeTrial	1	Ret
+(0040,A026)	SQ	Findings Source Category Code Sequence (Trial)	FindingsSourceCategoryCodeSequenceTrial	1	Ret
 (0040,A027)	LO	Verifying Organization	VerifyingOrganization	1	Dicom
-(0040,A028)	SQ	Documenting Organization Identifier Code Sequence (Trial)	DocumentingOrganizationIdentifierCodeSequenceTrial	1	ret
+(0040,A028)	SQ	Documenting Organization Identifier Code Sequence (Trial)	DocumentingOrganizationIdentifierCodeSequenceTrial	1	Ret
 (0040,A030)	DT	Verification DateTime	VerificationDateTime	1	Dicom
 (0040,A032)	DT	Observation DateTime	ObservationDateTime	1	Dicom
 (0040,A033)	DT	Observation Start DateTime	ObservationStartDateTime	1	Dicom
 (0040,A040)	CS	Value Type	ValueType	1	Dicom
 (0040,A043)	SQ	Concept Name Code Sequence	ConceptNameCodeSequence	1	Dicom
-(0040,A047)	LO	Measurement Precision Description (Trial)	MeasurementPrecisionDescriptionTrial	1	ret
+(0040,A047)	LO	Measurement Precision Description (Trial)	MeasurementPrecisionDescriptionTrial	1	Ret
 (0040,A050)	CS	Continuity Of Content	ContinuityOfContent	1	Dicom
-(0040,A057)	CS	Urgency or Priority Alerts (Trial)	UrgencyOrPriorityAlertsTrial	1-n	ret
-(0040,A060)	LO	Sequencing Indicator (Trial)	SequencingIndicatorTrial	1	ret
-(0040,A066)	SQ	Document Identifier Code Sequence (Trial)	DocumentIdentifierCodeSequenceTrial	1	ret
-(0040,A067)	PN	Document Author (Trial)	DocumentAuthorTrial	1	ret
-(0040,A068)	SQ	Document Author Identifier Code Sequence (Trial)	DocumentAuthorIdentifierCodeSequenceTrial	1	ret
-(0040,A070)	SQ	Identifier Code Sequence (Trial)	IdentifierCodeSequenceTrial	1	ret
+(0040,A057)	CS	Urgency or Priority Alerts (Trial)	UrgencyOrPriorityAlertsTrial	1-n	Ret
+(0040,A060)	LO	Sequencing Indicator (Trial)	SequencingIndicatorTrial	1	Ret
+(0040,A066)	SQ	Document Identifier Code Sequence (Trial)	DocumentIdentifierCodeSequenceTrial	1	Ret
+(0040,A067)	PN	Document Author (Trial)	DocumentAuthorTrial	1	Ret
+(0040,A068)	SQ	Document Author Identifier Code Sequence (Trial)	DocumentAuthorIdentifierCodeSequenceTrial	1	Ret
+(0040,A070)	SQ	Identifier Code Sequence (Trial)	IdentifierCodeSequenceTrial	1	Ret
 (0040,A073)	SQ	Verifying Observer Sequence	VerifyingObserverSequence	1	Dicom
-(0040,A074)	OB	Object Binary Identifier (Trial)	ObjectBinaryIdentifierTrial	1	ret
+(0040,A074)	OB	Object Binary Identifier (Trial)	ObjectBinaryIdentifierTrial	1	Ret
 (0040,A075)	PN	Verifying Observer Name	VerifyingObserverName	1	Dicom
-(0040,A076)	SQ	Documenting Observer Identifier Code Sequence (Trial)	DocumentingObserverIdentifierCodeSequenceTrial	1	ret
+(0040,A076)	SQ	Documenting Observer Identifier Code Sequence (Trial)	DocumentingObserverIdentifierCodeSequenceTrial	1	Ret
 (0040,A078)	SQ	Author Observer Sequence	AuthorObserverSequence	1	Dicom
 (0040,A07A)	SQ	Participant Sequence	ParticipantSequence	1	Dicom
 (0040,A07C)	SQ	Custodial Organization Sequence	CustodialOrganizationSequence	1	Dicom
 (0040,A080)	CS	Participation Type	ParticipationType	1	Dicom
 (0040,A082)	DT	Participation DateTime	ParticipationDateTime	1	Dicom
 (0040,A084)	CS	Observer Type	ObserverType	1	Dicom
-(0040,A085)	SQ	Procedure Identifier Code Sequence (Trial)	ProcedureIdentifierCodeSequenceTrial	1	ret
+(0040,A085)	SQ	Procedure Identifier Code Sequence (Trial)	ProcedureIdentifierCodeSequenceTrial	1	Ret
 (0040,A088)	SQ	Verifying Observer Identification Code Sequence	VerifyingObserverIdentificationCodeSequence	1	Dicom
-(0040,A089)	OB	Object Directory Binary Identifier (Trial)	ObjectDirectoryBinaryIdentifierTrial	1	ret
-(0040,A090)	SQ	Equivalent CDA Document Sequence	EquivalentCDADocumentSequence	1	ret
+(0040,A089)	OB	Object Directory Binary Identifier (Trial)	ObjectDirectoryBinaryIdentifierTrial	1	Ret
+(0040,A090)	SQ	Equivalent CDA Document Sequence	EquivalentCDADocumentSequence	1	Ret
 (0040,A0B0)	US	Referenced Waveform Channels	ReferencedWaveformChannels	2-2n	Dicom
-(0040,A110)	DA	Date of Document or Verbal Transaction (Trial)	DateOfDocumentOrVerbalTransactionTrial	1	ret
-(0040,A112)	TM	Time of Document Creation or Verbal Transaction (Trial)	TimeOfDocumentCreationOrVerbalTransactionTrial	1	ret
+(0040,A110)	DA	Date of Document or Verbal Transaction (Trial)	DateOfDocumentOrVerbalTransactionTrial	1	Ret
+(0040,A112)	TM	Time of Document Creation or Verbal Transaction (Trial)	TimeOfDocumentCreationOrVerbalTransactionTrial	1	Ret
 (0040,A120)	DT	DateTime	DateTime	1	Dicom
 (0040,A121)	DA	Date	Date	1	Dicom
 (0040,A122)	TM	Time	Time	1	Dicom
 (0040,A123)	PN	Person Name	PersonName	1	Dicom
 (0040,A124)	UI	UID	UID	1	Dicom
-(0040,A125)	CS	Report Status ID (Trial)	ReportStatusIDTrial	2	ret
+(0040,A125)	CS	Report Status ID (Trial)	ReportStatusIDTrial	2	Ret
 (0040,A130)	CS	Temporal Range Type	TemporalRangeType	1	Dicom
 (0040,A132)	UL	Referenced Sample Positions	ReferencedSamplePositions	1-n	Dicom
-(0040,A136)	US	Referenced Frame Numbers	ReferencedFrameNumbers	1-n	ret
+(0040,A136)	US	Referenced Frame Numbers	ReferencedFrameNumbers	1-n	Ret
 (0040,A138)	DS	Referenced Time Offsets	ReferencedTimeOffsets	1-n	Dicom
 (0040,A13A)	DT	Referenced DateTime	ReferencedDateTime	1-n	Dicom
 (0040,A160)	UT	Text Value	TextValue	1	Dicom
 (0040,A161)	FD	Floating Point Value	FloatingPointValue	1-n	Dicom
 (0040,A162)	SL	Rational Numerator Value	RationalNumeratorValue	1-n	Dicom
 (0040,A163)	UL	Rational Denominator Value	RationalDenominatorValue	1-n	Dicom
-(0040,A167)	SQ	Observation Category Code Sequence (Trial)	ObservationCategoryCodeSequenceTrial	1	ret
+(0040,A167)	SQ	Observation Category Code Sequence (Trial)	ObservationCategoryCodeSequenceTrial	1	Ret
 (0040,A168)	SQ	Concept Code Sequence	ConceptCodeSequence	1	Dicom
-(0040,A16A)	ST	Bibliographic Citation (Trial)	BibliographicCitationTrial	1	ret
+(0040,A16A)	ST	Bibliographic Citation (Trial)	BibliographicCitationTrial	1	Ret
 (0040,A170)	SQ	Purpose of Reference Code Sequence	PurposeOfReferenceCodeSequence	1	Dicom
 (0040,A171)	UI	Observation UID	ObservationUID	1	Dicom
-(0040,A172)	UI	Referenced Observation UID (Trial)	ReferencedObservationUIDTrial	1	ret
-(0040,A173)	CS	Referenced Observation Class (Trial)	ReferencedObservationClassTrial	1	ret
-(0040,A174)	CS	Referenced Object Observation Class (Trial)	ReferencedObjectObservationClassTrial	1	ret
+(0040,A172)	UI	Referenced Observation UID (Trial)	ReferencedObservationUIDTrial	1	Ret
+(0040,A173)	CS	Referenced Observation Class (Trial)	ReferencedObservationClassTrial	1	Ret
+(0040,A174)	CS	Referenced Object Observation Class (Trial)	ReferencedObjectObservationClassTrial	1	Ret
 (0040,A180)	US	Annotation Group Number	AnnotationGroupNumber	1	Dicom
-(0040,A192)	DA	Observation Date (Trial)	ObservationDateTrial	1	ret
-(0040,A193)	TM	Observation Time (Trial)	ObservationTimeTrial	1	ret
-(0040,A194)	CS	Measurement Automation (Trial)	MeasurementAutomationTrial	1	ret
+(0040,A192)	DA	Observation Date (Trial)	ObservationDateTrial	1	Ret
+(0040,A193)	TM	Observation Time (Trial)	ObservationTimeTrial	1	Ret
+(0040,A194)	CS	Measurement Automation (Trial)	MeasurementAutomationTrial	1	Ret
 (0040,A195)	SQ	Modifier Code Sequence	ModifierCodeSequence	1	Dicom
-(0040,A224)	ST	Identification Description (Trial)	IdentificationDescriptionTrial	1	ret
-(0040,A290)	CS	Coordinates Set Geometric Type (Trial)	CoordinatesSetGeometricTypeTrial	1	ret
-(0040,A296)	SQ	Algorithm Code Sequence (Trial)	AlgorithmCodeSequenceTrial	1	ret
-(0040,A297)	ST	Algorithm Description (Trial)	AlgorithmDescriptionTrial	1	ret
-(0040,A29A)	SL	Pixel Coordinates Set (Trial)	PixelCoordinatesSetTrial	2-2n	ret
+(0040,A224)	ST	Identification Description (Trial)	IdentificationDescriptionTrial	1	Ret
+(0040,A290)	CS	Coordinates Set Geometric Type (Trial)	CoordinatesSetGeometricTypeTrial	1	Ret
+(0040,A296)	SQ	Algorithm Code Sequence (Trial)	AlgorithmCodeSequenceTrial	1	Ret
+(0040,A297)	ST	Algorithm Description (Trial)	AlgorithmDescriptionTrial	1	Ret
+(0040,A29A)	SL	Pixel Coordinates Set (Trial)	PixelCoordinatesSetTrial	2-2n	Ret
 (0040,A300)	SQ	Measured Value Sequence	MeasuredValueSequence	1	Dicom
 (0040,A301)	SQ	Numeric Value Qualifier Code Sequence	NumericValueQualifierCodeSequence	1	Dicom
-(0040,A307)	PN	Current Observer (Trial)	CurrentObserverTrial	1	ret
+(0040,A307)	PN	Current Observer (Trial)	CurrentObserverTrial	1	Ret
 (0040,A30A)	DS	Numeric Value	NumericValue	1-n	Dicom
-(0040,A313)	SQ	Referenced Accession Sequence (Trial)	ReferencedAccessionSequenceTrial	1	ret
-(0040,A33A)	ST	Report Status Comment (Trial)	ReportStatusCommentTrial	1	ret
-(0040,A340)	SQ	Procedure Context Sequence (Trial)	ProcedureContextSequenceTrial	1	ret
-(0040,A352)	PN	Verbal Source (Trial)	VerbalSourceTrial	1	ret
-(0040,A353)	ST	Address (Trial)	AddressTrial	1	ret
-(0040,A354)	LO	Telephone Number (Trial)	TelephoneNumberTrial	1	ret
-(0040,A358)	SQ	Verbal Source Identifier Code Sequence (Trial)	VerbalSourceIdentifierCodeSequenceTrial	1	ret
+(0040,A313)	SQ	Referenced Accession Sequence (Trial)	ReferencedAccessionSequenceTrial	1	Ret
+(0040,A33A)	ST	Report Status Comment (Trial)	ReportStatusCommentTrial	1	Ret
+(0040,A340)	SQ	Procedure Context Sequence (Trial)	ProcedureContextSequenceTrial	1	Ret
+(0040,A352)	PN	Verbal Source (Trial)	VerbalSourceTrial	1	Ret
+(0040,A353)	ST	Address (Trial)	AddressTrial	1	Ret
+(0040,A354)	LO	Telephone Number (Trial)	TelephoneNumberTrial	1	Ret
+(0040,A358)	SQ	Verbal Source Identifier Code Sequence (Trial)	VerbalSourceIdentifierCodeSequenceTrial	1	Ret
 (0040,A360)	SQ	Predecessor Documents Sequence	PredecessorDocumentsSequence	1	Dicom
 (0040,A370)	SQ	Referenced Request Sequence	ReferencedRequestSequence	1	Dicom
 (0040,A372)	SQ	Performed Procedure Code Sequence	PerformedProcedureCodeSequence	1	Dicom
 (0040,A375)	SQ	Current Requested Procedure Evidence Sequence	CurrentRequestedProcedureEvidenceSequence	1	Dicom
-(0040,A380)	SQ	Report Detail Sequence (Trial)	ReportDetailSequenceTrial	1	ret
+(0040,A380)	SQ	Report Detail Sequence (Trial)	ReportDetailSequenceTrial	1	Ret
 (0040,A385)	SQ	Pertinent Other Evidence Sequence	PertinentOtherEvidenceSequence	1	Dicom
 (0040,A390)	SQ	HL7 Structured Document Reference Sequence	HL7StructuredDocumentReferenceSequence	1	Dicom
-(0040,A402)	UI	Observation Subject UID (Trial)	ObservationSubjectUIDTrial	1	ret
-(0040,A403)	CS	Observation Subject Class (Trial)	ObservationSubjectClassTrial	1	ret
-(0040,A404)	SQ	Observation Subject Type Code Sequence (Trial)	ObservationSubjectTypeCodeSequenceTrial	1	ret
+(0040,A402)	UI	Observation Subject UID (Trial)	ObservationSubjectUIDTrial	1	Ret
+(0040,A403)	CS	Observation Subject Class (Trial)	ObservationSubjectClassTrial	1	Ret
+(0040,A404)	SQ	Observation Subject Type Code Sequence (Trial)	ObservationSubjectTypeCodeSequenceTrial	1	Ret
 (0040,A491)	CS	Completion Flag	CompletionFlag	1	Dicom
 (0040,A492)	LO	Completion Flag Description	CompletionFlagDescription	1	Dicom
 (0040,A493)	CS	Verification Flag	VerificationFlag	1	Dicom
@@ -2768,13 +2765,13 @@
 (0040,A496)	CS	Preliminary Flag	PreliminaryFlag	1	Dicom
 (0040,A504)	SQ	Content Template Sequence	ContentTemplateSequence	1	Dicom
 (0040,A525)	SQ	Identical Documents Sequence	IdenticalDocumentsSequence	1	Dicom
-(0040,A600)	CS	Observation Subject Context Flag (Trial)	ObservationSubjectContextFlagTrial	1	ret
-(0040,A601)	CS	Observer Context Flag (Trial)	ObserverContextFlagTrial	1	ret
-(0040,A603)	CS	Procedure Context Flag (Trial)	ProcedureContextFlagTrial	1	ret
+(0040,A600)	CS	Observation Subject Context Flag (Trial)	ObservationSubjectContextFlagTrial	1	Ret
+(0040,A601)	CS	Observer Context Flag (Trial)	ObserverContextFlagTrial	1	Ret
+(0040,A603)	CS	Procedure Context Flag (Trial)	ProcedureContextFlagTrial	1	Ret
 (0040,A730)	SQ	Content Sequence	ContentSequence	1	Dicom
-(0040,A731)	SQ	Relationship Sequence (Trial)	RelationshipSequenceTrial	1	ret
-(0040,A732)	SQ	Relationship Type Code Sequence (Trial)	RelationshipTypeCodeSequenceTrial	1	ret
-(0040,A744)	SQ	Language Code Sequence (Trial)	LanguageCodeSequenceTrial	1	ret
+(0040,A731)	SQ	Relationship Sequence (Trial)	RelationshipSequenceTrial	1	Ret
+(0040,A732)	SQ	Relationship Type Code Sequence (Trial)	RelationshipTypeCodeSequenceTrial	1	Ret
+(0040,A744)	SQ	Language Code Sequence (Trial)	LanguageCodeSequenceTrial	1	Ret
 (0040,A801)	SQ	Tabulated Values Sequence	TabulatedValuesSequence	1	Dicom
 (0040,A802)	UL	Number of Table Rows	NumberOfTableRows	1	Dicom
 (0040,A803)	UL	Number of Table Columns	NumberOfTableColumns	1	Dicom
@@ -2783,14 +2780,14 @@
 (0040,A806)	SQ	Table Row Definition Sequence	TableRowDefinitionSequence	1	Dicom
 (0040,A807)	SQ	Table Column Definition Sequence	TableColumnDefinitionSequence	1	Dicom
 (0040,A808)	SQ	Cell Values Sequence	CellValuesSequence	1	Dicom
-(0040,A992)	ST	Uniform Resource Locator (Trial)	UniformResourceLocatorTrial	1	ret
+(0040,A992)	ST	Uniform Resource Locator (Trial)	UniformResourceLocatorTrial	1	Ret
 (0040,B020)	SQ	Waveform Annotation Sequence	WaveformAnnotationSequence	1	Dicom
 (0040,DB00)	CS	Template Identifier	TemplateIdentifier	1	Dicom
-(0040,DB06)	DT	Template Version	TemplateVersion	1	ret
-(0040,DB07)	DT	Template Local Version	TemplateLocalVersion	1	ret
-(0040,DB0B)	CS	Template Extension Flag	TemplateExtensionFlag	1	ret
-(0040,DB0C)	UI	Template Extension Organization UID	TemplateExtensionOrganizationUID	1	ret
-(0040,DB0D)	UI	Template Extension Creator UID	TemplateExtensionCreatorUID	1	ret
+(0040,DB06)	DT	Template Version	TemplateVersion	1	Ret
+(0040,DB07)	DT	Template Local Version	TemplateLocalVersion	1	Ret
+(0040,DB0B)	CS	Template Extension Flag	TemplateExtensionFlag	1	Ret
+(0040,DB0C)	UI	Template Extension Organization UID	TemplateExtensionOrganizationUID	1	Ret
+(0040,DB0D)	UI	Template Extension Creator UID	TemplateExtensionCreatorUID	1	Ret
 (0040,DB73)	UL	Referenced Content Item Identifier	ReferencedContentItemIdentifier	1-n	Dicom
 (0040,E001)	ST	HL7 Instance Identifier	HL7InstanceIdentifier	1	Dicom
 (0040,E004)	DT	HL7 Document Effective Time	HL7DocumentEffectiveTime	1	Dicom
@@ -2949,9 +2946,9 @@
 (0048,0112)	DS	Objective Lens Power	ObjectiveLensPower	1	Dicom
 (0048,0113)	DS	Objective Lens Numerical Aperture	ObjectiveLensNumericalAperture	1	Dicom
 (0048,0120)	SQ	Palette Color Lookup Table Sequence	PaletteColorLookupTableSequence	1	Dicom
-(0048,0200)	SQ	Referenced Image Navigation Sequence	ReferencedImageNavigationSequence	1	ret
-(0048,0201)	US	Top Left Hand Corner of Localizer Area	TopLeftHandCornerOfLocalizerArea	2	ret
-(0048,0202)	US	Bottom Right Hand Corner of Localizer Area	BottomRightHandCornerOfLocalizerArea	2	ret
+(0048,0200)	SQ	Referenced Image Navigation Sequence	ReferencedImageNavigationSequence	1	Ret
+(0048,0201)	US	Top Left Hand Corner of Localizer Area	TopLeftHandCornerOfLocalizerArea	2	Ret
+(0048,0202)	US	Bottom Right Hand Corner of Localizer Area	BottomRightHandCornerOfLocalizerArea	2	Ret
 (0048,0207)	SQ	Optical Path Identification Sequence	OpticalPathIdentificationSequence	1	Dicom
 (0048,021A)	SQ	Plane Position (Slide) Sequence	PlanePositionSlideSequence	1	Dicom
 (0048,021E)	SL	Column Position In Total Image Pixel Matrix	ColumnPositionInTotalImagePixelMatrix	1	Dicom
@@ -3081,8 +3078,8 @@
 (0054,1323)	DS	Scatter Fraction Factor	ScatterFractionFactor	1	Dicom
 (0054,1324)	DS	Dead Time Factor	DeadTimeFactor	1	Dicom
 (0054,1330)	US	Image Index	ImageIndex	1	Dicom
-(0054,1400)	CS	Counts Included	CountsIncluded	1-n	ret
-(0054,1401)	CS	Dead Time Correction Flag	DeadTimeCorrectionFlag	1	ret
+(0054,1400)	CS	Counts Included	CountsIncluded	1-n	Ret
+(0054,1401)	CS	Dead Time Correction Flag	DeadTimeCorrectionFlag	1	Ret
 (0060,3000)	SQ	Histogram Sequence	HistogramSequence	1	Dicom
 (0060,3002)	US	Histogram Number of Bins	HistogramNumberOfBins	1	Dicom
 (0060,3004)	US or SS	Histogram First Bin Value	HistogramFirstBinValue	1	Dicom
@@ -3146,13 +3143,13 @@
 (0066,0020)	FL	Vector Accuracy	VectorAccuracy	1-n	Dicom
 (0066,0021)	OF	Vector Coordinate Data	VectorCoordinateData	1	Dicom
 (0066,0022)	OD	Double Point Coordinates Data	DoublePointCoordinatesData	1	Dicom
-(0066,0023)	OW	Triangle Point Index List	TrianglePointIndexList	1	ret
-(0066,0024)	OW	Edge Point Index List	EdgePointIndexList	1	ret
-(0066,0025)	OW	Vertex Point Index List	VertexPointIndexList	1	ret
+(0066,0023)	OW	Triangle Point Index List	TrianglePointIndexList	1	Ret
+(0066,0024)	OW	Edge Point Index List	EdgePointIndexList	1	Ret
+(0066,0025)	OW	Vertex Point Index List	VertexPointIndexList	1	Ret
 (0066,0026)	SQ	Triangle Strip Sequence	TriangleStripSequence	1	Dicom
 (0066,0027)	SQ	Triangle Fan Sequence	TriangleFanSequence	1	Dicom
 (0066,0028)	SQ	Line Sequence	LineSequence	1	Dicom
-(0066,0029)	OW	Primitive Point Index List	PrimitivePointIndexList	1	ret
+(0066,0029)	OW	Primitive Point Index List	PrimitivePointIndexList	1	Ret
 (0066,002A)	UL	Surface Count	SurfaceCount	1	Dicom
 (0066,002B)	SQ	Referenced Surface Sequence	ReferencedSurfaceSequence	1	Dicom
 (0066,002C)	UL	Referenced Surface Number	ReferencedSurfaceNumber	1	Dicom
@@ -3296,18 +3293,18 @@
 (0070,0022)	FL	Graphic Data	GraphicData	2-n	Dicom
 (0070,0023)	CS	Graphic Type	GraphicType	1	Dicom
 (0070,0024)	CS	Graphic Filled	GraphicFilled	1	Dicom
-(0070,0040)	IS	Image Rotation (Retired)	ImageRotationRetired	1	ret
+(0070,0040)	IS	Image Rotation (Retired)	ImageRotationRetired	1	Ret
 (0070,0041)	CS	Image Horizontal Flip	ImageHorizontalFlip	1	Dicom
 (0070,0042)	US	Image Rotation	ImageRotation	1	Dicom
-(0070,0050)	US	Displayed Area Top Left Hand Corner (Trial)	DisplayedAreaTopLeftHandCornerTrial	2	ret
-(0070,0051)	US	Displayed Area Bottom Right Hand Corner (Trial)	DisplayedAreaBottomRightHandCornerTrial	2	ret
+(0070,0050)	US	Displayed Area Top Left Hand Corner (Trial)	DisplayedAreaTopLeftHandCornerTrial	2	Ret
+(0070,0051)	US	Displayed Area Bottom Right Hand Corner (Trial)	DisplayedAreaBottomRightHandCornerTrial	2	Ret
 (0070,0052)	SL	Displayed Area Top Left Hand Corner	DisplayedAreaTopLeftHandCorner	2	Dicom
 (0070,0053)	SL	Displayed Area Bottom Right Hand Corner	DisplayedAreaBottomRightHandCorner	2	Dicom
 (0070,005A)	SQ	Displayed Area Selection Sequence	DisplayedAreaSelectionSequence	1	Dicom
 (0070,0060)	SQ	Graphic Layer Sequence	GraphicLayerSequence	1	Dicom
 (0070,0062)	IS	Graphic Layer Order	GraphicLayerOrder	1	Dicom
 (0070,0066)	US	Graphic Layer Recommended Display Grayscale Value	GraphicLayerRecommendedDisplayGrayscaleValue	1	Dicom
-(0070,0067)	US	Graphic Layer Recommended Display RGB Value	GraphicLayerRecommendedDisplayRGBValue	3	ret
+(0070,0067)	US	Graphic Layer Recommended Display RGB Value	GraphicLayerRecommendedDisplayRGBValue	3	Ret
 (0070,0068)	LO	Graphic Layer Description	GraphicLayerDescription	1	Dicom
 (0070,0080)	CS	Content Label	ContentLabel	1	Dicom
 (0070,0081)	LO	Content Description	ContentDescription	1	Dicom
@@ -3397,7 +3394,7 @@
 (0070,1203)	US	Input Sequence Position Index	InputSequencePositionIndex	1	Dicom
 (0070,1204)	CS	Crop	Crop	1	Dicom
 (0070,1205)	US	Cropping Specification Index	CroppingSpecificationIndex	1-n	Dicom
-(0070,1206)	CS	Compositing Method	CompositingMethod	1	ret
+(0070,1206)	CS	Compositing Method	CompositingMethod	1	Ret
 (0070,1207)	US	Volumetric Presentation Input Number	VolumetricPresentationInputNumber	1	Dicom
 (0070,1208)	CS	Image Volume Geometry	ImageVolumeGeometry	1	Dicom
 (0070,1209)	UI	Volumetric Presentation Input Set UID	VolumetricPresentationInputSetUID	1	Dicom
@@ -3603,7 +3600,7 @@
 (0074,100E)	SQ	Procedure Step Discontinuation Reason Code Sequence	ProcedureStepDiscontinuationReasonCodeSequence	1	Dicom
 (0074,1020)	SQ	Beam Task Sequence	BeamTaskSequence	1	Dicom
 (0074,1022)	CS	Beam Task Type	BeamTaskType	1	Dicom
-(0074,1024)	IS	Beam Order Index (Trial)	BeamOrderIndexTrial	1	ret
+(0074,1024)	IS	Beam Order Index (Trial)	BeamOrderIndexTrial	1	Ret
 (0074,1025)	CS	Autosequence Flag	AutosequenceFlag	1	Dicom
 (0074,1026)	FD	Table Top Vertical Adjusted Position	TableTopVerticalAdjustedPosition	1	Dicom
 (0074,1027)	FD	Table Top Longitudinal Adjusted Position	TableTopLongitudinalAdjustedPosition	1	Dicom
@@ -3616,8 +3613,8 @@
 (0074,1032)	CS	Verification Image Timing	VerificationImageTiming	1	Dicom
 (0074,1034)	CS	Double Exposure Flag	DoubleExposureFlag	1	Dicom
 (0074,1036)	CS	Double Exposure Ordering	DoubleExposureOrdering	1	Dicom
-(0074,1038)	DS	Double Exposure Meterset (Trial)	DoubleExposureMetersetTrial	1	ret
-(0074,103A)	DS	Double Exposure Field Delta (Trial)	DoubleExposureFieldDeltaTrial	4	ret
+(0074,1038)	DS	Double Exposure Meterset (Trial)	DoubleExposureMetersetTrial	1	Ret
+(0074,103A)	DS	Double Exposure Field Delta (Trial)	DoubleExposureFieldDeltaTrial	4	Ret
 (0074,1040)	SQ	Related Reference RT Image Sequence	RelatedReferenceRTImageSequence	1	Dicom
 (0074,1042)	SQ	General Machine Verification Sequence	GeneralMachineVerificationSequence	1	Dicom
 (0074,1044)	SQ	Conventional Machine Verification Sequence	ConventionalMachineVerificationSequence	1	Dicom
@@ -3637,8 +3634,8 @@
 (0074,1210)	SQ	Scheduled Processing Parameters Sequence	ScheduledProcessingParametersSequence	1	Dicom
 (0074,1212)	SQ	Performed Processing Parameters Sequence	PerformedProcessingParametersSequence	1	Dicom
 (0074,1216)	SQ	Unified Procedure Step Performed Procedure Sequence	UnifiedProcedureStepPerformedProcedureSequence	1	Dicom
-(0074,1220)	SQ	Related Procedure Step Sequence	RelatedProcedureStepSequence	1	ret
-(0074,1222)	LO	Procedure Step Relationship Type	ProcedureStepRelationshipType	1	ret
+(0074,1220)	SQ	Related Procedure Step Sequence	RelatedProcedureStepSequence	1	Ret
+(0074,1222)	LO	Procedure Step Relationship Type	ProcedureStepRelationshipType	1	Ret
 (0074,1224)	SQ	Replaced Procedure Step Sequence	ReplacedProcedureStepSequence	1	Dicom
 (0074,1230)	LO	Deletion Lock	DeletionLock	1	Dicom
 (0074,1234)	AE	Receiving AE	ReceivingAE	1	Dicom
@@ -3745,10 +3742,10 @@
 (0088,0130)	SH	Storage Media File-set ID	StorageMediaFileSetID	1	Dicom
 (0088,0140)	UI	Storage Media File-set UID	StorageMediaFileSetUID	1	Dicom
 (0088,0200)	SQ	Icon Image Sequence	IconImageSequence	1	Dicom
-(0088,0904)	LO	Topic Title	TopicTitle	1	ret
-(0088,0906)	ST	Topic Subject	TopicSubject	1	ret
-(0088,0910)	LO	Topic Author	TopicAuthor	1	ret
-(0088,0912)	LO	Topic Keywords	TopicKeywords	1-32	ret
+(0088,0904)	LO	Topic Title	TopicTitle	1	Ret
+(0088,0906)	ST	Topic Subject	TopicSubject	1	Ret
+(0088,0910)	LO	Topic Author	TopicAuthor	1	Ret
+(0088,0912)	LO	Topic Keywords	TopicKeywords	1-32	Ret
 (0100,0410)	CS	SOP Instance Status	SOPInstanceStatus	1	Dicom
 (0100,0420)	DT	SOP Authorization DateTime	SOPAuthorizationDateTime	1	Dicom
 (0100,0424)	LT	SOP Authorization Comment	SOPAuthorizationComment	1	Dicom
@@ -3780,13 +3777,13 @@
 (0400,0564)	LO	Source of Previous Values	SourceOfPreviousValues	1	Dicom
 (0400,0565)	CS	Reason for the Attribute Modification	ReasonForTheAttributeModification	1	Dicom
 (0400,0600)	CS	Instance Origin Status	InstanceOriginStatus	1	Dicom
-(1000,xxx0)	US	Escape Triplet	EscapeTriplet	3	ret
-(1000,xxx1)	US	Run Length Triplet	RunLengthTriplet	3	ret
-(1000,xxx2)	US	Huffman Table Size	HuffmanTableSize	1	ret
-(1000,xxx3)	US	Huffman Table Triplet	HuffmanTableTriplet	3	ret
-(1000,xxx4)	US	Shift Table Size	ShiftTableSize	1	ret
-(1000,xxx5)	US	Shift Table Triplet	ShiftTableTriplet	3	ret
-(1010,xxxx)	US	Zonal Map	ZonalMap	1-n	ret
+(1000,xxx0)	US	Escape Triplet	EscapeTriplet	3	Ret
+(1000,xxx1)	US	Run Length Triplet	RunLengthTriplet	3	Ret
+(1000,xxx2)	US	Huffman Table Size	HuffmanTableSize	1	Ret
+(1000,xxx3)	US	Huffman Table Triplet	HuffmanTableTriplet	3	Ret
+(1000,xxx4)	US	Shift Table Size	ShiftTableSize	1	Ret
+(1000,xxx5)	US	Shift Table Triplet	ShiftTableTriplet	3	Ret
+(1010,xxxx)	US	Zonal Map	ZonalMap	1-n	Ret
 (2000,0010)	IS	Number of Copies	NumberOfCopies	1	Dicom
 (2000,001E)	SQ	Printer Configuration Sequence	PrinterConfigurationSequence	1	Dicom
 (2000,0020)	CS	Print Priority	PrintPriority	1	Dicom
@@ -3795,19 +3792,19 @@
 (2000,0050)	LO	Film Session Label	FilmSessionLabel	1	Dicom
 (2000,0060)	IS	Memory Allocation	MemoryAllocation	1	Dicom
 (2000,0061)	IS	Maximum Memory Allocation	MaximumMemoryAllocation	1	Dicom
-(2000,0062)	CS	Color Image Printing Flag	ColorImagePrintingFlag	1	ret
-(2000,0063)	CS	Collation Flag	CollationFlag	1	ret
-(2000,0065)	CS	Annotation Flag	AnnotationFlag	1	ret
-(2000,0067)	CS	Image Overlay Flag	ImageOverlayFlag	1	ret
-(2000,0069)	CS	Presentation LUT Flag	PresentationLUTFlag	1	ret
-(2000,006A)	CS	Image Box Presentation LUT Flag	ImageBoxPresentationLUTFlag	1	ret
+(2000,0062)	CS	Color Image Printing Flag	ColorImagePrintingFlag	1	Ret
+(2000,0063)	CS	Collation Flag	CollationFlag	1	Ret
+(2000,0065)	CS	Annotation Flag	AnnotationFlag	1	Ret
+(2000,0067)	CS	Image Overlay Flag	ImageOverlayFlag	1	Ret
+(2000,0069)	CS	Presentation LUT Flag	PresentationLUTFlag	1	Ret
+(2000,006A)	CS	Image Box Presentation LUT Flag	ImageBoxPresentationLUTFlag	1	Ret
 (2000,00A0)	US	Memory Bit Depth	MemoryBitDepth	1	Dicom
 (2000,00A1)	US	Printing Bit Depth	PrintingBitDepth	1	Dicom
 (2000,00A2)	SQ	Media Installed Sequence	MediaInstalledSequence	1	Dicom
 (2000,00A4)	SQ	Other Media Available Sequence	OtherMediaAvailableSequence	1	Dicom
 (2000,00A8)	SQ	Supported Image Display Formats Sequence	SupportedImageDisplayFormatsSequence	1	Dicom
 (2000,0500)	SQ	Referenced Film Box Sequence	ReferencedFilmBoxSequence	1	Dicom
-(2000,0510)	SQ	Referenced Stored Print Sequence	ReferencedStoredPrintSequence	1	ret
+(2000,0510)	SQ	Referenced Stored Print Sequence	ReferencedStoredPrintSequence	1	Ret
 (2010,0010)	ST	Image Display Format	ImageDisplayFormat	1	Dicom
 (2010,0030)	CS	Annotation Display Format ID	AnnotationDisplayFormatID	1	Dicom
 (2010,0040)	CS	Film Orientation	FilmOrientation	1	Dicom
@@ -3843,26 +3840,26 @@
 (2020,00A2)	CS	Decimate/Crop Result	DecimateCropResult	1	Dicom
 (2020,0110)	SQ	Basic Grayscale Image Sequence	BasicGrayscaleImageSequence	1	Dicom
 (2020,0111)	SQ	Basic Color Image Sequence	BasicColorImageSequence	1	Dicom
-(2020,0130)	SQ	Referenced Image Overlay Box Sequence	ReferencedImageOverlayBoxSequence	1	ret
-(2020,0140)	SQ	Referenced VOI LUT Box Sequence	ReferencedVOILUTBoxSequence	1	ret
+(2020,0130)	SQ	Referenced Image Overlay Box Sequence	ReferencedImageOverlayBoxSequence	1	Ret
+(2020,0140)	SQ	Referenced VOI LUT Box Sequence	ReferencedVOILUTBoxSequence	1	Ret
 (2030,0010)	US	Annotation Position	AnnotationPosition	1	Dicom
 (2030,0020)	LO	Text String	TextString	1	Dicom
-(2040,0010)	SQ	Referenced Overlay Plane Sequence	ReferencedOverlayPlaneSequence	1	ret
-(2040,0011)	US	Referenced Overlay Plane Groups	ReferencedOverlayPlaneGroups	1-99	ret
-(2040,0020)	SQ	Overlay Pixel Data Sequence	OverlayPixelDataSequence	1	ret
-(2040,0060)	CS	Overlay Magnification Type	OverlayMagnificationType	1	ret
-(2040,0070)	CS	Overlay Smoothing Type	OverlaySmoothingType	1	ret
-(2040,0072)	CS	Overlay or Image Magnification	OverlayOrImageMagnification	1	ret
-(2040,0074)	US	Magnify to Number of Columns	MagnifyToNumberOfColumns	1	ret
-(2040,0080)	CS	Overlay Foreground Density	OverlayForegroundDensity	1	ret
-(2040,0082)	CS	Overlay Background Density	OverlayBackgroundDensity	1	ret
-(2040,0090)	CS	Overlay Mode	OverlayMode	1	ret
-(2040,0100)	CS	Threshold Density	ThresholdDensity	1	ret
-(2040,0500)	SQ	Referenced Image Box Sequence (Retired)	ReferencedImageBoxSequenceRetired	1	ret
+(2040,0010)	SQ	Referenced Overlay Plane Sequence	ReferencedOverlayPlaneSequence	1	Ret
+(2040,0011)	US	Referenced Overlay Plane Groups	ReferencedOverlayPlaneGroups	1-99	Ret
+(2040,0020)	SQ	Overlay Pixel Data Sequence	OverlayPixelDataSequence	1	Ret
+(2040,0060)	CS	Overlay Magnification Type	OverlayMagnificationType	1	Ret
+(2040,0070)	CS	Overlay Smoothing Type	OverlaySmoothingType	1	Ret
+(2040,0072)	CS	Overlay or Image Magnification	OverlayOrImageMagnification	1	Ret
+(2040,0074)	US	Magnify to Number of Columns	MagnifyToNumberOfColumns	1	Ret
+(2040,0080)	CS	Overlay Foreground Density	OverlayForegroundDensity	1	Ret
+(2040,0082)	CS	Overlay Background Density	OverlayBackgroundDensity	1	Ret
+(2040,0090)	CS	Overlay Mode	OverlayMode	1	Ret
+(2040,0100)	CS	Threshold Density	ThresholdDensity	1	Ret
+(2040,0500)	SQ	Referenced Image Box Sequence (Retired)	ReferencedImageBoxSequenceRetired	1	Ret
 (2050,0010)	SQ	Presentation LUT Sequence	PresentationLUTSequence	1	Dicom
 (2050,0020)	CS	Presentation LUT Shape	PresentationLUTShape	1	Dicom
 (2050,0500)	SQ	Referenced Presentation LUT Sequence	ReferencedPresentationLUTSequence	1	Dicom
-(2100,0010)	SH	Print Job ID	PrintJobID	1	ret
+(2100,0010)	SH	Print Job ID	PrintJobID	1	Ret
 (2100,0020)	CS	Execution Status	ExecutionStatus	1	Dicom
 (2100,0030)	CS	Execution Status Info	ExecutionStatusInfo	1	Dicom
 (2100,0040)	DA	Creation Date	CreationDate	1	Dicom
@@ -3871,21 +3868,21 @@
 (2100,0140)	AE	Destination AE	DestinationAE	1	Dicom
 (2100,0160)	SH	Owner ID	OwnerID	1	Dicom
 (2100,0170)	IS	Number of Films	NumberOfFilms	1	Dicom
-(2100,0500)	SQ	Referenced Print Job Sequence (Pull Stored Print)	ReferencedPrintJobSequencePullStoredPrint	1	ret
+(2100,0500)	SQ	Referenced Print Job Sequence (Pull Stored Print)	ReferencedPrintJobSequencePullStoredPrint	1	Ret
 (2110,0010)	CS	Printer Status	PrinterStatus	1	Dicom
 (2110,0020)	CS	Printer Status Info	PrinterStatusInfo	1	Dicom
 (2110,0030)	LO	Printer Name	PrinterName	1	Dicom
-(2110,0099)	SH	Print Queue ID	PrintQueueID	1	ret
-(2120,0010)	CS	Queue Status	QueueStatus	1	ret
-(2120,0050)	SQ	Print Job Description Sequence	PrintJobDescriptionSequence	1	ret
-(2120,0070)	SQ	Referenced Print Job Sequence	ReferencedPrintJobSequence	1	ret
-(2130,0010)	SQ	Print Management Capabilities Sequence	PrintManagementCapabilitiesSequence	1	ret
-(2130,0015)	SQ	Printer Characteristics Sequence	PrinterCharacteristicsSequence	1	ret
-(2130,0030)	SQ	Film Box Content Sequence	FilmBoxContentSequence	1	ret
-(2130,0040)	SQ	Image Box Content Sequence	ImageBoxContentSequence	1	ret
-(2130,0050)	SQ	Annotation Content Sequence	AnnotationContentSequence	1	ret
-(2130,0060)	SQ	Image Overlay Box Content Sequence	ImageOverlayBoxContentSequence	1	ret
-(2130,0080)	SQ	Presentation LUT Content Sequence	PresentationLUTContentSequence	1	ret
+(2110,0099)	SH	Print Queue ID	PrintQueueID	1	Ret
+(2120,0010)	CS	Queue Status	QueueStatus	1	Ret
+(2120,0050)	SQ	Print Job Description Sequence	PrintJobDescriptionSequence	1	Ret
+(2120,0070)	SQ	Referenced Print Job Sequence	ReferencedPrintJobSequence	1	Ret
+(2130,0010)	SQ	Print Management Capabilities Sequence	PrintManagementCapabilitiesSequence	1	Ret
+(2130,0015)	SQ	Printer Characteristics Sequence	PrinterCharacteristicsSequence	1	Ret
+(2130,0030)	SQ	Film Box Content Sequence	FilmBoxContentSequence	1	Ret
+(2130,0040)	SQ	Image Box Content Sequence	ImageBoxContentSequence	1	Ret
+(2130,0050)	SQ	Annotation Content Sequence	AnnotationContentSequence	1	Ret
+(2130,0060)	SQ	Image Overlay Box Content Sequence	ImageOverlayBoxContentSequence	1	Ret
+(2130,0080)	SQ	Presentation LUT Content Sequence	PresentationLUTContentSequence	1	Ret
 (2130,00A0)	SQ	Proposed Study Sequence	ProposedStudySequence	1	Dicom
 (2130,00C0)	SQ	Original Image Sequence	OriginalImageSequence	1	Dicom
 (2200,0001)	CS	Label Using Information Extracted From Instances	LabelUsingInformationExtractedFromInstances	1	Dicom
@@ -3992,8 +3989,8 @@
 (3004,000A)	CS	Dose Summation Type	DoseSummationType	1	Dicom
 (3004,000C)	DS	Grid Frame Offset Vector	GridFrameOffsetVector	2-n	Dicom
 (3004,000E)	DS	Dose Grid Scaling	DoseGridScaling	1	Dicom
-(3004,0010)	SQ	RT Dose ROI Sequence	RTDoseROISequence	1	ret
-(3004,0012)	DS	Dose Value	DoseValue	1	ret
+(3004,0010)	SQ	RT Dose ROI Sequence	RTDoseROISequence	1	Ret
+(3004,0012)	DS	Dose Value	DoseValue	1	Ret
 (3004,0014)	CS	Tissue Heterogeneity Correction	TissueHeterogeneityCorrection	1-3	Dicom
 (3004,0040)	DS	DVH Normalization Point	DVHNormalizationPoint	3	Dicom
 (3004,0042)	DS	DVH Normalization Dose Value	DVHNormalizationDoseValue	1	Dicom
@@ -4032,19 +4029,19 @@
 (3006,0039)	SQ	ROI Contour Sequence	ROIContourSequence	1	Dicom
 (3006,0040)	SQ	Contour Sequence	ContourSequence	1	Dicom
 (3006,0042)	CS	Contour Geometric Type	ContourGeometricType	1	Dicom
-(3006,0044)	DS	Contour Slab Thickness	ContourSlabThickness	1	ret
-(3006,0045)	DS	Contour Offset Vector	ContourOffsetVector	3	ret
+(3006,0044)	DS	Contour Slab Thickness	ContourSlabThickness	1	Ret
+(3006,0045)	DS	Contour Offset Vector	ContourOffsetVector	3	Ret
 (3006,0046)	IS	Number of Contour Points	NumberOfContourPoints	1	Dicom
 (3006,0048)	IS	Contour Number	ContourNumber	1	Dicom
-(3006,0049)	IS	Attached Contours	AttachedContours	1-n	ret
+(3006,0049)	IS	Attached Contours	AttachedContours	1-n	Ret
 (3006,004A)	SQ	Source Pixel Planes Characteristics Sequence	SourcePixelPlanesCharacteristicsSequence	1	Dicom
 (3006,0050)	DS	Contour Data	ContourData	3-3n	Dicom
 (3006,0080)	SQ	RT ROI Observations Sequence	RTROIObservationsSequence	1	Dicom
 (3006,0082)	IS	Observation Number	ObservationNumber	1	Dicom
 (3006,0084)	IS	Referenced ROI Number	ReferencedROINumber	1	Dicom
-(3006,0085)	SH	ROI Observation Label	ROIObservationLabel	1	ret
+(3006,0085)	SH	ROI Observation Label	ROIObservationLabel	1	Ret
 (3006,0086)	SQ	RT ROI Identification Code Sequence	RTROIIdentificationCodeSequence	1	Dicom
-(3006,0088)	ST	ROI Observation Description	ROIObservationDescription	1	ret
+(3006,0088)	ST	ROI Observation Description	ROIObservationDescription	1	Ret
 (3006,00A0)	SQ	Related RT ROI Observations Sequence	RelatedRTROIObservationsSequence	1	Dicom
 (3006,00A4)	CS	RT ROI Interpreted Type	RTROIInterpretedType	1	Dicom
 (3006,00A6)	PN	ROI Interpreter	ROIInterpreter	1	Dicom
@@ -4054,10 +4051,10 @@
 (3006,00B6)	SQ	ROI Elemental Composition Sequence	ROIElementalCompositionSequence	1	Dicom
 (3006,00B7)	US	ROI Elemental Composition Atomic Number	ROIElementalCompositionAtomicNumber	1	Dicom
 (3006,00B8)	FL	ROI Elemental Composition Atomic Mass Fraction	ROIElementalCompositionAtomicMassFraction	1	Dicom
-(3006,00B9)	SQ	Additional RT ROI Identification Code Sequence	AdditionalRTROIIdentificationCodeSequence	1	ret
-(3006,00C0)	SQ	Frame of Reference Relationship Sequence	FrameOfReferenceRelationshipSequence	1	ret
-(3006,00C2)	UI	Related Frame of Reference UID	RelatedFrameOfReferenceUID	1	ret
-(3006,00C4)	CS	Frame of Reference Transformation Type	FrameOfReferenceTransformationType	1	ret
+(3006,00B9)	SQ	Additional RT ROI Identification Code Sequence	AdditionalRTROIIdentificationCodeSequence	1	Ret
+(3006,00C0)	SQ	Frame of Reference Relationship Sequence	FrameOfReferenceRelationshipSequence	1	Ret
+(3006,00C2)	UI	Related Frame of Reference UID	RelatedFrameOfReferenceUID	1	Ret
+(3006,00C4)	CS	Frame of Reference Transformation Type	FrameOfReferenceTransformationType	1	Ret
 (3006,00C6)	DS	Frame of Reference Transformation Matrix	FrameOfReferenceTransformationMatrix	16	Dicom
 (3006,00C8)	LO	Frame of Reference Transformation Comment	FrameOfReferenceTransformationComment	1	Dicom
 (3006,00C9)	SQ	Patient Location Coordinates Sequence	PatientLocationCoordinatesSequence	1	Dicom
@@ -4170,7 +4167,7 @@
 (300A,0007)	TM	RT Plan Time	RTPlanTime	1	Dicom
 (300A,0009)	LO	Treatment Protocols	TreatmentProtocols	1-n	Dicom
 (300A,000A)	CS	Plan Intent	PlanIntent	1	Dicom
-(300A,000B)	LO	Treatment Sites	TreatmentSites	1-n	ret
+(300A,000B)	LO	Treatment Sites	TreatmentSites	1-n	Ret
 (300A,000C)	CS	RT Plan Geometry	RTPlanGeometry	1	Dicom
 (300A,000E)	ST	Prescription Description	PrescriptionDescription	1	Dicom
 (300A,0010)	SQ	Dose Reference Sequence	DoseReferenceSequence	1	Dicom
@@ -4217,7 +4214,7 @@
 (300A,007A)	IS	Repeat Fraction Cycle Length	RepeatFractionCycleLength	1	Dicom
 (300A,007B)	LT	Fraction Pattern	FractionPattern	1	Dicom
 (300A,0080)	IS	Number of Beams	NumberOfBeams	1	Dicom
-(300A,0082)	DS	Beam Dose Specification Point	BeamDoseSpecificationPoint	3	ret
+(300A,0082)	DS	Beam Dose Specification Point	BeamDoseSpecificationPoint	3	Ret
 (300A,0083)	UI	Referenced Dose Reference UID	ReferencedDoseReferenceUID	1	Dicom
 (300A,0084)	DS	Beam Dose	BeamDose	1	Dicom
 (300A,0086)	DS	Beam Meterset	BeamMeterset	1	Dicom
@@ -4226,9 +4223,9 @@
 (300A,008A)	FL	Beam Dose Point SSD	BeamDosePointSSD	1	Dicom
 (300A,008B)	CS	Beam Dose Meaning	BeamDoseMeaning	1	Dicom
 (300A,008C)	SQ	Beam Dose Verification Control Point Sequence	BeamDoseVerificationControlPointSequence	1	Dicom
-(300A,008D)	FL	Average Beam Dose Point Depth	AverageBeamDosePointDepth	1	ret
-(300A,008E)	FL	Average Beam Dose Point Equivalent Depth	AverageBeamDosePointEquivalentDepth	1	ret
-(300A,008F)	FL	Average Beam Dose Point SSD	AverageBeamDosePointSSD	1	ret
+(300A,008D)	FL	Average Beam Dose Point Depth	AverageBeamDosePointDepth	1	Ret
+(300A,008E)	FL	Average Beam Dose Point Equivalent Depth	AverageBeamDosePointEquivalentDepth	1	Ret
+(300A,008F)	FL	Average Beam Dose Point SSD	AverageBeamDosePointSSD	1	Ret
 (300A,0090)	CS	Beam Dose Type	BeamDoseType	1	Dicom
 (300A,0091)	DS	Alternate Beam Dose	AlternateBeamDose	1	Dicom
 (300A,0092)	CS	Alternate Beam Dose Type	AlternateBeamDoseType	1	Dicom
@@ -4616,7 +4613,7 @@
 (300A,062F)	SQ	C-Arm Photon-Electron Control Point Sequence	CArmPhotonElectronControlPointSequence	1	Dicom
 (300A,0630)	SQ	Referenced RT Radiation Sequence	ReferencedRTRadiationSequence	1	Dicom
 (300A,0631)	SQ	Referenced RT Instance Sequence	ReferencedRTInstanceSequence	1	Dicom
-(300A,0632)	SQ	Referenced RT Patient Setup Sequence	ReferencedRTPatientSetupSequence	1	ret
+(300A,0632)	SQ	Referenced RT Patient Setup Sequence	ReferencedRTPatientSetupSequence	1	Ret
 (300A,0634)	FD	Source to Patient Surface Distance	SourceToPatientSurfaceDistance	1	Dicom
 (300A,0635)	SQ	Treatment Machine Special Mode Code Sequence	TreatmentMachineSpecialModeCodeSequence	1	Dicom
 (300A,0636)	US	Intended Number of Fractions	IntendedNumberOfFractions	1	Dicom
@@ -4645,7 +4642,7 @@
 (300A,064D)	SQ	RT Beam Limiting Device Definition Sequence	RTBeamLimitingDeviceDefinitionSequence	1	Dicom
 (300A,064E)	CS	Parallel RT Beam Delimiter Opening Mode	ParallelRTBeamDelimiterOpeningMode	1	Dicom
 (300A,064F)	CS	Parallel RT Beam Delimiter Leaf Mounting Side	ParallelRTBeamDelimiterLeafMountingSide	1-n	Dicom
-(300A,0650)	UI	Patient Setup UID	PatientSetupUID	1	ret
+(300A,0650)	UI	Patient Setup UID	PatientSetupUID	1	Ret
 (300A,0651)	SQ	Wedge Definition Sequence	WedgeDefinitionSequence	1	Dicom
 (300A,0652)	FD	Radiation Beam Wedge Angle	RadiationBeamWedgeAngle	1	Dicom
 (300A,0653)	FD	Radiation Beam Wedge Thin Edge Distance	RadiationBeamWedgeThinEdgeDistance	1	Dicom
@@ -4973,36 +4970,36 @@
 (3010,0099)	FD	Tomotherapeutic Leaf Open Durations	TomotherapeuticLeafOpenDurations	1-n	Dicom
 (3010,009A)	FD	Tomotherapeutic Leaf Initial Closed Durations	TomotherapeuticLeafInitialClosedDurations	1-n	Dicom
 (3010,00A0)	SQ	Conceptual Volume Identification Sequence	ConceptualVolumeIdentificationSequence	1	Dicom
-(4000,0010)	LT	Arbitrary	Arbitrary	1	ret
-(4000,4000)	LT	Text Comments	TextComments	1	ret
-(4008,0040)	SH	Results ID	ResultsID	1	ret
-(4008,0042)	LO	Results ID Issuer	ResultsIDIssuer	1	ret
-(4008,0050)	SQ	Referenced Interpretation Sequence	ReferencedInterpretationSequence	1	ret
-(4008,00FF)	CS	Report Production Status (Trial)	ReportProductionStatusTrial	1	ret
-(4008,0100)	DA	Interpretation Recorded Date	InterpretationRecordedDate	1	ret
-(4008,0101)	TM	Interpretation Recorded Time	InterpretationRecordedTime	1	ret
-(4008,0102)	PN	Interpretation Recorder	InterpretationRecorder	1	ret
-(4008,0103)	LO	Reference to Recorded Sound	ReferenceToRecordedSound	1	ret
-(4008,0108)	DA	Interpretation Transcription Date	InterpretationTranscriptionDate	1	ret
-(4008,0109)	TM	Interpretation Transcription Time	InterpretationTranscriptionTime	1	ret
-(4008,010A)	PN	Interpretation Transcriber	InterpretationTranscriber	1	ret
-(4008,010B)	ST	Interpretation Text	InterpretationText	1	ret
-(4008,010C)	PN	Interpretation Author	InterpretationAuthor	1	ret
-(4008,0111)	SQ	Interpretation Approver Sequence	InterpretationApproverSequence	1	ret
-(4008,0112)	DA	Interpretation Approval Date	InterpretationApprovalDate	1	ret
-(4008,0113)	TM	Interpretation Approval Time	InterpretationApprovalTime	1	ret
-(4008,0114)	PN	Physician Approving Interpretation	PhysicianApprovingInterpretation	1	ret
-(4008,0115)	LT	Interpretation Diagnosis Description	InterpretationDiagnosisDescription	1	ret
-(4008,0117)	SQ	Interpretation Diagnosis Code Sequence	InterpretationDiagnosisCodeSequence	1	ret
-(4008,0118)	SQ	Results Distribution List Sequence	ResultsDistributionListSequence	1	ret
-(4008,0119)	PN	Distribution Name	DistributionName	1	ret
-(4008,011A)	LO	Distribution Address	DistributionAddress	1	ret
-(4008,0200)	SH	Interpretation ID	InterpretationID	1	ret
-(4008,0202)	LO	Interpretation ID Issuer	InterpretationIDIssuer	1	ret
-(4008,0210)	CS	Interpretation Type ID	InterpretationTypeID	1	ret
-(4008,0212)	CS	Interpretation Status ID	InterpretationStatusID	1	ret
-(4008,0300)	ST	Impressions	Impressions	1	ret
-(4008,4000)	ST	Results Comments	ResultsComments	1	ret
+(4000,0010)	LT	Arbitrary	Arbitrary	1	Ret
+(4000,4000)	LT	Text Comments	TextComments	1	Ret
+(4008,0040)	SH	Results ID	ResultsID	1	Ret
+(4008,0042)	LO	Results ID Issuer	ResultsIDIssuer	1	Ret
+(4008,0050)	SQ	Referenced Interpretation Sequence	ReferencedInterpretationSequence	1	Ret
+(4008,00FF)	CS	Report Production Status (Trial)	ReportProductionStatusTrial	1	Ret
+(4008,0100)	DA	Interpretation Recorded Date	InterpretationRecordedDate	1	Ret
+(4008,0101)	TM	Interpretation Recorded Time	InterpretationRecordedTime	1	Ret
+(4008,0102)	PN	Interpretation Recorder	InterpretationRecorder	1	Ret
+(4008,0103)	LO	Reference to Recorded Sound	ReferenceToRecordedSound	1	Ret
+(4008,0108)	DA	Interpretation Transcription Date	InterpretationTranscriptionDate	1	Ret
+(4008,0109)	TM	Interpretation Transcription Time	InterpretationTranscriptionTime	1	Ret
+(4008,010A)	PN	Interpretation Transcriber	InterpretationTranscriber	1	Ret
+(4008,010B)	ST	Interpretation Text	InterpretationText	1	Ret
+(4008,010C)	PN	Interpretation Author	InterpretationAuthor	1	Ret
+(4008,0111)	SQ	Interpretation Approver Sequence	InterpretationApproverSequence	1	Ret
+(4008,0112)	DA	Interpretation Approval Date	InterpretationApprovalDate	1	Ret
+(4008,0113)	TM	Interpretation Approval Time	InterpretationApprovalTime	1	Ret
+(4008,0114)	PN	Physician Approving Interpretation	PhysicianApprovingInterpretation	1	Ret
+(4008,0115)	LT	Interpretation Diagnosis Description	InterpretationDiagnosisDescription	1	Ret
+(4008,0117)	SQ	Interpretation Diagnosis Code Sequence	InterpretationDiagnosisCodeSequence	1	Ret
+(4008,0118)	SQ	Results Distribution List Sequence	ResultsDistributionListSequence	1	Ret
+(4008,0119)	PN	Distribution Name	DistributionName	1	Ret
+(4008,011A)	LO	Distribution Address	DistributionAddress	1	Ret
+(4008,0200)	SH	Interpretation ID	InterpretationID	1	Ret
+(4008,0202)	LO	Interpretation ID Issuer	InterpretationIDIssuer	1	Ret
+(4008,0210)	CS	Interpretation Type ID	InterpretationTypeID	1	Ret
+(4008,0212)	CS	Interpretation Status ID	InterpretationStatusID	1	Ret
+(4008,0300)	ST	Impressions	Impressions	1	Ret
+(4008,4000)	ST	Results Comments	ResultsComments	1	Ret
 (4010,0001)	CS	Low Energy Detectors	LowEnergyDetectors	1	Dicos
 (4010,0002)	CS	High Energy Detectors	HighEnergyDetectors	1	Dicos
 (4010,0004)	SQ	Detector Geometry Sequence	DetectorGeometrySequence	1	Dicos
@@ -5090,32 +5087,32 @@
 (4010,107D)	SQ	Secondary Inspection Method Sequence	SecondaryInspectionMethodSequence	1	Dicos
 (4010,107E)	DS	PRCS to RCS Orientation	PRCSToRCSOrientation	6	Dicos
 (4FFE,0001)	SQ	MAC Parameters Sequence	MACParametersSequence	1	Dicom
-(50xx,0005)	US	Curve Dimensions	CurveDimensions	1	ret
-(50xx,0010)	US	Number of Points	NumberOfPoints	1	ret
-(50xx,0020)	CS	Type of Data	TypeOfData	1	ret
-(50xx,0022)	LO	Curve Description	CurveDescription	1	ret
-(50xx,0030)	SH	Axis Units	AxisUnits	1-n	ret
-(50xx,0040)	SH	Axis Labels	AxisLabels	1-n	ret
-(50xx,0103)	US	Data Value Representation	DataValueRepresentation	1	ret
-(50xx,0104)	US	Minimum Coordinate Value	MinimumCoordinateValue	1-n	ret
-(50xx,0105)	US	Maximum Coordinate Value	MaximumCoordinateValue	1-n	ret
-(50xx,0106)	SH	Curve Range	CurveRange	1-n	ret
-(50xx,0110)	US	Curve Data Descriptor	CurveDataDescriptor	1-n	ret
-(50xx,0112)	US	Coordinate Start Value	CoordinateStartValue	1-n	ret
-(50xx,0114)	US	Coordinate Step Value	CoordinateStepValue	1-n	ret
-(50xx,1001)	CS	Curve Activation Layer	CurveActivationLayer	1	ret
-(50xx,2000)	US	Audio Type	AudioType	1	ret
-(50xx,2002)	US	Audio Sample Format	AudioSampleFormat	1	ret
-(50xx,2004)	US	Number of Channels	NumberOfChannels	1	ret
-(50xx,2006)	UL	Number of Samples	NumberOfSamples	1	ret
-(50xx,2008)	UL	Sample Rate	SampleRate	1	ret
-(50xx,200A)	UL	Total Time	TotalTime	1	ret
-(50xx,200C)	OB or OW	Audio Sample Data	AudioSampleData	1	ret
-(50xx,200E)	LT	Audio Comments	AudioComments	1	ret
-(50xx,2500)	LO	Curve Label	CurveLabel	1	ret
-(50xx,2600)	SQ	Curve Referenced Overlay Sequence	CurveReferencedOverlaySequence	1	ret
-(50xx,2610)	US	Curve Referenced Overlay Group	CurveReferencedOverlayGroup	1	ret
-(50xx,3000)	OB or OW	Curve Data	CurveData	1	ret
+(50xx,0005)	US	Curve Dimensions	CurveDimensions	1	Ret
+(50xx,0010)	US	Number of Points	NumberOfPoints	1	Ret
+(50xx,0020)	CS	Type of Data	TypeOfData	1	Ret
+(50xx,0022)	LO	Curve Description	CurveDescription	1	Ret
+(50xx,0030)	SH	Axis Units	AxisUnits	1-n	Ret
+(50xx,0040)	SH	Axis Labels	AxisLabels	1-n	Ret
+(50xx,0103)	US	Data Value Representation	DataValueRepresentation	1	Ret
+(50xx,0104)	US	Minimum Coordinate Value	MinimumCoordinateValue	1-n	Ret
+(50xx,0105)	US	Maximum Coordinate Value	MaximumCoordinateValue	1-n	Ret
+(50xx,0106)	SH	Curve Range	CurveRange	1-n	Ret
+(50xx,0110)	US	Curve Data Descriptor	CurveDataDescriptor	1-n	Ret
+(50xx,0112)	US	Coordinate Start Value	CoordinateStartValue	1-n	Ret
+(50xx,0114)	US	Coordinate Step Value	CoordinateStepValue	1-n	Ret
+(50xx,1001)	CS	Curve Activation Layer	CurveActivationLayer	1	Ret
+(50xx,2000)	US	Audio Type	AudioType	1	Ret
+(50xx,2002)	US	Audio Sample Format	AudioSampleFormat	1	Ret
+(50xx,2004)	US	Number of Channels	NumberOfChannels	1	Ret
+(50xx,2006)	UL	Number of Samples	NumberOfSamples	1	Ret
+(50xx,2008)	UL	Sample Rate	SampleRate	1	Ret
+(50xx,200A)	UL	Total Time	TotalTime	1	Ret
+(50xx,200C)	OB or OW	Audio Sample Data	AudioSampleData	1	Ret
+(50xx,200E)	LT	Audio Comments	AudioComments	1	Ret
+(50xx,2500)	LO	Curve Label	CurveLabel	1	Ret
+(50xx,2600)	SQ	Curve Referenced Overlay Sequence	CurveReferencedOverlaySequence	1	Ret
+(50xx,2610)	US	Curve Referenced Overlay Group	CurveReferencedOverlayGroup	1	Ret
+(50xx,3000)	OB or OW	Curve Data	CurveData	1	Ret
 (5200,9229)	SQ	Shared Functional Groups Sequence	SharedFunctionalGroupsSequence	1	Dicom
 (5200,9230)	SQ	Per-frame Functional Groups Sequence	PerFrameFunctionalGroupsSequence	1	Dicom
 (5400,0100)	SQ	Waveform Sequence	WaveformSequence	1	Dicom
@@ -5129,60 +5126,60 @@
 (5600,0020)	OF	Spectroscopy Data	SpectroscopyData	1	Dicom
 (60xx,0010)	US	Overlay Rows	OverlayRows	1	Dicom
 (60xx,0011)	US	Overlay Columns	OverlayColumns	1	Dicom
-(60xx,0012)	US	Overlay Planes	OverlayPlanes	1	ret
+(60xx,0012)	US	Overlay Planes	OverlayPlanes	1	Ret
 (60xx,0015)	IS	Number of Frames in Overlay	NumberOfFramesInOverlay	1	Dicom
 (60xx,0022)	LO	Overlay Description	OverlayDescription	1	Dicom
 (60xx,0040)	CS	Overlay Type	OverlayType	1	Dicom
 (60xx,0045)	LO	Overlay Subtype	OverlaySubtype	1	Dicom
 (60xx,0050)	SS	Overlay Origin	OverlayOrigin	2	Dicom
 (60xx,0051)	US	Image Frame Origin	ImageFrameOrigin	1	Dicom
-(60xx,0052)	US	Overlay Plane Origin	OverlayPlaneOrigin	1	ret
-(60xx,0060)	CS	Overlay Compression Code	OverlayCompressionCode	1	ret
-(60xx,0061)	SH	Overlay Compression Originator	OverlayCompressionOriginator	1	ret
-(60xx,0062)	SH	Overlay Compression Label	OverlayCompressionLabel	1	ret
-(60xx,0063)	CS	Overlay Compression Description	OverlayCompressionDescription	1	ret
-(60xx,0066)	AT	Overlay Compression Step Pointers	OverlayCompressionStepPointers	1-n	ret
-(60xx,0068)	US	Overlay Repeat Interval	OverlayRepeatInterval	1	ret
-(60xx,0069)	US	Overlay Bits Grouped	OverlayBitsGrouped	1	ret
+(60xx,0052)	US	Overlay Plane Origin	OverlayPlaneOrigin	1	Ret
+(60xx,0060)	CS	Overlay Compression Code	OverlayCompressionCode	1	Ret
+(60xx,0061)	SH	Overlay Compression Originator	OverlayCompressionOriginator	1	Ret
+(60xx,0062)	SH	Overlay Compression Label	OverlayCompressionLabel	1	Ret
+(60xx,0063)	CS	Overlay Compression Description	OverlayCompressionDescription	1	Ret
+(60xx,0066)	AT	Overlay Compression Step Pointers	OverlayCompressionStepPointers	1-n	Ret
+(60xx,0068)	US	Overlay Repeat Interval	OverlayRepeatInterval	1	Ret
+(60xx,0069)	US	Overlay Bits Grouped	OverlayBitsGrouped	1	Ret
 (60xx,0100)	US	Overlay Bits Allocated	OverlayBitsAllocated	1	Dicom
 (60xx,0102)	US	Overlay Bit Position	OverlayBitPosition	1	Dicom
-(60xx,0110)	CS	Overlay Format	OverlayFormat	1	ret
-(60xx,0200)	US	Overlay Location	OverlayLocation	1	ret
-(60xx,0800)	CS	Overlay Code Label	OverlayCodeLabel	1-n	ret
-(60xx,0802)	US	Overlay Number of Tables	OverlayNumberOfTables	1	ret
-(60xx,0803)	AT	Overlay Code Table Location	OverlayCodeTableLocation	1-n	ret
-(60xx,0804)	US	Overlay Bits For Code Word	OverlayBitsForCodeWord	1	ret
+(60xx,0110)	CS	Overlay Format	OverlayFormat	1	Ret
+(60xx,0200)	US	Overlay Location	OverlayLocation	1	Ret
+(60xx,0800)	CS	Overlay Code Label	OverlayCodeLabel	1-n	Ret
+(60xx,0802)	US	Overlay Number of Tables	OverlayNumberOfTables	1	Ret
+(60xx,0803)	AT	Overlay Code Table Location	OverlayCodeTableLocation	1-n	Ret
+(60xx,0804)	US	Overlay Bits For Code Word	OverlayBitsForCodeWord	1	Ret
 (60xx,1001)	CS	Overlay Activation Layer	OverlayActivationLayer	1	Dicom
-(60xx,1100)	US	Overlay Descriptor - Gray	OverlayDescriptorGray	1	ret
-(60xx,1101)	US	Overlay Descriptor - Red	OverlayDescriptorRed	1	ret
-(60xx,1102)	US	Overlay Descriptor - Green	OverlayDescriptorGreen	1	ret
-(60xx,1103)	US	Overlay Descriptor - Blue	OverlayDescriptorBlue	1	ret
-(60xx,1200)	US	Overlays - Gray	OverlaysGray	1-n	ret
-(60xx,1201)	US	Overlays - Red	OverlaysRed	1-n	ret
-(60xx,1202)	US	Overlays - Green	OverlaysGreen	1-n	ret
-(60xx,1203)	US	Overlays - Blue	OverlaysBlue	1-n	ret
+(60xx,1100)	US	Overlay Descriptor - Gray	OverlayDescriptorGray	1	Ret
+(60xx,1101)	US	Overlay Descriptor - Red	OverlayDescriptorRed	1	Ret
+(60xx,1102)	US	Overlay Descriptor - Green	OverlayDescriptorGreen	1	Ret
+(60xx,1103)	US	Overlay Descriptor - Blue	OverlayDescriptorBlue	1	Ret
+(60xx,1200)	US	Overlays - Gray	OverlaysGray	1-n	Ret
+(60xx,1201)	US	Overlays - Red	OverlaysRed	1-n	Ret
+(60xx,1202)	US	Overlays - Green	OverlaysGreen	1-n	Ret
+(60xx,1203)	US	Overlays - Blue	OverlaysBlue	1-n	Ret
 (60xx,1301)	IS	ROI Area	ROIArea	1	Dicom
 (60xx,1302)	DS	ROI Mean	ROIMean	1	Dicom
 (60xx,1303)	DS	ROI Standard Deviation	ROIStandardDeviation	1	Dicom
 (60xx,1500)	LO	Overlay Label	OverlayLabel	1	Dicom
 (60xx,3000)	OB or OW	Overlay Data	OverlayData	1	Dicom
-(60xx,4000)	LT	Overlay Comments	OverlayComments	1	ret
+(60xx,4000)	LT	Overlay Comments	OverlayComments	1	Ret
 (7FE0,0001)	OV	Extended Offset Table	ExtendedOffsetTable	1	Dicom
 (7FE0,0002)	OV	Extended Offset Table Lengths	ExtendedOffsetTableLengths	1	Dicom
 (7FE0,0003)	UV	Encapsulated Pixel Data Value Total Length	EncapsulatedPixelDataValueTotalLength	1	Dicom
 (7FE0,0008)	OF	Float Pixel Data	FloatPixelData	1	Dicom
 (7FE0,0009)	OD	Double Float Pixel Data	DoubleFloatPixelData	1	Dicom
 (7FE0,0010)	OB or OW	Pixel Data	PixelData	1	Dicom
-(7FE0,0020)	OW	Coefficients SDVN	CoefficientsSDVN	1	ret
-(7FE0,0030)	OW	Coefficients SDHN	CoefficientsSDHN	1	ret
-(7FE0,0040)	OW	Coefficients SDDN	CoefficientsSDDN	1	ret
-(7Fxx,0010)	OB or OW	Variable Pixel Data	VariablePixelData	1	ret
-(7Fxx,0011)	US	Variable Next Data Group	VariableNextDataGroup	1	ret
-(7Fxx,0020)	OW	Variable Coefficients SDVN	VariableCoefficientsSDVN	1	ret
-(7Fxx,0030)	OW	Variable Coefficients SDHN	VariableCoefficientsSDHN	1	ret
-(7Fxx,0040)	OW	Variable Coefficients SDDN	VariableCoefficientsSDDN	1	ret
+(7FE0,0020)	OW	Coefficients SDVN	CoefficientsSDVN	1	Ret
+(7FE0,0030)	OW	Coefficients SDHN	CoefficientsSDHN	1	Ret
+(7FE0,0040)	OW	Coefficients SDDN	CoefficientsSDDN	1	Ret
+(7Fxx,0010)	OB or OW	Variable Pixel Data	VariablePixelData	1	Ret
+(7Fxx,0011)	US	Variable Next Data Group	VariableNextDataGroup	1	Ret
+(7Fxx,0020)	OW	Variable Coefficients SDVN	VariableCoefficientsSDVN	1	Ret
+(7Fxx,0030)	OW	Variable Coefficients SDHN	VariableCoefficientsSDHN	1	Ret
+(7Fxx,0040)	OW	Variable Coefficients SDDN	VariableCoefficientsSDDN	1	Ret
 (FFFA,FFFA)	SQ	Digital Signatures Sequence	DigitalSignaturesSequence	1	Dicom
 (FFFC,FFFC)	OB	Data Set Trailing Padding	DataSetTrailingPadding	1	Dicom
-(FFFE,E000)	--	Item	Item	1	Dicom
-(FFFE,E00D)	--	Item Delimitation Item	ItemDelimitationItem	1	Dicom
-(FFFE,E0DD)	--	Sequence Delimitation Item	SequenceDelimitationItem	1	Dicom
+(FFFE,E000)	??	Item	Item	1	Dicom
+(FFFE,E00D)	??	Item Delimitation Item	ItemDelimitationItem	1	Dicom
+(FFFE,E0DD)	??	Sequence Delimitation Item	SequenceDelimitationItem	1	Dicom

@@ -1,7 +1,7 @@
 use super::*;
 use crate::Cow;
 
-// cSpell:ignore xxee
+// cSpell:ignore xxee XXXO XXXN
 
 /// An identifier of an Element in a Dataset
 ///
@@ -249,6 +249,22 @@ impl TagKey {
                 .map(|m| m.name.clone())
         })
     }
+
+    /// Transforms this Tag key to `Group Length` for this tag.
+    ///
+    /// Corresponding dictionary entry for such attribute would be:\
+    /// (xxxo,0000) UL 1 Group Length
+    pub const fn to_group_length(&self) -> Self {
+        TagKey::new(self.group(), 0x0000)
+    }
+
+    /// Transforms this Tag to `Private Reservation` for this tag.
+    ///
+    /// Corresponding dictionary entry for such attribute would be:\
+    /// (xxxn,00xx) LO 1 Private Reservation
+    pub const fn to_private_reservation(&self) -> Self {
+        TagKey::new(self.group(), self.element() >> 8)
+    }
 }
 
 impl std::fmt::Display for TagKey {
@@ -480,9 +496,8 @@ mod tests {
             assert_eq!(TestTag.name().unwrap(), "Test Tag");
         });
 
-        // Test tag should not be found again, because outside of
-        // "provide_current_for" scope
-        assert!(TestTag.meta().is_none());
+        // Test tag should fall into "catch-all" rule of a default global state
+        assert_eq!(TestTag.meta().unwrap().name, "Unknown");
 
         state.into_global();
 
@@ -493,7 +508,7 @@ mod tests {
         State::default().into_global();
 
         // Test tag should not present in the default global state
-        assert!(TestTag.meta().is_none());
+        assert_eq!(TestTag.meta().unwrap().name, "Unknown");
     }
 
     #[cfg(feature = "serde")]
