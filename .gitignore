@@ -1,2 +1,4 @@
 # RUST targets
 /target
+
+.vscode/settings.json

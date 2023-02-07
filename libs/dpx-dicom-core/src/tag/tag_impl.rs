@@ -395,6 +395,9 @@ mod tests {
             ];
         }
 
+        // Reset default state in case some other test pooped there.
+        State::default().into_global();
+
         let mut dict = Dictionary::new_empty();
         dict.add_static_list(&TAGS);
 

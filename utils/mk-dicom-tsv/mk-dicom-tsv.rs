@@ -81,7 +81,7 @@ fn main() -> Result<()> {
     )?;
 
     info!("Sorting ...");
-    tags.sort_by(|l, r| l.tag.cmp(&r.tag));
+    tags.sort_by(|l, r| l.tag.cmp(r.tag));
 
     info!("Writing {} ...", output_file_name.to_string_lossy());
 
@@ -147,7 +147,7 @@ fn main() -> Result<()> {
     info!("Verifying ...");
     let mut dict = dpx_dicom_core::tag::Dictionary::new_empty();
     dict.add_from_file(&output_file_name)
-        .with_whatever_context(|_| format!("Could not load dictionary"))?;
+        .with_whatever_context(|_| "Could not load dictionary".to_string())?;
     let metrics = dict.metrics();
     ensure_whatever!(
         metrics.dynamic_tags >= tags.len(),
@@ -184,7 +184,7 @@ fn abs_path<T: AsRef<Path>>(f: T) -> Result<PathBuf> {
 
         let file_name = f
             .file_name()
-            .with_whatever_context(|| format!("no output file name provided"))?;
+            .with_whatever_context(|| "no output file name provided".to_string())?;
 
         Ok(file_path.join(file_name))
     } else {
@@ -259,7 +259,7 @@ fn parse_table<'a, 'input>(
         } else {
             output.push(tag);
         }
-        count = count + 1;
+        count += 1;
     }
     info!("... processed {count} tags");
     Ok(())
@@ -304,7 +304,7 @@ fn parse_field_vr(s: &str) -> Result<&str> {
 }
 
 fn parse_field_vm(s: &str) -> Result<&str> {
-    Ok(s.splitn(2, " or ").next().unwrap())
+    Ok(s.split(" or ").next().unwrap())
 }
 
 fn parse_field_source(s: &str) -> Result<Source> {
@@ -321,8 +321,8 @@ fn parse_field_source(s: &str) -> Result<Source> {
     }
 }
 
-fn sanitize_string<'a>(s: &'a str) -> Cow<'a, str> {
-    if s.bytes().find(|c| *c >= 0x7F).is_some() {
+fn sanitize_string(s: &str) -> Cow<'_, str> {
+    if s.bytes().any(|c| c >= 0x7F) {
         Cow::Owned(s.chars().filter(|c| c.is_ascii()).collect())
     } else {
         Cow::Borrowed(s)
