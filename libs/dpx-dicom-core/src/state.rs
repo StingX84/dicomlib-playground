@@ -1,6 +1,6 @@
 use crate::*;
 use std::{
-    cell::Cell,
+    cell::{Cell, UnsafeCell},
     fmt::Debug,
     ops::{Deref, DerefMut},
     ptr::NonNull,

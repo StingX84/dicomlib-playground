@@ -34,7 +34,6 @@ pub enum Error {
     FirstCharIsZero { pos: usize },
 }
 
-
 /// Structure holding an UID (unique identifier)
 ///
 /// A string of characters used to provide global unique identification of a
@@ -317,7 +316,7 @@ impl<'a> Uid<'a> {
             value.char_indices().enumerate()
                 .find_map(|(co, (i,_))| {
                     if i >= byte_offset { Some(co) } else { None }
-                }).unwrap_or_else(|| value.len())
+                }).unwrap_or(value.len())
         };
 
         ensure!(!value.is_empty(), EmptySnafu{});
@@ -333,7 +332,7 @@ impl<'a> Uid<'a> {
     }
 
     /// Returns an internal Uid storage value
-    pub const fn value<'b>(&'b self) -> &'b Cow<'b, str> {
+    pub const fn value(&self) -> &Cow<'_, str> {
         &self.0
     }
 
@@ -393,9 +392,7 @@ impl<'a> Uid<'a> {
 
         let mut rv = format!(
             "{}.{}.{}.{}",
-            prefix
-                .map(|p| p.as_ref())
-                .unwrap_or_else(|| DEFAULT_UID_ROOT),
+            prefix.unwrap_or(DEFAULT_UID_ROOT),
             machine_crc,
             std::process::id(),
             counter
@@ -545,7 +542,7 @@ impl Dictionary {
         }
     }
 
-     /// Constructs the empty struct without any statically registered lists.
+    /// Constructs the empty struct without any statically registered lists.
     pub fn new_empty() -> Self {
         Self {
             statics: Vec::new(),
@@ -625,15 +622,13 @@ impl Dictionary {
             return cache.by_uid.get(uid.as_ref());
         }
 
-        match self.dynamic.iter().rev().find(|m| m.uid.0 == uid.as_ref()) {
-            Some(m) => return Some(m),
-            None => (),
+        if let Some(m) = self.dynamic.iter().rev().find(|m| m.uid.0 == uid.as_ref()) {
+            return Some(m);
         }
 
         for s in self.statics.iter().rev() {
-            match s.0.iter().find(|m| m.uid.0 == uid.as_ref()) {
-                Some(m) => return Some(m),
-                None => (),
+            if let Some(m) = s.0.iter().find(|m| m.uid.0 == uid.as_ref()) {
+                return Some(m);
             }
         }
         None
@@ -645,20 +640,18 @@ impl Dictionary {
             return cache.by_keyword.get(keyword.as_ref());
         }
 
-        match self
+        if let Some(m) = self
             .dynamic
             .iter()
             .rev()
             .find(|m| m.keyword == keyword.as_ref())
         {
-            Some(m) => return Some(m),
-            None => (),
+            return Some(m);
         }
 
         for s in self.statics.iter().rev() {
-            match s.0.iter().find(|m| m.keyword == keyword.as_ref()) {
-                Some(m) => return Some(m),
-                None => (),
+            if let Some(m) = s.0.iter().find(|m| m.keyword == keyword.as_ref()) {
+                return Some(m);
             }
         }
         None

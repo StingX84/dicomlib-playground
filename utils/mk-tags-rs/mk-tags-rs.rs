@@ -57,16 +57,18 @@ fn main() -> Result<()> {
     info!("Reading tsv file {} ...", cli.input_tsv.to_string_lossy());
     let mut dict = Dictionary::new_empty();
     dict.add_from_file(&cli.input_tsv)
-        .with_whatever_context(|e| {
-            match e {
-                dpx_dicom_core::tag::Error::DictParseFailed {line_number, char_pos, msg} => {
-                    format!(
-                        "Unable to parse dictionary: {msg}\n--> {}:{line_number}:{char_pos}",
-                        cli.input_tsv.to_string_lossy(),
-                    )
-                },
-                _ => format!("Unable to parse dictionary: {e}"),
+        .with_whatever_context(|e| match e {
+            dpx_dicom_core::tag::Error::DictParseFailed {
+                line_number,
+                char_pos,
+                msg,
+            } => {
+                format!(
+                    "Unable to parse dictionary: {msg}\n--> {}:{line_number}:{char_pos}",
+                    cli.input_tsv.to_string_lossy(),
+                )
             }
+            _ => format!("Unable to parse dictionary: {e}"),
         })?;
 
     info!(
@@ -109,7 +111,7 @@ fn abs_path<T: AsRef<Path>>(f: T) -> Result<PathBuf> {
 
         let file_name = f
             .file_name()
-            .with_whatever_context(|| format!("no output file name provided"))?;
+            .with_whatever_context(|| "no output file name provided".to_string())?;
 
         Ok(file_path.join(file_name))
     } else {
@@ -122,7 +124,7 @@ fn write_tags_to_file<'a>(
     header_file_names: &Vec<PathBuf>,
     output_file_name: &PathBuf,
 ) -> Result<()> {
-    let file = fs::File::create(&output_file_name).with_whatever_context(|e| {
+    let file = fs::File::create(output_file_name).with_whatever_context(|e| {
         format!(
             "Unable to open output file \"{}\": {e}",
             output_file_name.to_string_lossy()
@@ -169,7 +171,7 @@ fn write_metas_to_file<'a>(
     header_file_names: &Vec<PathBuf>,
     output_file_name: &PathBuf,
 ) -> Result<()> {
-    let file = fs::File::create(&output_file_name)
+    let file = fs::File::create(output_file_name)
         .whatever_context("could not create file")?;
     let mut writer = std::io::BufWriter::new(file);
 

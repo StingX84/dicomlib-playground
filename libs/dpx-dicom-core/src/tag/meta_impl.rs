@@ -300,7 +300,7 @@ impl Meta {
                     }
                 },
             )
-            .unwrap_or_else(|| line.len())
+            .unwrap_or(line.len())
     }
 
     /// Main function that parses a line of dictionary file returning processed [`Meta`]

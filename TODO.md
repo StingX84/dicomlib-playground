@@ -30,6 +30,12 @@ Legend:
 - UTF-8 codec
 - GB18030 codec
 - GBK codec
+useful charset links:
+http://nozer0.github.io/en/technology/system/character-encoding/
+https://dcm4che.atlassian.net/browse/LIB-433
+https://itscj.ipsj.or.jp/ir/014.pdf
+https://dicom.nema.org/medical/dicom/current/output/html/part03.html#table_C.12-1
+https://dicom.nema.org/medical/dicom/current/output/html/part05.html#sect_6.1
 
 ### ☐ Basic I/O implementation - module "io"
 - Source/Target traits

@@ -1,0 +1,25 @@
+[package]
+name = "dpx-dicom-charset"
+description = "Character-set support for dpx-dicom"
+keywords = ["dicom"]
+readme = "README.md"
+
+authors.workspace = true
+categories.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+version.workspace = true
+
+[features]
+default = []                      #["encoding_rs"]
+encoding_rs = ["dep:encoding_rs"]
+
+
+[dependencies]
+
+encoding_rs = { version = "0.8", optional = true }
+tracing = "0.1"
+
+[dev-dependencies]
+tracing-test = "0.2"

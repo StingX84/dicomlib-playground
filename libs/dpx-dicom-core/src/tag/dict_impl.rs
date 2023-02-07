@@ -152,12 +152,13 @@ impl Dictionary {
     /// may call [rebuild_cache](Self::rebuild_cache) after creation or any
     /// mutating function call.
     pub fn new() -> Self {
-        let mut statics: Vec<&'static StaticMetaList> = inventory::iter::<StaticMetaList>.into_iter().collect();
+        let mut statics: Vec<&'static StaticMetaList> =
+            inventory::iter::<StaticMetaList>.into_iter().collect();
         statics.insert(0, &META_LIST_GENERIC);
         Self {
             statics,
             dynamic: Vec::new(),
-            cache: None
+            cache: None,
         }
     }
 
@@ -166,7 +167,7 @@ impl Dictionary {
         Self {
             statics: Vec::new(),
             dynamic: Vec::new(),
-            cache: None
+            cache: None,
         }
     }
 
@@ -334,8 +335,7 @@ impl Dictionary {
         let masked_total_count = self
             .statics
             .iter()
-            .map(|c| c.0.iter())
-            .flatten()
+            .flat_map(|c| c.0.iter())
             .filter(|e| e.mask != 0xFFFFFFFF)
             .count()
             + self.dynamic.iter().filter(|e| e.mask != 0xFFFFFFFF).count();
@@ -513,8 +513,7 @@ impl Dictionary {
     pub fn iter(&self) -> impl Iterator<Item = &Meta> {
         self.statics
             .iter()
-            .map(|m| m.0)
-            .flatten()
+            .flat_map(|m| m.0)
             .chain(self.dynamic.iter())
     }
 
@@ -527,13 +526,12 @@ impl Dictionary {
     /// [canonical](TagKey::to_canonical_if_private) form also present in
     /// theirs canonical form.
     pub fn iter_cache(&self) -> Option<impl Iterator<Item = &Meta>> {
-        match &self.cache {
-            // SAFETY: Pointers in cache are always valid until data mutates,
-            // which is not possible while iterator still holds shared reference
-            // to the self.
-            Some(c) => Some(c.vec.iter().map(|v| unsafe { v.2.as_ref() })),
-            None => None,
-        }
+        // SAFETY: Pointers in cache are always valid until data mutates,
+        // which is not possible while iterator still holds shared reference
+        // to the self.
+        self.cache
+            .as_ref()
+            .map(|c| c.vec.iter().map(|v| unsafe { v.2.as_ref() }))
     }
 }
 
@@ -645,31 +643,8 @@ impl Dictionary {
                 // chance for pointer to dangle.
                 return Some(unsafe { c.vec.get_unchecked(index).2.as_ref() });
             }
-            Err(_lower_bound) => {
-                // Non exact match found. Index - lower bound
-                ()
-                // for index in (0..lower_bound).rev() {
-                //     // SAFETY "get_unchecked": lower_bound is less or equal to
-                //     // vector.len(), so index in range to "0 .. lower_bound"
-                //     // will never got beyond array length. If array is empty,
-                //     // this range will not yield any indices. SAFETY "deref
-                //     // *const": all pointers are invalidated when data they
-                //     // point to mutates, so there is no chance for pointer to
-                //     // dangle.
-                //     let info = unsafe { c.vec.get_unchecked(index).2.as_ref() };
-                //     // We must account possible mask in the meta description.
-                //     let tag_key_masked = TagKey(key.as_u32() & info.mask);
-                //     // Early bail out if moved to another key
-                //     if info.tag.key != tag_key_masked {
-                //         break;
-                //     }
-                //     // Match private creator exactly
-                //     if info.tag.creator != *creator {
-                //         continue;
-                //     }
-                //     return Some(info);
-                // }
-            }
+            // Non exact match found. Index - lower bound
+            Err(_lower_bound) => (),
         };
         None
     }
@@ -751,7 +726,7 @@ impl Dictionary {
         matched
     }
 
-    fn cache_search_masked<'a, 'b>(c: &'a DictCache, key: TagKey) -> Option<&'a Meta> {
+    fn cache_search_masked(c: &DictCache, key: TagKey) -> Option<&'_ Meta> {
         for e in c.masked.iter() {
             if e.0.as_u32() == key.as_u32() & e.2 {
                 let e_meta = unsafe { e.3.as_ref() };
@@ -828,7 +803,8 @@ impl Dictionary {
             for v in iter {
                 if v.tag.key.as_u32() == tag.key.as_u32() & v.mask {
                     if v.tag.creator.is_none() {
-                        if matched.is_none() { // there may be a better alternative with a known creator
+                        if matched.is_none() {
+                            // there may be a better alternative with a known creator
                             matched = Some((false, v));
                         }
                     } else if v.tag.creator == tag.creator {
@@ -847,7 +823,8 @@ impl Dictionary {
             for v in iter {
                 if v.tag.key.as_u32() == tag.key.as_u32() & v.mask {
                     if v.tag.creator.is_none() {
-                        if matched.is_none() { // there may be a better alternative with a known creator
+                        if matched.is_none() {
+                            // there may be a better alternative with a known creator
                             matched = Some((false, v));
                         }
                     } else if v.tag.creator == tag.creator {
@@ -950,11 +927,23 @@ mod tests {
             .is_none());
 
         // Should find private reservations
-        assert_search(dict, &Tag::standard(0x1221, 0x0022), &keys::PrivateReservation);
+        assert_search(
+            dict,
+            &Tag::standard(0x1221, 0x0022),
+            &keys::PrivateReservation,
+        );
         // Should find arbitrary group length
-        assert_search(dict, &Tag::standard(0xB00A, 0x0000), &keys::GenericGroupLength);
+        assert_search(
+            dict,
+            &Tag::standard(0xB00A, 0x0000),
+            &keys::GenericGroupLength,
+        );
         // Should find private group length
-        assert_search(dict, &Tag::standard(0xB00B, 0x0000), &keys::PrivateGroupLength);
+        assert_search(
+            dict,
+            &Tag::standard(0xB00B, 0x0000),
+            &keys::PrivateGroupLength,
+        );
     }
 
     #[test]
@@ -996,16 +985,36 @@ mod tests {
         }
         fn check_attributes(dict: &Dictionary) {
             // Should find masked tags
-            assert_eq!(dict.search_by_tag(&tags::EscapeTriplet).unwrap().tag.key, tags::EscapeTriplet);
-            assert_eq!(dict.search_by_tag(&Tag::standard(0x1221, 0x0022)).unwrap().tag.key, tags::generic::PrivateReservation);
+            assert_eq!(
+                dict.search_by_tag(&tags::EscapeTriplet).unwrap().tag.key,
+                tags::EscapeTriplet
+            );
+            assert_eq!(
+                dict.search_by_tag(&Tag::standard(0x1221, 0x0022))
+                    .unwrap()
+                    .tag
+                    .key,
+                tags::generic::PrivateReservation
+            );
             // Should find arbitrary group length
-            assert_eq!(dict.search_by_tag(&Tag::standard(0xB00A, 0x0000)).unwrap().tag.key, tags::generic::GroupLength);
+            assert_eq!(
+                dict.search_by_tag(&Tag::standard(0xB00A, 0x0000))
+                    .unwrap()
+                    .tag
+                    .key,
+                tags::generic::GroupLength
+            );
             // Should find private group length
-            assert_eq!(dict.search_by_tag(&Tag::standard(0xB00B, 0x0000)).unwrap().tag.key, tags::generic::PrivateGroupLength);
+            assert_eq!(
+                dict.search_by_tag(&Tag::standard(0xB00B, 0x0000))
+                    .unwrap()
+                    .tag
+                    .key,
+                tags::generic::PrivateGroupLength
+            );
         }
         check_attributes(&dict);
         dict.rebuild_cache();
         check_attributes(&dict);
-
     }
 }

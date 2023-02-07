@@ -11,7 +11,6 @@
 //#![warn(missing_docs)]
 
 // Module declarations
-pub mod charset;
 pub mod config;
 pub mod settings;
 pub mod state;
