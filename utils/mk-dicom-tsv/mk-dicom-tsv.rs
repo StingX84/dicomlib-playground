@@ -1,7 +1,7 @@
 use clap::Parser;
 use dpx_dicom_core::tag::Source;
 use log::{info, trace};
-use snafu::{prelude::*, Whatever};
+use snafu::{Whatever, prelude::*};
 use std::{
     borrow::Cow,
     env, fs,
@@ -43,10 +43,16 @@ fn main() -> Result<()> {
     let file_name = &cli.docbook_path.join("part06").join("part06.xml");
     info!("Reading {}...", file_name.to_string_lossy());
     let content = std::fs::read_to_string(file_name).with_whatever_context(|e| {
-        format!("couldn't open the file {}: {e}", file_name.to_string_lossy())
+        format!(
+            "couldn't open the file {}: {e}",
+            file_name.to_string_lossy()
+        )
     })?;
     let xml = roxmltree::Document::parse(&content).with_whatever_context(|e| {
-        format!("couldn't parse xml file {}: {e}", file_name.to_string_lossy())
+        format!(
+            "couldn't parse xml file {}: {e}",
+            file_name.to_string_lossy()
+        )
     })?;
     let version_06 = extract_version(xml.root_element())
         .with_whatever_context(|| "unable to extract version string")?;
@@ -60,10 +66,16 @@ fn main() -> Result<()> {
     let file_name = &cli.docbook_path.join("part07").join("part07.xml");
     info!("Reading {} ...", file_name.to_string_lossy());
     let content = std::fs::read_to_string(file_name).with_whatever_context(|e| {
-        format!("couldn't open the file {}: {e}", file_name.to_string_lossy())
+        format!(
+            "couldn't open the file {}: {e}",
+            file_name.to_string_lossy()
+        )
     })?;
     let xml = roxmltree::Document::parse(&content).with_whatever_context(|e| {
-        format!("couldn't parse xml file {}: {e}", file_name.to_string_lossy())
+        format!(
+            "couldn't parse xml file {}: {e}",
+            file_name.to_string_lossy()
+        )
     })?;
 
     let version_07 = extract_version(xml.root_element())
@@ -92,7 +104,10 @@ fn main() -> Result<()> {
 
     for header_file_name in cli.headers {
         let header = std::fs::read_to_string(&header_file_name).with_whatever_context(|e| {
-            format!("couldn't open the file {}: {e}", header_file_name.to_string_lossy())
+            format!(
+                "couldn't open the file {}: {e}",
+                header_file_name.to_string_lossy()
+            )
         })?;
         let header = header
             .replacen(
@@ -101,8 +116,8 @@ fn main() -> Result<()> {
                 1,
             )
             .replacen("${DATE}", chrono::Local::now().to_rfc2822().as_str(), 1)
-            .replacen("${USER}", whoami::username().as_str(), 1)
-            .replacen("${HOST}", whoami::hostname().as_str(), 1)
+            .replacen("${USER}", whoami::username().unwrap_or_default().as_str(), 1)
+            .replacen("${HOST}", whoami::hostname().unwrap_or_default().as_str(), 1)
             .replacen(
                 "${CMD_LINE}",
                 env::args().collect::<Vec<String>>().join(" ").as_str(),

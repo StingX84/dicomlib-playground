@@ -15,8 +15,8 @@ path = "mk-tags-rs.rs"
 
 [dependencies]
 dpx-dicom-core = { path = "../../libs/dpx-dicom-core" }
-clap = { version = "4.1", features = [ "derive" ]}
+clap = { version = "4.6", features = [ "derive" ]}
 log = "0.4"
 pretty_env_logger = "0.4"
 chrono = "0.4"
-whoami = "1.3.0"
+whoami = "2.1.2"

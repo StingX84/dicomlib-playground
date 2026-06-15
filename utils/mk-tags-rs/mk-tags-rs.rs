@@ -1,5 +1,5 @@
 use clap::Parser;
-use dpx_dicom_core::{dicom_err, tag::*, ErrContext, IntoDicomErr, Vr};
+use dpx_dicom_core::{ErrContext, IntoDicomErr, Vr, dicom_err, tag::*};
 use log::info;
 use std::{
     env, fs,
@@ -234,8 +234,8 @@ fn write_headers(writer: &mut impl Write, header_file_names: &Vec<PathBuf>) -> R
             .write(
                 header
                     .replacen("${DATE}", chrono::Local::now().to_rfc2822().as_str(), 1)
-                    .replacen("${USER}", whoami::username().as_str(), 1)
-                    .replacen("${HOST}", whoami::hostname().as_str(), 1)
+                    .replacen("${USER}", whoami::username().unwrap_or_default().as_str(), 1)
+                    .replacen("${HOST}", whoami::hostname().unwrap_or_default().as_str(), 1)
                     .replacen(
                         "${CMD_LINE}",
                         env::args().collect::<Vec<String>>().join(" ").as_str(),
