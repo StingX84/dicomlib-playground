@@ -1,5 +1,5 @@
 use super::*;
-use crate::{utils::unescape::unescape_with_validator, Cow, Vr};
+use crate::{dicom_err, utils::unescape::unescape_with_validator, Cow, Vr};
 use std::fmt::Display;
 
 // cSpell:ignore strtok тест
@@ -240,9 +240,9 @@ impl Meta {
     /// - `Ok(None)` if line is empty or contains only a comment
     /// - `Ok(Some(Meta))` if line successfully parsed
     pub fn from_tsv_line(line: &str) -> Result<Option<Meta>> {
-        Self::parse_tsv_line(line).map_err(|e| Error::MetaParseFailed {
-            char_pos: Self::byte_offset_to_char_offset(line, e.0),
-            msg: e.1,
+        Self::parse_tsv_line(line).map_err(|e| {
+            let pos = Self::byte_offset_to_char_offset(line, e.0);
+            dicom_err!(InvalidData, "{} at pos {pos}", e.1)
         })
     }
 }

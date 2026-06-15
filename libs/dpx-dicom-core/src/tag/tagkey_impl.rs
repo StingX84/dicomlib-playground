@@ -1,5 +1,5 @@
 use super::*;
-use crate::Cow;
+use crate::{dicom_err, Cow};
 
 // cSpell:ignore xxee XXXO XXXN
 
@@ -382,7 +382,7 @@ impl PartialOrd<(u16, u16)> for TagKey {
 }
 
 impl ::core::str::FromStr for TagKey {
-    type Err = Error;
+    type Err = DicomError;
     /// Parses a text representation of the TagKey
     ///
     /// Allowed formats:
@@ -392,33 +392,33 @@ impl ::core::str::FromStr for TagKey {
     ///
     /// Examples:
     /// ```
-    /// # use ::dpx_dicom_core::{tag::Error, TagKey, tag};
+    /// # use ::dpx_dicom_core::{TagKey, DicomError};
     /// # use ::core::str::FromStr;
-    /// # fn main() -> Result<(), Error> {
+    /// # fn main() -> Result<(), DicomError> {
     /// let expected = TagKey::new(0x0008, 0x0005);
     /// assert_eq!(TagKey::from_str("(0008,0005)")?, expected);
     ///
     /// let key: TagKey = "(0008,0005)".parse()?;
     /// assert_eq!(key, expected);
     ///
-    /// assert!(matches!(TagKey::from_str("OOPS"), Err(tag::Error::TagKeyMissingOpeningBrace)));
+    /// assert!(TagKey::from_str("OOPS").is_err());
     /// # Ok(())
     /// # }
     /// ```
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        ensure!(s.starts_with('('), TagKeyMissingOpeningBraceSnafu);
-        ensure!(s.ends_with(')'), TagKeyMissingClosingBraceSnafu);
+        if !s.starts_with('(') { return Err(dicom_err!(InvalidData, "missing opening brace for TagKey (expecting: `(gggg,eeee)`)")); }
+        if !s.ends_with(')') { return Err(dicom_err!(InvalidData, "missing closing brace for TagKey (expecting: `(gggg,eeee)`)")); }
 
         let mut components = s[1..s.len() - 1].splitn(3, ',');
 
-        let group_chars = components.next().context(TagKeyMissingComponentsSnafu)?;
-        let element_chars = components.next().context(TagKeyMissingComponentsSnafu)?;
+        let group_chars = components.next().ok_or_else(|| dicom_err!(InvalidData, "not enough components for TagKey (expecting: `(gggg,eeee)`)"))?;
+        let element_chars = components.next().ok_or_else(|| dicom_err!(InvalidData, "not enough components for TagKey (expecting: `(gggg,eeee)`)"))?;
 
-        let group =
-            u16::from_str_radix(group_chars, 16).context(TagKeyContainsNonHexCharactersSnafu)?;
+        let group = u16::from_str_radix(group_chars, 16)
+            .map_err(|e| dicom_err!(InvalidData, "unable to parse hex in TagKey: {e:?}"))?;
 
-        let element =
-            u16::from_str_radix(element_chars, 16).context(TagKeyContainsNonHexCharactersSnafu)?;
+        let element = u16::from_str_radix(element_chars, 16)
+            .map_err(|e| dicom_err!(InvalidData, "unable to parse hex in TagKey: {e:?}"))?;
 
         Ok(Self::new(group, element))
     }
@@ -464,14 +464,13 @@ mod tests {
         assert_eq!((0x1234u16, 0x5678u16), k.into());
 
         // Try all the errors
-        use Error::*;
         use ::core::str::FromStr;
-        assert!(matches!(TagKey::from_str(""), Err(TagKeyMissingOpeningBrace)));
-        assert!(matches!(TagKey::from_str("0008,0005)"), Err(TagKeyMissingOpeningBrace)));
-        assert!(matches!(TagKey::from_str("(0008,0005"), Err(TagKeyMissingClosingBrace)));
-        assert!(matches!(TagKey::from_str("(00080005)"), Err(TagKeyMissingComponents)));
-        assert!(matches!(TagKey::from_str("(000Z,0005)"), Err(TagKeyContainsNonHexCharacters{source: _})));
-        assert!(matches!(TagKey::from_str("(0008,000Z)"), Err(TagKeyContainsNonHexCharacters{source: _})));
+        assert!(TagKey::from_str("").is_err());
+        assert!(TagKey::from_str("0008,0005)").is_err());
+        assert!(TagKey::from_str("(0008,0005").is_err());
+        assert!(TagKey::from_str("(00080005)").is_err());
+        assert!(TagKey::from_str("(000Z,0005)").is_err());
+        assert!(TagKey::from_str("(0008,000Z)").is_err());
     }
 
     #[test]

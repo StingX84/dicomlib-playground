@@ -1,19 +1,14 @@
-#![allow(unused_imports)]
-
 use clap::Parser;
-use dpx_dicom_core::{tag::*, Vr};
-use log::{info, trace};
-use snafu::{prelude::*, Whatever};
+use dpx_dicom_core::{dicom_err, tag::*, ErrContext, IntoDicomErr, Vr};
+use log::info;
 use std::{
-    borrow::Cow,
     env, fs,
     io::Write,
-    ops::{Index, IndexMut},
     path::{Path, PathBuf},
     process::ExitCode,
 };
 
-type Result<T, E = Whatever> = std::result::Result<T, E>;
+use dpx_dicom_core::error::Result;
 
 // cSpell:ignore metas canonicalize
 
@@ -42,14 +37,25 @@ struct Cli {
     metas_header_file_name: Vec<PathBuf>,
 }
 
-#[snafu::report]
-fn main() -> Result<()> {
-    let cli = Cli::parse();
-
+fn main() -> ExitCode {
     if std::env::var_os("RUST_LOG").is_none() {
-        std::env::set_var("RUST_LOG", "mk_tags_rs=trace");
+        // SAFETY: single-threaded at this point, no concurrent env access
+        unsafe { std::env::set_var("RUST_LOG", "mk_tags_rs=trace") };
     }
-    pretty_env_logger::try_init().with_whatever_context(|_| "could not initialize logger")?;
+    if let Err(e) = pretty_env_logger::try_init() {
+        eprintln!("Warning: could not initialize logger: {e}");
+    }
+    match run() {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("Error: {e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn run() -> Result<()> {
+    let cli = Cli::parse();
 
     let output_tags_file_name = abs_path(&cli.tags_file_name)?;
     let output_metas_file_name = abs_path(&cli.metas_file_name)?;
@@ -57,19 +63,7 @@ fn main() -> Result<()> {
     info!("Reading tsv file {} ...", cli.input_tsv.to_string_lossy());
     let mut dict = Dictionary::new_empty();
     dict.add_from_file(&cli.input_tsv)
-        .with_whatever_context(|e| match e {
-            dpx_dicom_core::tag::Error::DictParseFailed {
-                line_number,
-                char_pos,
-                msg,
-            } => {
-                format!(
-                    "Unable to parse dictionary: {msg}\n--> {}:{line_number}:{char_pos}",
-                    cli.input_tsv.to_string_lossy(),
-                )
-            }
-            _ => format!("Unable to parse dictionary: {e}"),
-        })?;
+        .err_context_with(|| format!("parsing {}", cli.input_tsv.to_string_lossy()))?;
 
     info!(
         "Writing tags to {} ...",
@@ -101,17 +95,17 @@ fn abs_path<T: AsRef<Path>>(f: T) -> Result<PathBuf> {
     if f.is_relative() {
         let rel_file_path = f
             .parent()
-            .with_whatever_context(|| "target file is empty")?;
+            .ok_or_else(|| dicom_err!(Internal, "target file path is empty"))?;
 
         let file_path = env::current_dir()
-            .with_whatever_context(|e| format!("unable to retrieve current working dir: {e}"))?
+            .to_dicom_err("unable to retrieve current working directory")?
             .join(rel_file_path)
             .canonicalize()
-            .with_whatever_context(|e| format!("unable to canonicalize output file: {e}"))?;
+            .to_dicom_err_with(|| format!("unable to canonicalize path \"{}\"", f.display()))?;
 
         let file_name = f
             .file_name()
-            .with_whatever_context(|| "no output file name provided".to_string())?;
+            .ok_or_else(|| dicom_err!(Internal, "no output file name provided"))?;
 
         Ok(file_path.join(file_name))
     } else {
@@ -124,12 +118,8 @@ fn write_tags_to_file<'a>(
     header_file_names: &Vec<PathBuf>,
     output_file_name: &PathBuf,
 ) -> Result<()> {
-    let file = fs::File::create(output_file_name).with_whatever_context(|e| {
-        format!(
-            "Unable to open output file \"{}\": {e}",
-            output_file_name.to_string_lossy()
-        )
-    })?;
+    let file = fs::File::create(output_file_name)
+        .to_dicom_err_with(|| format!("unable to create \"{}\"", output_file_name.display()))?;
     let mut writer = std::io::BufWriter::new(file);
 
     write_headers(&mut writer, header_file_names)?;
@@ -141,7 +131,7 @@ fn write_tags_to_file<'a>(
         use std::borrow::Cow;\n\
         // cspell:disable\n\n"
     )
-    .whatever_context("could not write file")?;
+    .to_dicom_err("could not write file")?;
 
     for meta in tags.filter(|t| t.source != Source::Invalid) {
         writeln!(
@@ -159,7 +149,7 @@ fn write_tags_to_file<'a>(
             &meta.keyword,
             tag_to_text(&meta.tag),
         )
-        .whatever_context("could not write file")?;
+        .to_dicom_err("could not write file")?;
     }
 
     Ok(())
@@ -172,12 +162,12 @@ fn write_metas_to_file<'a>(
     output_file_name: &PathBuf,
 ) -> Result<()> {
     let file = fs::File::create(output_file_name)
-        .whatever_context("could not create file")?;
+        .to_dicom_err_with(|| format!("unable to create \"{}\"", output_file_name.display()))?;
     let mut writer = std::io::BufWriter::new(file);
 
     let count = match tags.size_hint() {
         (_, Some(x)) => x,
-        _ => whatever!("invalid iterator")
+        _ => return Err(dicom_err!(Internal, "iterator has no upper bound")),
     };
 
     write_headers(&mut writer, header_file_names)?;
@@ -191,7 +181,7 @@ mod _internals {{
     use crate::{{ Tag, TagKey, tag::Source, tag::Meta, tag::PrivateIdentificationAction as Pia, Vr }};
     use std::borrow::Cow;
     pub (super) static ALL_TAGS_META: [Meta; {count}] = [\n")
-        .whatever_context("could not write file")?;
+        .to_dicom_err("could not write file")?;
 
     for meta in tags {
         use dpx_dicom_core::tag::PrivateIdentificationAction as Pia;
@@ -224,26 +214,22 @@ mod _internals {{
                     Pia::U => "Pia::U",
                 })
             },
-        ).whatever_context("could not write file")?;
+        ).to_dicom_err("could not write file")?;
     }
 
     write!(&mut writer, "    ];
 }}
 
 pub static ALL_TAGS_META: StaticMetaList = StaticMetaList::new(&_internals::ALL_TAGS_META);")
-        .whatever_context("could not write file")?;
+        .to_dicom_err("could not write file")?;
 
     Ok(())
 }
 
 fn write_headers(writer: &mut impl Write, header_file_names: &Vec<PathBuf>) -> Result<()> {
     for file_name in header_file_names {
-        let header = std::fs::read_to_string(file_name).with_whatever_context(|e| {
-            format!(
-                "couldn't open the file {}: {e}",
-                file_name.to_string_lossy()
-            )
-        })?;
+        let header = std::fs::read_to_string(file_name)
+            .to_dicom_err_with(|| format!("couldn't open \"{}\"", file_name.display()))?;
         writer
             .write(
                 header
@@ -257,7 +243,7 @@ fn write_headers(writer: &mut impl Write, header_file_names: &Vec<PathBuf>) -> R
                     )
                     .as_bytes(),
             )
-            .whatever_context("could not write file")?;
+            .to_dicom_err("could not write file")?;
     }
     Ok(())
 }

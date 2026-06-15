@@ -1,7 +1,7 @@
 //! Unique Object Identifier [Uid] and associated structures
 
 use crate::*;
-use snafu::{ensure, Snafu};
+use crate::{dicom_err, error::Result};
 use std::{fmt::Debug, fmt::Display};
 
 mod uid_meta;
@@ -10,29 +10,6 @@ pub use uid_meta::META_LIST_DICOM;
 
 /// Default root used to generate [unique](Uid::generate_unique) Uids
 pub const DEFAULT_UID_ROOT: &str = "1.2.3";
-
-/// Result type for fallible function of this [module](crate::uid).
-type Result<T> = core::result::Result<T, Error>;
-
-/// Enumeration with errors from this [module](crate::uid).
-#[derive(Debug, Snafu)]
-#[allow(missing_docs)]
-pub enum Error {
-    #[snafu(display("Uid is empty"))]
-    Empty,
-
-    #[snafu(display("Uid is too long ({len} chars), allowed 64"))]
-    Overflow { len: usize },
-
-    #[snafu(display("invalid character in Uid {c} at {pos}"))]
-    InvalidChar { pos: usize, c: char },
-
-    #[snafu(display("empty component in Uid at {pos}"))]
-    EmptyComponent { pos: usize },
-
-    #[snafu(display("Uid component starts with zero at {pos}"))]
-    FirstCharIsZero { pos: usize },
-}
 
 /// Structure holding an UID (unique identifier)
 ///
@@ -319,13 +296,13 @@ impl<'a> Uid<'a> {
                 }).unwrap_or(value.len())
         };
 
-        ensure!(!value.is_empty(), EmptySnafu{});
-        ensure!(value.len() <= 64, OverflowSnafu{len: self.0.len()});
+        if value.is_empty() { return Err(dicom_err!(InvalidData, "UID is empty")); }
+        if value.len() > 64 { return Err(dicom_err!(InvalidData, "UID is too long ({} chars), allowed 64", value.len())); }
         for component in value.split('.') {
-            ensure!(!component.is_empty(), EmptyComponentSnafu{pos: to_pos(component, 0)});
-            ensure!(component.len() == 1 || !component.starts_with('0'), FirstCharIsZeroSnafu{pos: to_pos(component, 0)});
+            if component.is_empty() { return Err(dicom_err!(InvalidData, "empty UID component at pos {}", to_pos(component, 0))); }
+            if component.len() != 1 && component.starts_with('0') { return Err(dicom_err!(InvalidData, "UID component starts with zero at pos {}", to_pos(component, 0))); }
             for (idx, c) in component.chars().enumerate() {
-                ensure!(c.is_numeric(), InvalidCharSnafu{pos: to_pos(component, idx), c});
+                if !c.is_numeric() { return Err(dicom_err!(InvalidData, "invalid character '{}' in UID at pos {}", c, to_pos(component, idx))); }
             }
         }
         Ok(())
@@ -766,30 +743,6 @@ mod tests {
         );
     }
 
-    macro_rules! assert_err {
-        ($e:expr, $exp_err:path, $exp_pos:literal) => {
-            match $e {
-                Ok(_) => panic!("{} expected to fail", stringify!($e)),
-                Err($exp_err { pos: pos, .. }) => {
-                    assert_eq!(
-                        pos,
-                        $exp_pos,
-                        "{} expected to fail on pos {}, but got {}",
-                        stringify!($e),
-                        $exp_pos,
-                        pos
-                    )
-                }
-                Err(x) => panic!(
-                    "{} expected to fail with {}, but failed with {:?}",
-                    stringify!($e),
-                    stringify!($exp_err),
-                    x
-                ),
-            }
-        };
-    }
-
     #[test]
     fn is_validated_correctly() {
         assert!(Uid::from("0").validate().is_ok());
@@ -798,24 +751,14 @@ mod tests {
         assert!(Uid::from("0.1").validate().is_ok());
         assert!(Uid::from("0.123").validate().is_ok());
         assert!(Uid::from("123.123.456.7.8.9").validate().is_ok());
-        assert!(Uid::from(std::str::from_utf8(&[b'1'; 64]).unwrap())
-            .validate()
-            .is_ok());
-        assert!(matches!(
-            Uid::from("").validate().unwrap_err(),
-            Error::Empty
-        ));
-        assert!(matches!(
-            Uid::from(std::str::from_utf8(&[b'1'; 65]).unwrap())
-                .validate()
-                .unwrap_err(),
-            Error::Overflow { .. }
-        ));
-        assert_err!(Uid::from("01").validate(), Error::FirstCharIsZero, 0);
-        assert_err!(Uid::from("1.01").validate(), Error::FirstCharIsZero, 2);
-        assert_err!(Uid::from("1.1z2").validate(), Error::InvalidChar, 3);
-        assert_err!(Uid::from(".1").validate(), Error::EmptyComponent, 0);
-        assert_err!(Uid::from("1.").validate(), Error::EmptyComponent, 2);
+        assert!(Uid::from(std::str::from_utf8(&[b'1'; 64]).unwrap()).validate().is_ok());
+        assert!(Uid::from("").validate().is_err());
+        assert!(Uid::from(std::str::from_utf8(&[b'1'; 65]).unwrap()).validate().is_err());
+        assert!(Uid::from("01").validate().is_err());
+        assert!(Uid::from("1.01").validate().is_err());
+        assert!(Uid::from("1.1z2").validate().is_err());
+        assert!(Uid::from(".1").validate().is_err());
+        assert!(Uid::from("1.").validate().is_err());
     }
 
     #[cfg(not(miri))]

@@ -52,6 +52,7 @@ pub mod _doc {
 pub mod ascii;
 pub mod char_class;
 mod codec;
+pub mod kb;
 pub(crate) mod tables;
 mod term;
 

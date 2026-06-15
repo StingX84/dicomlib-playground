@@ -81,9 +81,9 @@ mod tests {
     use Term::*;
 
     macro_rules! codec {
-        ($term:expr) => {{
+        ($term:expr) => {
             &Codec::from_term_list(&[$term], Config::default())
-        }};
+        };
     }
 
     #[test]

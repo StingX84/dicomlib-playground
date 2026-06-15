@@ -1,5 +1,5 @@
 use super::*;
-use crate::{utils::unescape::unescape, Cow, tag, State};
+use crate::{dicom_err, utils::unescape::unescape, Cow, tag, State};
 
 // cSpell:ignore xxee Тест
 
@@ -258,7 +258,7 @@ impl<'a> PartialOrd<u32> for Tag<'a> {
 }
 
 impl<'a> ::core::str::FromStr for Tag<'a> {
-    type Err = Error;
+    type Err = DicomError;
     /// Parses a text representation of the Tag
     ///
     /// Allowed formats:
@@ -271,9 +271,9 @@ impl<'a> ::core::str::FromStr for Tag<'a> {
     ///
     /// Examples:
     /// ```
-    /// # use ::dpx_dicom_core::{tag::Error, Tag, tag};
+    /// # use ::dpx_dicom_core::{Tag, DicomError};
     /// # use ::core::str::FromStr;
-    /// # fn main() -> Result<(), Error> {
+    /// # fn main() -> Result<(), DicomError> {
     /// assert_eq!(Tag::from_str("(0008,0005)")?,
     ///     Tag::standard(0x0008, 0x0005));
     /// assert_eq!(Tag::from_str(r#"(4321,AA10,"Test")"#)?,
@@ -284,7 +284,7 @@ impl<'a> ::core::str::FromStr for Tag<'a> {
     /// let key: Tag = "(0008,0005)".parse()?;
     /// assert_eq!(key, Tag::standard(0x0008, 0x0005));
     ///
-    /// assert!(matches!(Tag::from_str("OOPS"), Err(tag::Error::TagMissingOpeningBrace)));
+    /// assert!(Tag::from_str("OOPS").is_err());
     /// # Ok(())
     /// # }
     /// ```
@@ -294,31 +294,28 @@ impl<'a> ::core::str::FromStr for Tag<'a> {
 }
 
 impl<'a> TryFrom<&'a str> for Tag<'a> {
-    type Error = Error;
+    type Error = DicomError;
     /// See trait `FromStr::from_str` implementation for this struct
     fn try_from(s: &'a str) -> Result<Self, Self::Error> {
-        ensure!(s.starts_with('('), TagMissingOpeningBraceSnafu);
-        ensure!(s.ends_with(')'), TagMissingClosingBraceSnafu);
+        if !s.starts_with('(') { return Err(dicom_err!(InvalidData, "missing opening brace for Tag (expecting: `(gggg,eeee[,\"creator\"])`)")); }
+        if !s.ends_with(')') { return Err(dicom_err!(InvalidData, "missing closing brace for Tag (expecting: `(gggg,eeee[,\"creator\"])`)")); }
 
         let mut components = s[1..s.len() - 1].splitn(3, ',');
 
-        let group_chars = components.next().context(TagMissingComponentsSnafu)?;
-        let element_chars = components.next().context(TagMissingComponentsSnafu)?;
+        let group_chars = components.next().ok_or_else(|| dicom_err!(InvalidData, "not enough components for Tag (expecting: `(gggg,eeee[,\"creator\"])`)"))?;
+        let element_chars = components.next().ok_or_else(|| dicom_err!(InvalidData, "not enough components for Tag (expecting: `(gggg,eeee[,\"creator\"])`)"))?;
 
-        let group =
-            u16::from_str_radix(group_chars, 16).context(TagContainsNonHexCharactersSnafu)?;
+        let group = u16::from_str_radix(group_chars, 16)
+            .map_err(|e| dicom_err!(InvalidData, "unable to parse hex in Tag: {e:?}"))?;
 
-        let element =
-            u16::from_str_radix(element_chars, 16).context(TagContainsNonHexCharactersSnafu)?;
+        let element = u16::from_str_radix(element_chars, 16)
+            .map_err(|e| dicom_err!(InvalidData, "unable to parse hex in Tag: {e:?}"))?;
 
         let creator: Option<Cow<'a, str>> = match components.next() {
             None => None,
             Some(creator) => {
-                ensure!(creator.starts_with('"'), TagMissingCreatorOpeningQuoteSnafu);
-                ensure!(
-                    creator[1..].ends_with('"'),
-                    TagMissingCreatorClosingQuoteSnafu
-                );
+                if !creator.starts_with('"') { return Err(dicom_err!(InvalidData, "missing opening quote in Tag creator (expecting: `(gggg,eeee[,\"creator\"])`)")); }
+                if !creator[1..].ends_with('"') { return Err(dicom_err!(InvalidData, "missing closing quote in Tag creator (expecting: `(gggg,eeee[,\"creator\"])`)")); }
                 let creator = &creator[1..creator.len() - 1];
 
                 match creator.len() {
@@ -327,11 +324,9 @@ impl<'a> TryFrom<&'a str> for Tag<'a> {
                         if !creator.contains('\\') {
                             Some(Cow::Borrowed(creator))
                         } else {
-                            Some(Cow::Owned(unescape(creator).map_err(|e| {
-                                Error::TagInvalidCreatorString {
-                                    message: e.to_string(),
-                                }
-                            })?))
+                            Some(Cow::Owned(unescape(creator).map_err(|e|
+                                dicom_err!(InvalidData, "unable to parse Tag creator: {e}")
+                            )?))
                         }
                     }
                 }
@@ -343,7 +338,7 @@ impl<'a> TryFrom<&'a str> for Tag<'a> {
 }
 
 impl TryFrom<String> for Tag<'static> {
-    type Error = Error;
+    type Error = DicomError;
     /// See trait `FromStr::from_str` implementation for this struct
     fn try_from(value: String) -> Result<Self, Self::Error> {
         Ok(Tag::try_from(value.as_str())?.to_owned())
@@ -374,17 +369,16 @@ mod tests {
         assert_eq!(key, Tag::standard(0x0008, 0x0005));
 
         // Try all the errors
-        use Error::*;
-        assert!(matches!(Tag::from_str(""), Err(TagMissingOpeningBrace)));
-        assert!(matches!(Tag::from_str("0008,0005)"), Err(TagMissingOpeningBrace)));
-        assert!(matches!(Tag::from_str("(0008,0005"), Err(TagMissingClosingBrace)));
-        assert!(matches!(Tag::from_str("(00080005)"), Err(TagMissingComponents)));
-        assert!(matches!(Tag::from_str("(000Z,0005)"), Err(TagContainsNonHexCharacters{source: _})));
-        assert!(matches!(Tag::from_str("(0008,000Z)"), Err(TagContainsNonHexCharacters{source: _})));
-        assert!(matches!(Tag::from_str("(0008,0005,)"), Err(TagMissingCreatorOpeningQuote)));
-        assert!(matches!(Tag::from_str("(0008,0005,Test)"), Err(TagMissingCreatorOpeningQuote)));
-        assert!(matches!(Tag::from_str(r#"(0008,0005,")"#), Err(TagMissingCreatorClosingQuote)));
-        assert!(matches!(Tag::from_str(r#"(0008,0005,"\uZ")"#), Err(TagInvalidCreatorString{message: _})));
+        assert!(Tag::from_str("").is_err());
+        assert!(Tag::from_str("0008,0005)").is_err());
+        assert!(Tag::from_str("(0008,0005").is_err());
+        assert!(Tag::from_str("(00080005)").is_err());
+        assert!(Tag::from_str("(000Z,0005)").is_err());
+        assert!(Tag::from_str("(0008,000Z)").is_err());
+        assert!(Tag::from_str("(0008,0005,)").is_err());
+        assert!(Tag::from_str("(0008,0005,Test)").is_err());
+        assert!(Tag::from_str(r#"(0008,0005,")"#).is_err());
+        assert!(Tag::from_str(r#"(0008,0005,"\uZ")"#).is_err());
     }
 
     #[test]

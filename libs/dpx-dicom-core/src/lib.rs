@@ -1,16 +1,11 @@
 #![allow(dead_code)]
-#![cfg_attr(
-    feature = "unstable",
-    feature(debugger_visualizer),
-    debugger_visualizer(natvis_file = "../dpx_dicom_core.natvis"),
-    feature(is_sorted),
-    feature(test),
-    feature(once_cell)
-)]
+#![cfg_attr(feature = "unstable", feature(test))]
+#![cfg_attr(feature = "unstable", debugger_visualizer(natvis_file = "../dpx_dicom_core.natvis"))]
 #![deny(clippy::all)]
 //#![warn(missing_docs)]
 
 // Module declarations
+pub mod error;
 pub mod config;
 pub mod settings;
 pub mod state;
@@ -23,6 +18,8 @@ pub mod uids;
 
 
 // Public re-exports
+#[doc(no_inline)]
+pub use error::{DicomError, ErrorKind, KbEntry, Result, ErrContext, IntoDicomErr, ToErrorKind};
 #[doc(no_inline)]
 pub use state::State;
 #[doc(no_inline)]

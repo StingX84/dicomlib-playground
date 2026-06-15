@@ -1,15 +1,20 @@
 use crate::*;
 use std::{
-    cell::{Cell, UnsafeCell},
+    cell::Cell,
     fmt::Debug,
+    future::Future,
     ops::{Deref, DerefMut},
+    pin::Pin,
     ptr::NonNull,
-    sync::RwLockReadGuard,
+    sync::{LazyLock, RwLockReadGuard},
+    task,
 };
 
 thread_local! {
-    static LOCAL_DICOM : Cell<Option<NonNull<State>>> = Cell::new(None);
+    static LOCAL_DICOM: Cell<Option<NonNull<State>>> = const { Cell::new(None) };
 }
+
+static GLOBAL_DICOM: LazyLock<RwLock<State>> = LazyLock::new(|| RwLock::new(State::new()));
 
 #[derive(Debug, Clone)]
 pub struct State {
@@ -36,6 +41,10 @@ impl State {
         }
     }
 
+    pub fn global() -> &'static RwLock<State> {
+        &GLOBAL_DICOM
+    }
+
     pub fn into_global(self) -> Self {
         core::mem::replace(
             Self::global()
@@ -46,61 +55,11 @@ impl State {
         )
     }
 
-    #[cfg(feature = "unstable")]
-    pub fn global() -> &'static RwLock<State> {
-        use std::sync::OnceLock;
-        static GLOBAL_DICOM: OnceLock<RwLock<State>> = OnceLock::new();
-        GLOBAL_DICOM.get_or_init(|| RwLock::new(State::new()))
-    }
-
-    #[cfg(not(feature = "unstable"))]
-    pub fn global() -> &'static RwLock<State> {
-        use std::{mem::MaybeUninit, sync::Once};
-        struct OnceDicomInit {
-            once: Once,
-            value: UnsafeCell<MaybeUninit<RwLock<State>>>,
-        }
-        impl OnceDicomInit {
-            const fn new() -> Self {
-                Self {
-                    once: Once::new(),
-                    value: UnsafeCell::new(MaybeUninit::uninit()),
-                }
-            }
-
-            fn get(&self) -> &RwLock<State> {
-                if !self.once.is_completed() {
-                    let slot = &self.value;
-                    self.once.call_once(|| unsafe {
-                        (*slot.get()).write(RwLock::new(State::default()));
-                    });
-                }
-                // SAFETY: `self.value` is initialized and contains a valid `RwLock`.
-                unsafe { (*self.value.get()).assume_init_ref() }
-            }
-        }
-
-        unsafe impl Sync for OnceDicomInit {}
-
-        impl Drop for OnceDicomInit {
-            fn drop(&mut self) {
-                if self.once.is_completed() {
-                    // SAFETY: The cell is initialized and being dropped, so it can't
-                    // be accessed again.
-                    unsafe { (*self.value.get()).assume_init_drop() };
-                }
-            }
-        }
-
-        static GLOBAL_DICOM: OnceDicomInit = OnceDicomInit::new();
-        GLOBAL_DICOM.get()
-    }
-
     pub fn provide_current_for<F, T>(&self, f: F) -> T
     where
         F: FnOnce() -> T,
     {
-        LOCAL_DICOM.with(move |cell| {
+        LOCAL_DICOM.with(|cell| {
             let old = cell.replace(Some(NonNull::from(self)));
             let rv = f();
             cell.set(old);
@@ -112,7 +71,7 @@ impl State {
     where
         F: FnOnce(&State) -> T,
     {
-        LOCAL_DICOM.with(move |cell| match cell.get() {
+        LOCAL_DICOM.with(|cell| match cell.get() {
             Some(ptr) => f(unsafe { ptr.as_ref() }),
             None => {
                 let read_lock = Self::global()
@@ -124,7 +83,7 @@ impl State {
     }
 
     pub fn current() -> CurrentState {
-        LOCAL_DICOM.with(move |cell| match cell.get() {
+        LOCAL_DICOM.with(|cell| match cell.get() {
             Some(ptr) => CurrentState::Local(unsafe { ptr.as_ref() }),
             None => CurrentState::Global(
                 Self::global()
@@ -146,6 +105,23 @@ impl State {
     pub fn set_uid_dictionary(&mut self, d: uid::Dictionary) {
         self.uid_dict = Arc::new(d);
     }
+
+    /// Wraps `future` so that `self` is the current thread-local [`State`] for every
+    /// `poll()` of the returned future, regardless of which thread executes the poll.
+    ///
+    /// ```
+    /// use std::sync::Arc;
+    /// use dpx_dicom_core::State;
+    /// let state = Arc::new(State::new());
+    /// // scope() returns a Future; hand it to your async runtime:
+    /// //   tokio::spawn(Arc::clone(&state).scope(async { ... }))
+    /// let _scoped = Arc::clone(&state).scope(async {
+    ///     State::with_current(|s| { let _ = s.tag_dictionary(); });
+    /// });
+    /// ```
+    pub fn scope<F: Future>(self: Arc<Self>, future: F) -> StateScope<F> {
+        StateScope { state: self, inner: future }
+    }
 }
 
 impl Default for State {
@@ -156,23 +132,15 @@ impl Default for State {
 
 impl StateBuilder {
     pub fn new() -> Self {
-        Self {
-            ..Default::default()
-        }
+        Self { ..Default::default() }
     }
 
     pub fn with_tag_dictionary(self, v: tag::Dictionary) -> Self {
-        Self {
-            tag_dict: Some(v),
-            ..self
-        }
+        Self { tag_dict: Some(v), ..self }
     }
 
     pub fn with_uid_dictionary(self, v: uid::Dictionary) -> Self {
-        Self {
-            uid_dict: Some(v),
-            ..self
-        }
+        Self { uid_dict: Some(v), ..self }
     }
 
     pub fn build(self) -> State {
@@ -200,5 +168,34 @@ impl Deref for CurrentState {
             Self::Global(lock) => lock.deref(),
             Self::Local(r) => r,
         }
+    }
+}
+
+/// Wraps a `Future` so that this `State` is installed as the thread-local current state
+/// before every `poll()` and restored afterwards. Created by [`State::scope`].
+pub struct StateScope<F: Future> {
+    state: Arc<State>,
+    inner: F,
+}
+
+impl<F: Future> Future for StateScope<F> {
+    type Output = F::Output;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> task::Poll<Self::Output> {
+        // SAFETY:
+        // - `state: Arc<State>` is always Unpin; we only take a raw pointer from it,
+        //   never move it out of the struct.
+        // - `inner: F` is structurally pinned: we re-pin it via `Pin::new_unchecked`
+        //   without moving it, which is valid because `self` was already pinned.
+        let this = unsafe { self.get_unchecked_mut() };
+        let state_ptr = NonNull::from(this.state.as_ref());
+        let inner = unsafe { Pin::new_unchecked(&mut this.inner) };
+
+        LOCAL_DICOM.with(|cell| {
+            let old = cell.replace(Some(state_ptr));
+            let result = inner.poll(cx);
+            cell.set(old);
+            result
+        })
     }
 }

@@ -11,10 +11,12 @@
         "deidentification",
         "devyatnikov",
         "dicom",
+        "DICOMDIR",
         "diconde",
         "dicos",
         "dimse",
         "docbook",
+        "dpxkb",
         "enchanced",
         "fragmentable",
         "ggggeeee",
@@ -40,10 +42,10 @@
         "tagkey",
         "uids",
         "uninit",
+        "WADO",
         "wctomb",
         "whatwg",
         "xfer",
-        "dpxkb",
         "zzzz-list-ending"
     ]
 }

@@ -18,6 +18,8 @@ encoding_rs = ["dep:encoding_rs"]
 
 [dependencies]
 
+dpx-dicom-core = { path = "../dpx-dicom-core" }
+
 encoding_rs = { version = "0.8", optional = true }
 tracing = "0.1"
 

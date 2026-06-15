@@ -1,20 +1,8 @@
 //! Value Representation [Vr] and associated structures
 
 use core::fmt;
-use snafu::{ensure, Snafu};
 
-/// Possible error of text to `Vr` conversion operations
-#[derive(Debug, Snafu)]
-pub enum Error {
-    #[snafu(display("VR code should be exactly 2 bytes long, {} given", len))]
-    InvalidVrLength { len: usize },
-
-    #[snafu(display("unknown VR name \"{}\"", name))]
-    UnknownVr { name: String },
-}
-
-/// Result of text to `Vr` conversion operations
-pub type Result<T, E = Error> = std::result::Result<T, E>;
+use crate::{dicom_err, error::{DicomError, Result}};
 
 // cSpell:ignore ZZXX hhmmss FFFE
 
@@ -696,52 +684,47 @@ impl From<Vr> for String {
 }
 
 impl TryFrom<&[u8]> for Vr {
-    type Error = Error;
-    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
-        ensure!(value.len() == 2, InvalidVrLengthSnafu { len: value.len() });
+    type Error = DicomError;
+    fn try_from(value: &[u8]) -> Result<Self> {
+        if value.len() != 2 {
+            return Err(dicom_err!(InvalidData, "VR code must be exactly 2 bytes, got {}", value.len()));
+        }
         let all = Self::all();
         match all.binary_search_by(|v| v.code.as_ref().cmp(value)) {
             Ok(idx) => Ok(all[idx].vr),
-            Err(_) => UnknownVrSnafu {
-                name: value.escape_ascii().to_string(),
-            }
-            .fail(),
+            Err(_) => Err(dicom_err!(InvalidData, "unknown VR \"{}\"", value.escape_ascii())),
         }
     }
 }
 
 impl TryFrom<[u8; 2]> for Vr {
-    type Error = Error;
-    fn try_from(value: [u8; 2]) -> Result<Self, Self::Error> {
+    type Error = DicomError;
+    fn try_from(value: [u8; 2]) -> Result<Self> {
         let all = Self::all();
         match all.binary_search_by(|v| v.code.cmp(&value)) {
             Ok(idx) => Ok(all[idx].vr),
-            Err(_) => UnknownVrSnafu {
-                name: value.escape_ascii().to_string(),
-            }
-            .fail(),
+            Err(_) => Err(dicom_err!(InvalidData, "unknown VR \"{}\"", value.escape_ascii())),
         }
     }
 }
 
 impl TryFrom<&str> for Vr {
-    type Error = Error;
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        ensure!(value.len() == 2, InvalidVrLengthSnafu { len: value.len() });
+    type Error = DicomError;
+    fn try_from(value: &str) -> Result<Self> {
+        if value.len() != 2 {
+            return Err(dicom_err!(InvalidData, "VR code must be exactly 2 bytes, got {}", value.len()));
+        }
         let all = Self::all();
         match all.binary_search_by(|v| v.code.as_ref().cmp(value.as_bytes())) {
             Ok(idx) => Ok(all[idx].vr),
-            Err(_) => UnknownVrSnafu {
-                name: value.escape_default().to_string(),
-            }
-            .fail(),
+            Err(_) => Err(dicom_err!(InvalidData, "unknown VR \"{}\"", value.escape_default())),
         }
     }
 }
 
 impl std::str::FromStr for Vr {
-    type Err = Error;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
+    type Err = DicomError;
+    fn from_str(s: &str) -> Result<Self> {
         Self::try_from(s)
     }
 }
@@ -894,43 +877,31 @@ mod benches {
         Vr::all().iter().map(|v| v.code).collect()
     }
 
-    fn bench_meta_no_binary(needle: [u8; 2], haystack: &[Meta]) -> Result<&Meta, Error> {
+    fn bench_meta_no_binary(needle: [u8; 2], haystack: &[Meta]) -> Result<&Meta> {
         match haystack.iter().find(|v| v.code == needle) {
             Some(v) => Ok(v),
-            None => UnknownVrSnafu {
-                name: needle.escape_ascii().to_string(),
-            }
-            .fail(),
+            None => Err(dicom_err!(InvalidData, "unknown VR \"{}\"", needle.escape_ascii())),
         }
     }
 
-    fn bench_meta_binary(needle: [u8; 2], haystack: &[Meta]) -> Result<&Meta, Error> {
+    fn bench_meta_binary(needle: [u8; 2], haystack: &[Meta]) -> Result<&Meta> {
         match haystack.binary_search_by(|v| v.code.cmp(&needle)) {
             Ok(idx) => Ok(&haystack[idx]),
-            Err(_) => UnknownVrSnafu {
-                name: needle.escape_ascii().to_string(),
-            }
-            .fail(),
+            Err(_) => Err(dicom_err!(InvalidData, "unknown VR \"{}\"", needle.escape_ascii())),
         }
     }
 
-    fn bench_meta2_no_binary(needle: [u8; 2], haystack: &[Meta2]) -> Result<&Meta2, Error> {
+    fn bench_meta2_no_binary(needle: [u8; 2], haystack: &[Meta2]) -> Result<&Meta2> {
         match haystack.iter().find(|v| v.code.as_bytes() == needle) {
             Some(v) => Ok(v),
-            None => UnknownVrSnafu {
-                name: needle.escape_ascii().to_string(),
-            }
-            .fail(),
+            None => Err(dicom_err!(InvalidData, "unknown VR \"{}\"", needle.escape_ascii())),
         }
     }
 
-    fn bench_meta2_binary(needle: [u8; 2], haystack: &[Meta2]) -> Result<&Meta2, Error> {
+    fn bench_meta2_binary(needle: [u8; 2], haystack: &[Meta2]) -> Result<&Meta2> {
         match haystack.binary_search_by(|v| v.code.as_bytes().cmp(&needle)) {
             Ok(idx) => Ok(&haystack[idx]),
-            Err(_) => UnknownVrSnafu {
-                name: needle.escape_ascii().to_string(),
-            }
-            .fail(),
+            Err(_) => Err(dicom_err!(InvalidData, "unknown VR \"{}\"", needle.escape_ascii())),
         }
     }
 

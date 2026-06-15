@@ -1,5 +1,5 @@
 use super::*;
-use crate::Cow;
+use crate::{dicom_err, dicom_ctx, Cow};
 use std::{
     cmp::Ordering,
     fmt::Debug,
@@ -227,18 +227,7 @@ impl Dictionary {
                 break;
             }
             match Meta::from_tsv_line(line.trim()) {
-                Err(Error::MetaParseFailed { char_pos, msg }) => DictParseFailedSnafu {
-                    line_number,
-                    char_pos,
-                    msg,
-                }
-                .fail()?,
-                Err(e) => DictParseFailedSnafu {
-                    line_number,
-                    char_pos: 0usize,
-                    msg: e.to_string(),
-                }
-                .fail()?,
+                Err(e) => return Err(dicom_ctx!(e, "parse error on line {line_number} in dictionary file")),
                 Ok(Some(meta)) => dict.push(meta),
                 Ok(None) => (),
             }
@@ -315,9 +304,8 @@ impl Dictionary {
     /// ```
     pub fn add_from_file(&mut self, file_name: impl AsRef<Path>) -> Result<()> {
         use std::fs::File;
-        let file = File::open(file_name.as_ref()).context(DictFileOpenFailedSnafu {
-            file_name: file_name.as_ref().to_path_buf(),
-        })?;
+        let file = File::open(file_name.as_ref())
+            .map_err(|e| dicom_err!(Io, "unable to open dictionary file \"{}\"", file_name.as_ref().display()).with_source(e))?;
         self.add_from_memory(file)
     }
 

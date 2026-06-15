@@ -1,7 +1,7 @@
 //! Attribute [Tag], [TagKey] and associated structures
 
-use snafu::{ensure, OptionExt, ResultExt, Snafu};
-use std::{io, path::Path, path::PathBuf};
+use crate::error::{DicomError, Result};
+use std::path::Path;
 
 // cSpell:ignore ggggeeee
 
@@ -48,64 +48,3 @@ pub use meta_impl::{Meta, PrivateIdentificationAction, Source, StaticMetaList};
 pub use tag_impl::Tag;
 pub use tagkey_impl::TagKey;
 
-/// Result type for fallible function of this [module](crate::tag).
-pub type Result<T, E = Error> = ::core::result::Result<T, E>;
-
-/// Enumeration with errors from this [module](crate::tag).
-#[derive(Debug, Snafu)]
-#[allow(missing_docs)]
-pub enum Error {
-    #[snafu(display("missing opening brace for TagKey (expecting: `(gggg,eeee)`)"))]
-    TagKeyMissingOpeningBrace,
-
-    #[snafu(display("missing closing brace for Tag (expecting: `(gggg,eeee)`)"))]
-    TagKeyMissingClosingBrace,
-
-    #[snafu(display("not enough components for Tag (expecting: `(gggg,eeee)`)"))]
-    TagKeyMissingComponents,
-
-    #[snafu(display("unable to parse hexadecimal numeric in Tag: {source:?}"))]
-    TagKeyContainsNonHexCharacters { source: std::num::ParseIntError },
-
-    #[snafu(display("missing opening brace for Tag (expecting: `(gggg,eeee[,\"creator\"])`)"))]
-    TagMissingOpeningBrace,
-
-    #[snafu(display("missing closing brace for Tag (expecting: `(gggg,eeee[,\"creator\"])`)"))]
-    TagMissingClosingBrace,
-
-    #[snafu(display("missing opening double quote in creator part of a Tag (expecting: `(gggg,eeee[,\"creator\"])`)"))]
-    TagMissingCreatorOpeningQuote,
-
-    #[snafu(display("missing opening double quote in creator part of a Tag (expecting: `(gggg,eeee[,\"creator\"])`)"))]
-    TagMissingCreatorClosingQuote,
-
-    #[snafu(display(
-        "unable to parse Tag's creator: {message} (expecting: `(gggg,eeee[,\"creator\"])`)"
-    ))]
-    TagInvalidCreatorString { message: String },
-
-    #[snafu(display("not enough components for Tag (expecting: `(gggg,eeee[,\"creator\"])`)"))]
-    TagMissingComponents,
-
-    #[snafu(display("unable to parse hexadecimal numeric in Tag: {source:?}"))]
-    TagContainsNonHexCharacters { source: std::num::ParseIntError },
-
-    #[snafu(display("{msg} at pos {char_pos}"))]
-    MetaParseFailed { char_pos: usize, msg: String },
-
-    #[snafu(display("unable to open file({})", source))]
-    DictFileOpenFailed {
-        file_name: PathBuf,
-        source: io::Error,
-    },
-
-    #[snafu(display("unable to read file({})", source))]
-    DictFileReadFailed { source: io::Error },
-
-    #[snafu(display("{msg} on line {line_number} pos {char_pos} in dictionary file"))]
-    DictParseFailed {
-        line_number: usize,
-        char_pos: usize,
-        msg: String,
-    },
-}

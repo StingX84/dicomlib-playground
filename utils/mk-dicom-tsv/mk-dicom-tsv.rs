@@ -33,7 +33,8 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     if std::env::var_os("RUST_LOG").is_none() {
-        std::env::set_var("RUST_LOG", "mk_dicom_tsv=trace");
+        // SAFETY: single-threaded at this point, no concurrent env access
+        unsafe { std::env::set_var("RUST_LOG", "mk_dicom_tsv=trace") };
     }
     pretty_env_logger::try_init().with_whatever_context(|_| "could not initialize logger")?;
 

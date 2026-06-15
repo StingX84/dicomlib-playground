@@ -169,17 +169,14 @@ mod tests {
     use crate::Term::*;
 
     macro_rules! codec {
-        ( $($term:ident),* $(+ $member:ident = $value:expr)?) => {&{
-            #[allow(unused_mut)]
-            let mut config = Config::new();
-            $(config.$member = $value;)?
-
-            Codec {
-                terms: vec![$($term),*],
-                config,
-                .. Default::default()
-            }
-        }};
+        ( $($term:ident),* $(+ $member:ident = $value:expr)?) => {
+            &(|| {
+                #[allow(unused_mut)]
+                let mut config = Config::new();
+                $(config.$member = $value;)?
+                Codec { terms: vec![$($term),*], config, ..Default::default() }
+            })()
+        };
     }
 
     #[test]
