@@ -42,8 +42,8 @@ impl fmt::Display for ErrorKind {
 
 /// Source location where the error was first created.
 ///
-/// Captured automatically by [`dicom_err!`] — equivalent to `__FILE__` /
-/// `__LINE__` in C++. Not updated when context is added via [`dicom_ctx!`].
+/// Captured automatically by [`dicom_err!`](crate::dicom_err) — equivalent to `__FILE__` /
+/// `__LINE__` in C++. Not updated when context is added via [`dicom_ctx!`](crate::dicom_ctx).
 #[derive(Debug, Clone, Copy)]
 pub struct Location {
     pub file: &'static str,
@@ -59,7 +59,7 @@ impl fmt::Display for Location {
 
 /// A knowledge-base entry carried by [`DicomError`].
 ///
-/// Define one constant per KB entry and pass it to [`dicom_err!`]:
+/// Define one constant per KB entry and pass it to [`dicom_err!`](crate::dicom_err):
 ///
 /// ```
 /// use dpx_dicom_core::{KbEntry, dicom_err};
@@ -304,7 +304,7 @@ where
 /// Construct a [`DicomError`] capturing the call-site location automatically.
 ///
 /// The location (file, line, column) is fixed at the macro call site and is
-/// not updated when context is later added via [`dicom_ctx!`].
+/// not updated when context is later added via [`dicom_ctx!`](crate::dicom_ctx).
 ///
 /// # Forms
 ///
@@ -377,7 +377,7 @@ macro_rules! dicom_err {
 
 /// Add or replace context on an existing [`DicomError`] without changing its origin location.
 ///
-/// Unlike [`dicom_err!`], this macro does not capture a new location — the
+/// Unlike [`dicom_err!`](crate::dicom_err), this macro does not capture a new location — the
 /// error's `location` field stays pointing to where the error was first created.
 ///
 /// # Forms

@@ -13,13 +13,13 @@ mod tagkey_impl;
 
 mod generic_meta;
 
-/// Built-in static list of [Meta](crate::tag::Meta) descriptions for standard DICOM Tags.
+/// Built-in static list of [Meta] descriptions for standard DICOM Tags.
 ///
 /// This list is automatically registered in [`Dictionary`](crate::tag::Dictionary)
 #[cfg(feature = "static_dictionary")]
 mod dicom_meta;
 
-/// Built-in static list of [Meta](crate::tag::Meta) description for DICOM attribute tags not defined by DICOM standard.
+/// Built-in static list of [Meta] description for DICOM attribute tags not defined by DICOM standard.
 ///
 /// This list is NOT automatically registered in [`Dictionary`](crate::tag::Dictionary).
 /// To enable all DICONDE-specific naming, you should manually
@@ -27,14 +27,14 @@ mod dicom_meta;
 #[cfg(feature = "static_dictionary")]
 mod diconde_meta;
 
-/// A list of [Meta](crate::tag::Meta) structures for all of the [generic](mod@crate::tags::generic) attributes
+/// A list of [Meta] structures for all of the [generic](mod@crate::tags::generic) attributes
 pub use generic_meta::ALL_TAGS_META as META_LIST_GENERIC;
 
-/// A list of [Meta](crate::tag::Meta) structures for all of the attributes in this module
+/// A list of [Meta] structures for all of the attributes in this module
 #[cfg(feature = "static_dictionary")]
 pub use dicom_meta::ALL_TAGS_META as META_LIST_DICOM;
 
-/// A list of [Meta](crate::tag::Meta) structures for all of the [diconde](mod@crate::tags::diconde) attributes
+/// A list of [Meta] structures for all of the [diconde](mod@crate::tags::diconde) attributes
 #[cfg(feature = "static_dictionary")]
 pub use diconde_meta::ALL_TAGS_META as META_LIST_DICONDE;
 
@@ -47,4 +47,3 @@ pub use dict_impl::{DictMetrics, Dictionary};
 pub use meta_impl::{Meta, PrivateIdentificationAction, Source, StaticMetaList};
 pub use tag_impl::Tag;
 pub use tagkey_impl::TagKey;
-

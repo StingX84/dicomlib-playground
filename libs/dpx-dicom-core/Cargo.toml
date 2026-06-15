@@ -23,9 +23,6 @@ static_dictionary = []
 ##################
 # Required dependencies
 
-# Error-handling library
-snafu = "0.7"
-
 # Allows to statically register different types in the static list
 inventory = "0.3"
 

@@ -32,8 +32,8 @@
 //!
 //!  has an empty value or is equal to `ISO_IR 6`, the ""
 //!
-//! When [Codec] initialized with a single-valued
-//! [Term::IsoIr6] or [Term::Iso2022Ir6], it will
+//! When [Codec](crate::Codec) initialized with a single-valued
+//! [Term::IsoIr6](crate::Term::IsoIr6) or [Term::Iso2022Ir6](crate::Term::Iso2022Ir6), it will
 //!
 //! This crate tries to minimize potential risks of text attributes mangling and
 //! allows any control characters. For example in a default configuration, given

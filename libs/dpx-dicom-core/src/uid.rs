@@ -174,7 +174,7 @@ inventory::collect!(StaticMetaList);
 /// See [Dictionary::new] for details on built-in static lists.
 ///
 /// Dictionary lookup by higher-level abstractions forwarded through
-/// [State](crate::State) struct.
+/// [State] struct.
 ///
 /// This class supports "automatic" registration of static descriptions list
 /// using crate [`inventory`]. Use [StaticMetaList] struct with [inventory::submit!].
@@ -378,7 +378,7 @@ impl<'a> Uid<'a> {
         rv.into()
     }
 
-    /// Searches Uid information in the current [State](crate::State)
+    /// Searches Uid information in the current [State]
     ///
     /// See also [search_by_uid](crate::uid::Dictionary::search_by_uid)
     ///
@@ -394,7 +394,7 @@ impl<'a> Uid<'a> {
         crate::State::with_current(|s| s.uid_dictionary().search_by_uid(self).cloned())
     }
 
-    /// Searches and returns Uid keyword in the current [State](crate::State)
+    /// Searches and returns Uid keyword in the current [State]
     ///
     /// See also [search_by_uid](crate::uid::Dictionary::search_by_uid)
     ///
@@ -414,7 +414,7 @@ impl<'a> Uid<'a> {
         })
     }
 
-    /// Searches and returns Uid name in the current [State](crate::State)
+    /// Searches and returns Uid name in the current [State]
     ///
     /// See also [search_by_uid](crate::uid::Dictionary::search_by_uid)
     ///

@@ -5,7 +5,7 @@
 //!
 //! # Topics:
 //! - [Supported encodings](_doc::supported_encodings)
-//! - [Control characters](_doc::control_characters)
+//! - [Special characters](_doc::special_characters)
 //! - [Codec] - main structure of the crate
 //!
 //! All the compatibility features, that deviates from The Standard requirements

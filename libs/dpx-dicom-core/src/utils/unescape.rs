@@ -3,8 +3,6 @@
 //! Unescape the given string.
 //! This is the opposite operation of [`std::ascii::escape_default`].
 
-use snafu::{ensure, OptionExt, ResultExt, Snafu};
-
 pub type Result<T, E = Error> = ::core::result::Result<T, E>;
 
 // cSpell:ignore Unescaper unescaping uffff
@@ -12,19 +10,32 @@ pub type Result<T, E = Error> = ::core::result::Result<T, E>;
 /// Unescaper's `Error`.
 #[allow(missing_docs)]
 #[cfg_attr(test, derive(PartialEq))]
-#[derive(Debug, Snafu)]
+#[derive(Debug)]
 pub enum Error {
-    #[snafu(display("incomplete str, break at {pos}"))]
     IncompleteStr { pos: usize },
-    #[snafu(display("invalid char, {char:?} break at {pos}"))]
     InvalidChar { char: char, pos: usize },
-    #[snafu(display("parse int error, break at {pos}"))]
-    ParseInt {
-        pos: usize,
-        source: ::std::num::ParseIntError,
-    },
-    #[snafu(display("not allowed char, {char:?} break at {pos}"))]
+    ParseInt { pos: usize, source: ::std::num::ParseIntError },
     NotAllowedChar { char: char, pos: usize },
+}
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::IncompleteStr { pos }        => write!(f, "incomplete str, break at {pos}"),
+            Self::InvalidChar { char, pos }    => write!(f, "invalid char, {char:?} break at {pos}"),
+            Self::ParseInt { pos, .. }         => write!(f, "parse int error, break at {pos}"),
+            Self::NotAllowedChar { char, pos } => write!(f, "not allowed char, {char:?} break at {pos}"),
+        }
+    }
+}
+
+impl std::error::Error for Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::ParseInt { source, .. } => Some(source),
+            _ => None,
+        }
+    }
 }
 
 /// Unescaper struct which holding the chars cache for unescaping.
@@ -65,7 +76,7 @@ impl Unescaper {
                 let c = self
                     .chars
                     .pop()
-                    .context(IncompleteStrSnafu { pos: current_pos })?;
+                    .ok_or(Error::IncompleteStr { pos: current_pos })?;
                 let c = match c {
                     'b' => '\u{0008}',
                     'f' => '\u{000c}',
@@ -89,13 +100,9 @@ impl Unescaper {
             }?;
 
             if let Some(v) = self.validator {
-                ensure!(
-                    v(c),
-                    NotAllowedCharSnafu {
-                        pos: current_pos,
-                        char: c
-                    }
-                );
+                if !v(c) {
+                    return Err(Error::NotAllowedChar { pos: current_pos, char: c });
+                }
             }
             unescaped.push(c);
         }
@@ -103,12 +110,11 @@ impl Unescaper {
         Ok(unescaped)
     }
 
-    // pub fn unescape_unicode(&mut self) -> Result<char> {}
     fn unescape_unicode_internal(&mut self) -> Result<char> {
         let c = self
             .chars
             .pop()
-            .context(IncompleteStrSnafu { pos: 0usize })?;
+            .ok_or(Error::IncompleteStr { pos: 0 })?;
         let mut unicode = String::new();
 
         // \u + { + regex(d*) + }
@@ -127,36 +133,34 @@ impl Unescaper {
             unicode.push(c);
 
             for i in 0usize..3 {
-                let c = self.chars.pop().context(IncompleteStrSnafu { pos: i })?;
+                let c = self.chars.pop().ok_or(Error::IncompleteStr { pos: i })?;
 
                 unicode.push(c);
             }
         }
 
-        char::from_u32(
-            u16::from_str_radix(&unicode, 16).context(ParseIntSnafu { pos: 0usize })? as _,
-        )
-        .context(InvalidCharSnafu {
-            char: unicode.chars().last().unwrap(),
-            pos: 0usize,
+        let code = u16::from_str_radix(&unicode, 16)
+            .map_err(|source| Error::ParseInt { pos: 0, source })?;
+        char::from_u32(code as u32).ok_or_else(|| Error::InvalidChar {
+            char: unicode.chars().last().unwrap_or('\0'),
+            pos: 0,
         })
     }
 
-    // pub fn unescape_byte(&mut self) -> Result<char> {}
     fn unescape_byte_internal(&mut self) -> Result<char> {
         let mut byte = String::new();
 
         // [0, 256), 16^2
         for i in 0usize..2 {
-            let c = self.chars.pop().context(IncompleteStrSnafu { pos: i })?;
+            let c = self.chars.pop().ok_or(Error::IncompleteStr { pos: i })?;
 
             byte.push(c);
         }
 
-        Ok(u8::from_str_radix(&byte, 16).context(ParseIntSnafu { pos: 0usize })? as _)
+        Ok(u8::from_str_radix(&byte, 16)
+            .map_err(|source| Error::ParseInt { pos: 0, source })? as char)
     }
 
-    // pub fn unescape_octal(&mut self) -> Result<char> {}
     fn unescape_octal_internal(&mut self, c: char) -> Result<char> {
         let mut octal = String::new();
         let mut try_push_next = |octal: &mut String| {
@@ -186,14 +190,11 @@ impl Unescaper {
 
                 try_push_next(&mut octal);
             }
-            _ => InvalidCharSnafu {
-                char: c,
-                pos: 0usize,
-            }
-            .fail()?,
+            _ => return Err(Error::InvalidChar { char: c, pos: 0 }),
         }
 
-        Ok(u8::from_str_radix(&octal, 8).context(ParseIntSnafu { pos: 0usize })? as _)
+        Ok(u8::from_str_radix(&octal, 8)
+            .map_err(|source| Error::ParseInt { pos: 0, source })? as char)
     }
 }
 
