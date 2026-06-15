@@ -78,8 +78,8 @@ https://dicom.nema.org/medical/dicom/current/output/html/part05.html#sect_6.1
 ## Configuration
 
 ### ☐ Implement lib-to-app database fields integration:
-Support for the application to pass it's supported DB fields and their characteristics.
-Each field should have a unique identifier outside of the DICOM scope. This will allow C-FIND attributes validation, strategy selection and transformation from DICOM to database space and visa-versa.
+Support for the application to pass its supported DB fields and their characteristics.
+Each field should have a unique identifier outside of the DICOM scope. This will allow C-FIND attributes validation, strategy selection and transformation from DICOM to database space and vice versa.
 
 Field descriptor should provide:
 - Unique identifier
@@ -108,7 +108,7 @@ Expected field types:
 
 
 ### DA/TM association
-Library stores associated `DA` and `TM` attributes in the dictionary and knows hows to "combine" them to a single timestamp in incoming C-FIND requests and how to "break" timestamp in outgoing C-FIND requests. When incoming C-FIND "combined" into a single "timestamp" it returns it in `DA` attribute in UTC timezone to the application and "forgets" associated `TM`.
+Library stores associated `DA` and `TM` attributes in the dictionary and knows how to "combine" them to a single timestamp in incoming C-FIND requests and how to "break" a timestamp in outgoing C-FIND requests. When an incoming C-FIND is "combined" into a single "timestamp", it returns the result in the `DA` attribute in UTC timezone to the application and "forgets" the associated `TM`.
 
 Recommendations for the application:
 - Save timezone in DB in one of the ways:
@@ -118,7 +118,7 @@ Recommendations for the application:
   - Make an index of `DA`/`TM` combination as timestamp
   - Store timestamp in `DA` field with a time set to a value of corresponding `TM` or midnight, if `TM` empty.
 - When creating DB entry from a received Dataset:
-  - "combine" received `DA`/`TM` into a single timestamp accounting time-zone attribute and negotiated time-zone.\
+  - "combine" received `DA`/`TM` into a single timestamp accounting for the time-zone attribute and negotiated time-zone.\
     Note: empty `TM` and/or `DA` may be substituted with a current UTC system time.
   - extract and save timezone, convert timestamp to UTC
   - "break" timestamp to `DA`/`TM` again and use these values in DB.
@@ -144,9 +144,9 @@ Note: Standard "Universal Matching" and "Wild Card Matching" are no-op, because 
   -
 - Match List Empty - Match if a multi-valued DB field is empty (contains no values).
 - Match Single In List -
-- Match List Any Single - One of the matched values should match single-valued DB field. If one the searched values is empty, it should match to empty single-valued DB field. Empty matched list should match to empty DB field.
-- Match List Any  In List - One of the matched values should match to one of the values in multi-valued DB field. If one the searched values is empty, it should match if multi-valued DB field contains empty value.
-- Match All Values In List - All of the matched values should be present in multi-valued DB field in any order. DB field may contain more values than searched. If one the searched values is empty, it should match if multi-valued DB field contains empty value.
+- Match List Any Single - One of the matched values should match single-valued DB field. If one of the searched values is empty, it should match to empty single-valued DB field. Empty matched list should match to empty DB field.
+- Match List Any  In List - One of the matched values should match to one of the values in multi-valued DB field. If one of the searched values is empty, it should match if multi-valued DB field contains empty value.
+- Match All Values In List - All of the matched values should be present in multi-valued DB field in any order. DB field may contain more values than searched. If one of the searched values is empty, it should match if multi-valued DB field contains empty value.
 - Match Any Wildcard - One of the matched values containing wildcard symbols should match to single-valued DB field
 - Match Any Wildcard In List - One of the matched values containing wildcard symbols should match to one of value in a multivalued-valued DB field
 

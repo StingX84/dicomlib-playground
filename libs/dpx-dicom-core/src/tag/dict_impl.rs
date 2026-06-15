@@ -31,7 +31,7 @@ use std::{
 /// See [Dictionary::new] for details on built-in static lists.
 ///
 /// Dictionary lookup by higher-level abstractions forwarded through
-/// [State](crate::State) struct.
+/// [Context](crate::Context).
 ///
 /// This class supports "automatic" registration of static descriptions list
 /// using crate [`inventory`]. Use [StaticMetaList] struct with [inventory::submit!].
@@ -53,7 +53,7 @@ use std::{
 /// }
 ///
 /// # use dpx_dicom_core::tag::Dictionary;
-/// // Example of direct Dictionary invocation without global State:
+/// // Example of direct Dictionary invocation without global Context:
 /// # #[cfg(not(miri))]
 /// # fn main() {
 /// let dict = Dictionary::new();
@@ -206,7 +206,7 @@ impl Dictionary {
         }
     }
 
-    /// Parses a dictionary from a memory and adds it's content to the
+    /// Parses a dictionary from memory and adds its content to the
     /// dictionary
     ///
     /// See expected format in [add_from_file](Self::add_from_file) method
@@ -242,7 +242,7 @@ impl Dictionary {
         Ok(())
     }
 
-    /// Reads a dictionary file and adds it content to the dictionary
+    /// Reads a dictionary file and adds its content to the dictionary
     ///
     /// Note: as any other mutating method, this invalidates a cache. To speed
     /// up searches after mutation, you should call
@@ -353,7 +353,7 @@ impl Dictionary {
 
     /// Searches a dictionary for the given [TagKey]
     ///
-    /// This method does not honor Private Creators so it's usage
+    /// This method does not honor Private Creators so its usage
     /// should be carefully judged. It searches for the first
     /// [Meta] entry which `Meta.tag.key` matches the searched [TagKey]
     /// combined with a [Meta::mask]
@@ -760,9 +760,9 @@ impl Dictionary {
 
     /// Performs a linear search of the [Tag] in a specified iterator.
     ///
-    /// Returns Some if some match found or None if no matches found. Some
-    /// contains a tuple of `bool` and matched `Meta`. `bool` indicates a
-    /// confidentiality of a match. `true` - match exacted, `false` match with
+    /// Returns Some if a match is found or None if no match is found. Some
+    /// contains a tuple of `bool` and matched `Meta`. `bool` indicates the
+    /// confidence of the match. `true` - exact match, `false` - matched with
     /// some "generalization".
     fn search_in_ary<'a, T: Iterator<Item = &'a Meta>>(
         iter: T,

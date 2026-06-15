@@ -1,5 +1,5 @@
 use super::*;
-use crate::{dicom_err, utils::unescape::unescape, Cow, tag, State};
+use crate::{dicom_err, utils::unescape::unescape, Context, Cow, tag};
 
 // cSpell:ignore xxee Тест
 
@@ -34,7 +34,7 @@ use crate::{dicom_err, utils::unescape::unescape, Cow, tag, State};
 ///   - An odd group number
 ///   - A unique designator for this group. This will be called "Private
 ///     Creator".
-///   - There may be ap to 256 elements in one group.
+///   - There may be up to 256 elements in one group.
 ///   - This will end up with tag `(gggg,xxee)`, where `gggg` and `ee` - numbers
 ///     specified by the vendor, `xx` - dynamic number from 0x10 to 0xFF.
 /// - For each group of the private attributes recorded in the dataset, there
@@ -51,8 +51,8 @@ use crate::{dicom_err, utils::unescape::unescape, Cow, tag, State};
 /// This particular number will be used when library reads a dataset with absent
 /// "Private Reservation", that was created by a non-conforming/buggy software.
 /// And, also when library writes attribute with such tag, it will preferably
-/// use this number if dataset if allowed.\
-/// When no backward compatibility reasons involved, one better choose "0x10",
+/// use this number if the dataset allows it.\
+/// When backward compatibility is not a concern, the recommended choice is "0x10",
 /// so attribute tag in a dictionary will end up as `(gggg,ee10)`.
 ///
 /// [PS3.6 "5 Conventions"]:
@@ -146,19 +146,19 @@ impl<'a> Tag<'a> {
         }
     }
 
-    /// Searches tag information in the current [State](crate::State)
+    /// Searches tag information in the current [Context]
     ///
     /// See also [search_by_tag](crate::tag::Dictionary::search_by_tag)
     pub fn meta(&self) -> Option<tag::Meta> {
-        State::with_current(|s| s.tag_dictionary().search_by_tag(self).cloned())
+        Context::with_current(|ctx| ctx.tag_dict().search_by_tag(self).cloned())
     }
 
-    /// Searches and returns Tag name in the current [State](crate::State)
+    /// Searches and returns Tag name in the current [Context]
     ///
     /// See also [search_by_tag](crate::tag::Dictionary::search_by_tag)
     pub fn name(&self) -> Option<String> {
-        State::with_current(|s| {
-            s.tag_dictionary()
+        Context::with_current(|ctx| {
+            ctx.tag_dict()
                 .search_by_tag(self)
                 .map(|m| m.name.to_string())
         })
@@ -348,7 +348,7 @@ impl TryFrom<String> for Tag<'static> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{state::State, state::StateBuilder};
+    use crate::{Arc, Context};
 
     #[rustfmt::skip]
     #[test]
@@ -389,35 +389,21 @@ mod tests {
             ];
         }
 
-        // Reset default state in case some other test pooped there.
-        State::default().into_global();
-
         let mut dict = Dictionary::new_empty();
         dict.add_static_list(&TAGS);
+        let dict = Arc::new(dict);
 
-        let state = StateBuilder::new()
-            .with_tag_dictionary(dict.clone())
-            .build();
-
-        state.provide_current_for(|| {
-            // Test tag now may be found once we push dictionary to thread local
+        Context::extend().tag_dict(Arc::clone(&dict)).provide(|| {
             assert_eq!(TestTag.meta().unwrap().name, "Test Tag");
             assert_eq!(TestTag.name().unwrap(), "Test Tag");
         });
 
-        // Test tag should not be found again, because outside of
-        // "provide_current_for" scope
         assert_eq!(TestTag.meta().unwrap().name, "Unknown");
 
-        state.into_global();
-
-        // Test tag should be found now, because we make our state global
+        let prev_global = Context::extend().tag_dict(Arc::clone(&dict)).install_global();
         assert_eq!(TestTag.meta().unwrap().name, "Test Tag");
 
-        // Restore default globaL state
-        State::default().into_global();
-
-        // Test tag should not present in the default global state
+        Context::global().store(prev_global);
         assert_eq!(TestTag.meta().unwrap().name, "Unknown");
     }
 }

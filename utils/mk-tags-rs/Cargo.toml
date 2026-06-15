@@ -14,9 +14,15 @@ name = "mk-tags-rs"
 path = "mk-tags-rs.rs"
 
 [dependencies]
+# Provides DICOM tag types used when writing output
 dpx-dicom-core = { path = "../../libs/dpx-dicom-core" }
+# CLI argument parsing via derive macros
 clap = { version = "4.6", features = [ "derive" ]}
+# Logging facade for diagnostic output
 log = "0.4"
+# Colorized logger controlled by the RUST_LOG environment variable
 pretty_env_logger = "0.4"
+# Formats current date/time stamped into generated file headers
 chrono = "0.4"
+# Embeds the current username in generated file headers
 whoami = "2.1.2"

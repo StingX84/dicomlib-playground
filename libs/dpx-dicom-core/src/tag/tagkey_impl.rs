@@ -186,7 +186,7 @@ impl TagKey {
     /// From [PS3.5 7.8.1 Private Data Element Tags](https://dicom.nema.org/medical/dicom/current/output/chtml/part05/sect_7.8.html):
     /// > "Elements with Tags (0001,xxxx), (0003,xxxx), (0005,xxxx), (0007,xxxx) and (FFFF,xxxx) shall not be used."
     ///
-    /// Note: standard does not explicitly rejects `(gggg,aabb)`, where `gggg` is odd,
+    /// Note: the standard does not explicitly reject `(gggg,aabb)`, where `gggg` is odd,
     /// `aa` and `bb` in range 0x01..-0x0F, leaving it in a "grey" zone.
     ///
     /// Standard attributes with groups less than 0x0008 are used only in network DIMSE commands
@@ -232,19 +232,19 @@ impl TagKey {
         self.is_valid() && (self.0 & 0xFFFF0000u32) >= 0x00080000u32
     }
 
-    /// Searches tag information in the current [State](crate::State)
+    /// Searches tag information in the current [Context](crate::Context)
     ///
     /// See also [search_by_key](crate::tag::Dictionary::search_by_key)
     pub fn meta(&self) -> Option<crate::tag::Meta> {
-        crate::State::with_current(|s| s.tag_dictionary().search_by_key(*self).cloned())
+        crate::Context::with_current(|ctx| ctx.tag_dict().search_by_key(*self).cloned())
     }
 
-    /// Searches and returns Tag name in the current [State](crate::State)
+    /// Searches and returns Tag name in the current [Context](crate::Context)
     ///
     /// See also [search_by_key](crate::tag::Dictionary::search_by_key)
     pub fn name(&self) -> Option<Cow<'static, str>> {
-        crate::State::with_current(|s| {
-            s.tag_dictionary()
+        crate::Context::with_current(|ctx| {
+            ctx.tag_dict()
                 .search_by_key(*self)
                 .map(|m| m.name.clone())
         })
@@ -444,7 +444,7 @@ impl TryFrom<String> for TagKey {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{state::StateBuilder, State};
+    use crate::{Arc, Context};
 
     #[test]
     fn struct_methods() {
@@ -481,35 +481,21 @@ mod tests {
             ];
         }
 
-        // Reset default state in case some other test pooped there.
-        State::default().into_global();
-
         let mut dict = Dictionary::new_empty();
         dict.add_static_list(&TAGS);
+        let dict = Arc::new(dict);
 
-        let state = StateBuilder::new()
-            .with_tag_dictionary(dict.clone())
-            .build();
-
-        state.provide_current_for(|| {
-            // Test tag now may be found once we push dictionary to thread local
+        Context::extend().tag_dict(Arc::clone(&dict)).provide(|| {
             assert_eq!(TestTag.meta().unwrap().name, "Test Tag");
-
             assert_eq!(TestTag.name().unwrap(), "Test Tag");
         });
 
-        // Test tag should fall into "catch-all" rule of a default global state
         assert_eq!(TestTag.meta().unwrap().name, "Unknown");
 
-        state.into_global();
-
-        // Test tag should be found now, because we make our state global
+        let prev_global = Context::extend().tag_dict(Arc::clone(&dict)).install_global();
         assert_eq!(TestTag.meta().unwrap().name, "Test Tag");
 
-        // Restore default globaL state
-        State::default().into_global();
-
-        // Test tag should not present in the default global state
+        Context::global().store(prev_global);
         assert_eq!(TestTag.meta().unwrap().name, "Unknown");
     }
 

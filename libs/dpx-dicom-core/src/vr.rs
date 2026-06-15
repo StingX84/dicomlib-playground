@@ -67,7 +67,7 @@ pub enum Vr {
     /// - Fixes when `nonConformingTags` == `fix`:
     ///   - Trim any zero bytes from the end of the string
     ///   - Trim any white-spaces from beginning and ending of the string
-    ///   - Allow any amount of digits that fits into 64-bit integer, then limit it's value to range 0..=999
+    ///   - Allow any amount of digits that fits into a 64-bit integer, then limit its value to range 0..=999
     ///   - Ignore spaces after digits and before D/W/M/Y suffix.
     ///   - Replace invalid or missing D/W/M/Y suffix with 'Y'
     AS,
@@ -318,7 +318,7 @@ pub enum Vr {
     ///   - Note: `"` character is allowed here, so "Empty Value Matching" against attribute of `""` will fail.
     /// - Fixes when `nonConformingTags` == `fix`:
     ///   - Trim any zero bytes from the end of the string
-    ///   - Every group is limited to 64 chars and whole string is Limited to 194 bytes if it is too long
+    ///   - Every group is limited to 64 chars and the whole string is limited to 194 bytes if it is too long
     ///   - Disallowed characters replaced by `?`
     ///
     /// [PS3.5 Annex H]: https://dicom.nema.org/medical/dicom/current/output/chtml/part05/chapter_H.html
@@ -552,7 +552,7 @@ pub const MAX_VR: Vr = Vr::UV;
 ///
 /// This doesn't allocate.
 ///
-/// Note: Currently rust BUGGY traits implementation does not
+/// Note: Currently, Rust's BUGGY traits implementation does not
 /// allow const BitOr, so this macro also "wraps" this operator.
 macro_rules! mk_meta {
     ($vr:expr, $code:expr, $description:expr, $kind:expr) => {

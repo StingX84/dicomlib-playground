@@ -23,14 +23,14 @@ pub const DEFAULT_UID_ROOT: &str = "1.2.3";
 /// than one digit, it should not start with 0. Maximum allowed length: 64
 /// chars.
 ///
-/// This structure stores it's text in a [Cow](std::borrow::Cow) to minimize heap allocations.
+/// This structure stores its text in a [Cow](std::borrow::Cow) to minimize heap allocations.
 ///
 /// You can create this structure from `&str` or `String` using `from` method.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
 pub struct Uid<'a>(Cow<'a, str>);
 
-/// Structure describing properties of a known [Uid]'s
+/// Structure describing properties of a known [Uid]
 #[derive(Debug, Clone)]
 pub struct Meta {
     pub uid: Uid<'static>,
@@ -90,7 +90,7 @@ pub enum UidType {
 
     /// This [Uid] represents a Transfer Syntax
     TransferSyntax {
-        /// Is this Transfer Syntax uses little-endian (`true`) or big-endian
+        /// Whether this Transfer Syntax uses little-endian (`true`) or big-endian
         /// (`false`) byte ordering for numerics.
         ///
         /// For example:
@@ -98,7 +98,7 @@ pub enum UidType {
         /// - [ExplicitVRBigEndian](crate::uids::ts::ExplicitVRBigEndian) has this property set to `false`
         is_little_endian: bool,
 
-        /// Is this Transfer Syntax explicitly defines Value Representation
+        /// Whether this Transfer Syntax explicitly defines Value Representation
         /// (`true`) or relies on a dictionary [Vr] lookup (`false`)
         ///
         /// For example:
@@ -106,14 +106,14 @@ pub enum UidType {
         /// - [ExplicitVRLittleEndian](crate::uids::ts::ExplicitVRLittleEndian) has this property set to `false`
         is_explicit_vr: bool,
 
-        /// Is the file requires decompression to read it's attributes (`true`)
+        /// Whether the file requires decompression to read its attributes (`true`)
         ///
         /// For example:
         /// - [DeflatedExplicitVRLittleEndian](crate::uids::ts::DeflatedExplicitVRLittleEndian) has this property set to `true`
         /// - [ImplicitVRLittleEndian](crate::uids::ts::ImplicitVRLittleEndian) has this property set to `false`
         is_compressed: bool,
 
-        /// Is the pixel data encapsulated with some codec (`true`)
+        /// Whether the pixel data is encapsulated with some codec (`true`)
         ///
         /// For example:
         /// - [JPEGBaseline8Bit](crate::uids::ts::JPEGBaseline8Bit) has this property set to `true`
@@ -174,7 +174,7 @@ inventory::collect!(StaticMetaList);
 /// See [Dictionary::new] for details on built-in static lists.
 ///
 /// Dictionary lookup by higher-level abstractions forwarded through
-/// [State] struct.
+/// [Context].
 ///
 /// This class supports "automatic" registration of static descriptions list
 /// using crate [`inventory`]. Use [StaticMetaList] struct with [inventory::submit!].
@@ -200,7 +200,7 @@ inventory::collect!(StaticMetaList);
 /// }
 ///
 /// # use dpx_dicom_core::uid::{Dictionary, Uid};
-/// // Example of direct Dictionary invocation without global State:
+/// // Example of direct Dictionary invocation without global Context:
 /// # #[cfg(not(miri))]
 /// # fn main() {
 /// let dict = Dictionary::new();
@@ -247,7 +247,7 @@ impl<'a> Uid<'a> {
         Self(v)
     }
 
-    /// Tries to find specified keyword in a [State] and returns
+    /// Tries to find specified keyword in the current [Context] and returns
     /// Uid found.
     ///
     /// See also [search_by_keyword](crate::uid::Dictionary::search_by_keyword)
@@ -261,8 +261,8 @@ impl<'a> Uid<'a> {
     /// );
     /// ```
     pub fn from_keyword(name: impl AsRef<str>) -> Option<Uid<'static>> {
-        crate::State::with_current(|s| {
-            s.uid_dictionary()
+        crate::Context::with_current(|ctx| {
+            ctx.uid_dict()
                 .search_by_keyword(name)
                 .map(|m| m.uid.clone())
         })
@@ -378,7 +378,7 @@ impl<'a> Uid<'a> {
         rv.into()
     }
 
-    /// Searches Uid information in the current [State]
+    /// Searches Uid information in the current [Context]
     ///
     /// See also [search_by_uid](crate::uid::Dictionary::search_by_uid)
     ///
@@ -391,10 +391,10 @@ impl<'a> Uid<'a> {
     /// ));
     /// ```
     pub fn meta(&self) -> Option<Meta> {
-        crate::State::with_current(|s| s.uid_dictionary().search_by_uid(self).cloned())
+        crate::Context::with_current(|ctx| ctx.uid_dict().search_by_uid(self).cloned())
     }
 
-    /// Searches and returns Uid keyword in the current [State]
+    /// Searches and returns Uid keyword in the current [Context]
     ///
     /// See also [search_by_uid](crate::uid::Dictionary::search_by_uid)
     ///
@@ -407,14 +407,14 @@ impl<'a> Uid<'a> {
     /// );
     /// ```
     pub fn keyword(&self) -> Option<String> {
-        crate::State::with_current(|s| {
-            s.uid_dictionary()
+        crate::Context::with_current(|ctx| {
+            ctx.uid_dict()
                 .search_by_uid(self)
                 .map(|m| m.keyword.to_string())
         })
     }
 
-    /// Searches and returns Uid name in the current [State]
+    /// Searches and returns Uid name in the current [Context]
     ///
     /// See also [search_by_uid](crate::uid::Dictionary::search_by_uid)
     ///
@@ -427,8 +427,8 @@ impl<'a> Uid<'a> {
     /// );
     /// ```
     pub fn name(&self) -> Option<String> {
-        crate::State::with_current(|s| {
-            s.uid_dictionary()
+        crate::Context::with_current(|ctx| {
+            ctx.uid_dict()
                 .search_by_uid(self)
                 .map(|m| m.name.to_string())
         })

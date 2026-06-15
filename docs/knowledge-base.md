@@ -23,7 +23,7 @@ the dataset text attributes in a read-modify-write cycle.
 `Warning`
 ### When:
 Reading a dataset whose attribute `(0008,0005) Specific Character Set` contains
-an unrecognized `term` in one of it's values.
+an unrecognized `term` in one of its values.
 ### Reason:
 Only the `term` defined in the DICOM Standard (see [PS3.3
 C.12.1.1.2](https://dicom.nema.org/medical/dicom/current/output/html/part03.html#sect_C.12.1.1.2))
@@ -36,16 +36,16 @@ the dataset text attributes in a read-modify-write cycle.
 
 
 ------------------------------------------------------------------------------
-## `#dpxkb_ds_0003` - Non standard encoding in character set
+## `#dpxkb_ds_0003` - Non-standard encoding in character set
 ### Category:
 `Warning`
 ### When:
 Reading a dataset whose attribute `(0008,0005) Specific Character Set` contains
-a non standard encoding.
+a non-standard encoding.
 ### Reason:
 Only encodings listed in [PS3.3
 C.12.1.1.2](https://dicom.nema.org/medical/dicom/current/output/html/part03.html#sect_C.12.1.1.2)
-may be used in this attribute. Note, that some non-standard encodings may be allowed by the
+may be used in this attribute. Note that some non-standard encodings may be allowed by the
 application configuration.
 ### Affects:
 Character set conversion is disabled to minimize a chance to irreversibly damage
@@ -53,16 +53,16 @@ the dataset text attributes in a read-modify-write cycle.
 
 
 ------------------------------------------------------------------------------
-## `#dpxkb_ds_0004` - Non standard encoding accepted in character set
+## `#dpxkb_ds_0004` - Non-standard encoding accepted in character set
 ### Category:
 `Warning`
 ### When:
 Reading a dataset whose attribute `(0008,0005) Specific Character Set` contains
-a non standard encoding permitted by the application configuration.
+a non-standard encoding permitted by the application configuration.
 ### Reason:
 Usage of this encoding violates the DICOM standard (see [PS3.3
 C.12.1.1.2](https://dicom.nema.org/medical/dicom/current/output/html/part03.html#sect_C.12.1.1.2))
-and may cause irreversible data loss when transferring dataset across different
+and may cause irreversible data loss when transferring datasets across different
 applications.
 ### Affects:
 Text encoding and decoding operations will use this non-standard encoding.
@@ -74,18 +74,18 @@ Text encoding and decoding operations will use this non-standard encoding.
 `Warning`
 ### When:
 Reading a dataset whose attribute `(0008,0005) Specific Character Set` is
-multi-valued and one of it's values specifies an encoding not supporting
+multi-valued and one of its values specifies an encoding not supporting
 ISO-2022 extensions.
 ### Reason:
-Multi-valued Specific Character Set attribute may be used exclusively in context
-of ISO-2022 text codec to specify available code pages (`Terms`) (ISO-IR
+Multi-valued Specific Character Set attribute may be used exclusively in the context
+of the ISO-2022 text codec to specify available code pages (`Terms`) (ISO-IR
 registered 94, 96 or 94x94 sets). For example: `ISO 2022 IR 6`, `ISO 2022 IR 149`.
 These `Terms` are listed in the DICOM Standard tables [PS3.3
 Table C.12-2](https://dicom.nema.org/medical/dicom/current/output/html/part03.html#table_C.12-2)
 and [PS3.3
 Table C.12-5](https://dicom.nema.org/medical/dicom/current/output/html/part03.html#table_C.12-5).
 
-Any other `Term` such as `ISO_IR 6`, `ISO_IR 192`, `GB18030` could not be used in a multi-valued
+Any other `Term` such as `ISO_IR 6`, `ISO_IR 192`, `GB18030` cannot be used in a multi-valued
 `(0008,0005) Specific Character Set` attribute.
 
 Standard citation on single-byte encodings:
@@ -115,14 +115,14 @@ the dataset text attributes in a read-modify-write cycle.
 `Warning`
 ### When:
 Reading a dataset whose attribute `(0008,0005) Specific Character Set` is
-multi-valued and it's first value specifies some multi-byte encoding, that could
+multi-valued and its first value specifies some multi-byte encoding that can
 be used only in values other than the first.
 ### Reason:
-First value of multi-values character set must be one of single-byte character
+The first value of a multi-valued character set must be one of the single-byte character
 sets listed in the DICOM [PS3.3
 Table C.12-2](https://dicom.nema.org/medical/dicom/current/output/html/part03.html#table_C.12-2).
 The reasoning behind this is very solid: "Multi-Byte Character Sets with Code
-Extensions" encodings (94x94 ISO_IR tables), does not support control
+Extensions" encodings (94x94 ISO_IR tables) do not support control
 characters, such as `CR`, `LF`. But most importantly, that `space` is not
 supported either, making it impossible to "pad" a text field to an even length.
 That is why only single-byte tables (such as `ISO 2022 IR 6`) are allowed in the
@@ -146,20 +146,20 @@ the dataset text attributes in a read-modify-write cycle.
 `Warning`
 ### When:
 Reading a dataset whose attribute `(0008,0005) Specific Character Set` contains
-non-standard alias name for the standard encoding.
+a non-standard alias name for the standard encoding.
 ### Reason:
-Aliased names for DICOM-defined encodings is a non-portable application
+Aliased names for DICOM-defined encodings are a non-portable application
 extension, which can be disabled in the configuration. For example, `ISO-8859-1`
 is an alias to `ISO_IR 100`. Standard terms written in non-uppercase or with
-extra/missing spacing, such as `iso_ir 100`, `ISO IR 100` or `IsoIr100` is
+extra/missing spacing, such as `iso_ir 100`, `ISO IR 100` or `IsoIr100` are
 supported and also considered as an alias. This extension violates the DICOM
 Standard (see [PS3.3
 C.12.1.1.2](https://dicom.nema.org/medical/dicom/current/output/html/part03.html#sect_C.12.1.1.2)),
 but should be safe to accept to maximize interoperability with "buggy" software.
 ### Affects:
-Encoding processed as if standard name were used. When a dataset being written
-back to the disk, it's Specific Character Set attribute will be overwritten with
-a Standard conforming name.
+Encoding is processed as if the standard name were used. When a dataset is being written
+back to disk, its Specific Character Set attribute will be overwritten with
+a standard-conforming name.
 
 
 ------------------------------------------------------------------------------
@@ -173,7 +173,7 @@ multi-valued and some value other than the first is empty.
 According to The DICOM Standard, *Only the first* value may be empty and others
 must not. The application is configured to relax this restriction and ignore
 empty values. This relaxation is only valid if the attribute still remains
-multi-valued after value ignorance.
+multi-valued after the empty value is ignored.
 
 Citation from [PS3.3 C.12.1.1.2](https://dicom.nema.org/medical/dicom/current/output/html/part03.html#sect_C.12.1.1.2):
 > Table C.12-4 describes multi-byte character sets for value 2 to value n of the
@@ -197,14 +197,14 @@ Character Set attribute is not a good sign in the first place.
 Reading a dataset whose attribute `(0008,0005) Specific Character Set` is
 multi-valued and contains a duplicate value.
 ### Reason:
-Duplicate values are explicitly prohibited by the Dicom Standard:
+Duplicate values are explicitly prohibited by the DICOM Standard:
 
 Citation from [PS3.3 C.12.1.1.2](https://dicom.nema.org/medical/dicom/current/output/html/part03.html#sect_C.12.1.1.2):
 > The same character set shall not be used more than once in Specific Character
 > Set (0008,0005).
 
 The application is configured to bypass this limitation by ignoring a duplicate
-value in cases when Specific Character Set still remain multi-valued.
+value in cases when Specific Character Set still remains multi-valued.
 
 ### Affects:
 Encoding is processed as if there were no duplicate value defined in it. This may
@@ -228,9 +228,9 @@ Later in the same section:
 > If the Attribute Specific Character Set (0008,0005) has more than one value
 > and value 1 is empty, it is assumed that value 1 is ISO 2022 IR 6.
 
-It is clear, that *only the first* value may be empty and others must not. Such
-empty values may be ignored if enabled in the configuration and this action
-will not render character set single-valued.
+It is clear that *only the first* value may be empty and others must not. Such
+empty values may be ignored if enabled in the configuration, provided this action
+does not render the character set single-valued.
 
 ### Affects:
 Character set conversion is disabled to minimize a chance to irreversibly damage
@@ -245,7 +245,7 @@ the dataset text attributes in a read-modify-write cycle.
 Reading a dataset whose attribute `(0008,0005) Specific Character Set` is
 multi-valued and contains a duplicate value.
 ### Reason:
-Duplicate values are explicitly prohibited by the Dicom Standard:
+Duplicate values are explicitly prohibited by the DICOM Standard:
 
 Citation from [PS3.3 C.12.1.1.2](https://dicom.nema.org/medical/dicom/current/output/html/part03.html#sect_C.12.1.1.2):
 > The same character set shall not be used more than once in Specific Character
@@ -262,7 +262,7 @@ the dataset text attributes in a read-modify-write cycle.
 `Warning`
 ### When:
 Reading a dataset whose attribute `(0008,0005) Specific Character Set` is
-multi-valued and some encoding being Single Byte Without Extensions converted to a corresponding Single Byte With Extensions.
+multi-valued and some encoding that is Single Byte Without Extensions is being converted to a corresponding Single Byte With Extensions encoding.
 ### Reason:
 In multi-valued Specific Character Set attribute standard allows only encoding
 names starting with `ISO 2022 IR`. They are listed in tables [PS3.3
@@ -273,7 +273,7 @@ But the application configuration allows to deviate from the standard by
 treating encodings starting with `ISO_IR` as `ISO 2022 IR` counterparts.
 
 ### Affects:
-Encoding is processed as if there were Single Byte With Extensions encoding
-provided. This may lead to the irreversible text corruption, because
-non-standard Specific Character Set attribute is not a good sign in the first
+Encoding is processed as if Single Byte With Extensions encoding were
+provided. This may lead to irreversible text corruption, because
+a non-standard Specific Character Set attribute is not a good sign in the first
 place.

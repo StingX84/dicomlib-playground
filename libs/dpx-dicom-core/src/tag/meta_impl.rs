@@ -9,7 +9,7 @@ use std::fmt::Display;
 /// See [`Dictionary`]
 #[derive(Debug, Clone)]
 pub struct Meta {
-    /// Tag key and it's private creator
+    /// Tag key and its private creator
     pub tag: Tag<'static>,
     /// TagKey mask.
     ///
@@ -83,9 +83,9 @@ pub enum Source {
 
 /// Private attribute de-identification action
 ///
-/// This affects the action library takes on the attribute when de-identifying
-/// the dataset. Also, this actions may be conveyed in the dataset, so other
-/// dicom application know what to do with private attributes when it decides to
+/// This affects the action the library takes on the attribute when de-identifying
+/// the dataset. Also, these actions may be conveyed in the dataset, so other
+/// DICOM applications know what to do with private attributes when they decide to
 /// de-identify the dataset.
 ///
 /// This library may automatically construct and/or update attribute "Private
@@ -365,7 +365,7 @@ impl Meta {
     ///
     /// Expects exactly 4 hexadecimal or 'X' characters.
     ///
-    /// Returns numeric component and it's mask.
+    /// Returns numeric component and its mask.
 
     fn parse_tag_component(s: &str) -> Result<(u16, u16), MetaParseErr> {
         let s = s.trim();
@@ -411,12 +411,12 @@ impl Meta {
         Ok((number, !mask))
     }
 
-    /// Parses [`Tag`] and it's mask from the input string slice.
+    /// Parses [`Tag`] and its mask from the input string slice.
     ///
     /// Expects format `(gggg,eeee[,"creator"])` where `gggg`, `eeee` - hexadecimal
     /// or 'X' characters.
     ///
-    /// Returns a parsed `Tag` and it's mask (synthesized from 'X' characters).
+    /// Returns a parsed `Tag` and its mask (synthesized from 'X' characters).
     /// #[rustfmt::skip]
     fn parse_field_tag(s: &str) -> Result<(Tag<'static>, u32), MetaParseErr> {
         let s = s.trim();

@@ -15,13 +15,15 @@ version.workspace = true
 default = []                      #["encoding_rs"]
 encoding_rs = ["dep:encoding_rs"]
 
-
 [dependencies]
 
+# Core DICOM types and error handling
 dpx-dicom-core = { path = "../dpx-dicom-core" }
-
+# Mozilla's WHATWG Encoding implementation; covers ISO 8859-x, Shift-JIS, and other DICOM-permitted charsets
 encoding_rs = { version = "0.8", optional = true }
+# Structured, async-aware logging and diagnostics
 tracing = "0.1"
 
 [dev-dependencies]
+# Captures tracing spans/events during unit tests for assertion
 tracing-test = "0.2"

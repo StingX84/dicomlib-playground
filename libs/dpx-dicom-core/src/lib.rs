@@ -5,10 +5,10 @@
 //#![warn(missing_docs)]
 
 // Module declarations
+pub mod context;
 pub mod error;
 pub mod config;
 pub mod settings;
-pub mod state;
 pub mod tag;
 pub mod tags;
 pub mod uid;
@@ -21,7 +21,7 @@ pub mod uids;
 #[doc(no_inline)]
 pub use error::{DicomError, ErrorKind, KbEntry, Result, ErrContext, IntoDicomErr, ToErrorKind};
 #[doc(no_inline)]
-pub use state::State;
+pub use context::{AssocDescription, Context, ContextBuilder, ContextScope};
 #[doc(no_inline)]
 pub use tag::Tag;
 #[doc(no_inline)]
