@@ -3,8 +3,6 @@ use crate::uids;
 use std::borrow::Cow::Borrowed as B;
 use crate::uid::{StorageKind as S, StaticMetaList};
 
-#[rustfmt::skip]
-
 // cSpell:disable
 
 /// A list of [Meta] structures describing all the known standard Uids.

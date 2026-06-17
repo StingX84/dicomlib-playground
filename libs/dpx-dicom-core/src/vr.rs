@@ -2,7 +2,10 @@
 
 use core::fmt;
 
-use crate::{dicom_err, error::{DicomError, Result}};
+use crate::{
+    dicom_err,
+    error::{DicomError, Result},
+};
 
 // cSpell:ignore ZZXX hhmmss FFFE
 
@@ -687,7 +690,11 @@ impl TryFrom<&[u8]> for Vr {
     type Error = DicomError;
     fn try_from(value: &[u8]) -> Result<Self> {
         if value.len() != 2 {
-            return Err(dicom_err!(InvalidData, "VR code must be exactly 2 bytes, got {}", value.len()));
+            return Err(dicom_err!(
+                InvalidData,
+                "VR code must be exactly 2 bytes, got {}",
+                value.len()
+            ));
         }
         let all = Self::all();
         match all.binary_search_by(|v| v.code.as_ref().cmp(value)) {
@@ -712,7 +719,11 @@ impl TryFrom<&str> for Vr {
     type Error = DicomError;
     fn try_from(value: &str) -> Result<Self> {
         if value.len() != 2 {
-            return Err(dicom_err!(InvalidData, "VR code must be exactly 2 bytes, got {}", value.len()));
+            return Err(dicom_err!(
+                InvalidData,
+                "VR code must be exactly 2 bytes, got {}",
+                value.len()
+            ));
         }
         let all = Self::all();
         match all.binary_search_by(|v| v.code.as_ref().cmp(value.as_bytes())) {
@@ -821,17 +832,14 @@ mod tests {
         }
         // Try &str
         for vr in Vr::all().iter() {
-            assert_eq!(
-                Vr::try_from(::core::str::from_utf8(&vr.code).unwrap()).unwrap(),
-                vr.vr
-            )
+            assert_eq!(Vr::try_from(::core::str::from_utf8(&vr.code).unwrap()).unwrap(), vr.vr)
         }
     }
 
     #[cfg(feature = "serde")]
     #[test]
     fn can_use_serde() {
-        use serde_test::{assert_de_tokens, assert_ser_tokens, Token};
+        use serde_test::{Token, assert_de_tokens, assert_ser_tokens};
 
         let vr = Vr::AE;
 
@@ -844,7 +852,7 @@ mod tests {
 mod benches {
     extern crate test;
     use super::*;
-    use test::{black_box, Bencher};
+    use test::{Bencher, black_box};
 
     // Implementation of vr::Meta -like structure, but with "code" referenced in a constant memory.
     struct Meta2 {

@@ -1,5 +1,6 @@
 use super::*;
-use crate::{dicom_err, utils::unescape::unescape_with_validator, Cow, Vr};
+use crate::{Vr, dicom_err, utils::unescape::unescape_with_validator};
+use std::borrow::Cow;
 use std::fmt::Display;
 
 // cSpell:ignore strtok тест
@@ -10,7 +11,7 @@ use std::fmt::Display;
 #[derive(Debug, Clone)]
 pub struct Meta {
     /// Tag key and its private creator
-    pub tag: Tag<'static>,
+    pub tag: Tag,
     /// TagKey mask.
     ///
     /// This number represents an AND mask applied to the attribute tag key
@@ -291,15 +292,7 @@ impl Meta {
         let byte_offset = address - line.as_ptr() as usize;
         line.char_indices()
             .enumerate()
-            .find_map(
-                |(co, (i, _))| {
-                    if i >= byte_offset {
-                        Some(co)
-                    } else {
-                        None
-                    }
-                },
-            )
+            .find_map(|(co, (i, _))| if i >= byte_offset { Some(co) } else { None })
             .unwrap_or(line.len())
     }
 
@@ -314,11 +307,13 @@ impl Meta {
 
         let take_first_field = |s| -> Result<(&str, &str), MetaParseErr> {
             match Self::parse_take_element(s, "\t") {
-                (_, None) => parse_fail!(
-                    s,
-                    s.len().saturating_sub(1),
-                    "unexpected end of line, expecting TAB character"
-                ),
+                (_, None) => {
+                    parse_fail!(
+                        s,
+                        s.len().saturating_sub(1),
+                        "unexpected end of line, expecting TAB character"
+                    )
+                }
                 (s1, Some(s2)) => Ok((s1, s2)),
             }
         };
@@ -418,7 +413,7 @@ impl Meta {
     ///
     /// Returns a parsed `Tag` and its mask (synthesized from 'X' characters).
     /// #[rustfmt::skip]
-    fn parse_field_tag(s: &str) -> Result<(Tag<'static>, u32), MetaParseErr> {
+    fn parse_field_tag(s: &str) -> Result<(Tag, u32), MetaParseErr> {
         let s = s.trim();
         parse_ensure!(
             !s.is_empty() && s.starts_with('(') && s.ends_with(')'),
@@ -485,9 +480,7 @@ impl Meta {
                     chars_count <= 64,
                     creator,
                     0,
-                    format!(
-                        "private creator is too long ({chars_count} chars), maximum 64 chars allowed"
-                    )
+                    format!("private creator is too long ({chars_count} chars), maximum 64 chars allowed")
                 );
                 Some(Cow::Owned(unescaped))
             }
@@ -512,10 +505,7 @@ impl Meta {
             s.len() <= 128,
             s,
             0,
-            format!(
-                "Name field is too long ({} bytes), maximum 128 chars allowed",
-                s.len()
-            )
+            format!("Name field is too long ({} bytes), maximum 128 chars allowed", s.len())
         );
         if let Some(index) = s.bytes().position(|c| !c.is_ascii_graphic() && c != b' ') {
             parse_fail!(
@@ -558,10 +548,7 @@ impl Meta {
                 c.to_owned().escape_ascii()
             )
         );
-        if let Some(index) = s
-            .bytes()
-            .position(|c| !c.is_ascii_alphanumeric() && c != b'_')
-        {
+        if let Some(index) = s.bytes().position(|c| !c.is_ascii_alphanumeric() && c != b'_') {
             parse_fail!(
                 s,
                 index,
@@ -769,8 +756,8 @@ impl PartialEq for Meta {
     }
 }
 
-impl<'a> PartialEq<Tag<'a>> for Meta {
-    fn eq(&self, other: &Tag<'a>) -> bool {
+impl PartialEq<Tag> for Meta {
+    fn eq(&self, other: &Tag) -> bool {
         self.tag.eq(other)
     }
 }
@@ -789,8 +776,8 @@ impl PartialOrd for Meta {
     }
 }
 
-impl<'a> PartialOrd<Tag<'a>> for Meta {
-    fn partial_cmp(&self, other: &Tag<'a>) -> Option<std::cmp::Ordering> {
+impl PartialOrd<Tag> for Meta {
+    fn partial_cmp(&self, other: &Tag) -> Option<std::cmp::Ordering> {
         self.tag.partial_cmp(other)
     }
 }
@@ -885,7 +872,7 @@ mod tests {
         assert!(Meta::parse_tsv_line(" ").unwrap().is_none());
         assert_eq!(Meta::parse_tsv_line("(0010,0020)\tLO\tPatient ID\tPatientID\t1\tdicom").unwrap().unwrap(),
             Meta{
-                tag: Tag::standard(0x0010, 0x0020),
+                tag: Tag::new_standard(0x0010, 0x0020),
                 mask: 0xFFFFFFFFu32,
                 vr: (Vr::LO, Vr::Undefined, Vr::Undefined),
                 vm: (1, 1, 1),
@@ -895,7 +882,7 @@ mod tests {
             });
         assert_eq!(Meta::parse_tsv_line("(xxxo,00xx)\tLO\tPrivate Reservation\tPrivateReservation\t1\tDicom").unwrap().unwrap(),
             Meta{
-                tag: Tag::standard(0x0001, 0x0000),
+                tag: Tag::new_standard(0x0001, 0x0000),
                 mask: 0x0001FF00u32,
                 vr: (Vr::LO, Vr::Undefined, Vr::Undefined),
                 vm: (1, 1, 1),
@@ -956,20 +943,20 @@ mod tests {
     #[rustfmt::skip]
     fn check_dict_parse_field_tag() {
         assert_eq!(Meta::parse_field_tag("(4321,5678,\"creator\")").unwrap(),
-            (Tag::private(0x4321, 0x5678, "creator"), 0xFFFFFFFFu32));
+            (Tag::new_private(0x4321, 0x5678, "creator"), 0xFFFFFFFFu32));
         assert_eq!(Meta::parse_field_tag("(4321,5678,\"тест\")").unwrap(),
-            (Tag::private(0x4321, 0x5678, "тест"), 0xFFFFFFFFu32));
+            (Tag::new_private(0x4321, 0x5678, "тест"), 0xFFFFFFFFu32));
         assert_eq!(Meta::parse_field_tag("(cDeF,xXaB)").unwrap(),
-            (Tag::standard(0xcdef, 0x00ab), 0xFFFF00FFu32));
+            (Tag::new_standard(0xcdef, 0x00ab), 0xFFFF00FFu32));
         assert_eq!(Meta::parse_field_tag("(xxxx,xxxx)").unwrap(),
-            (Tag::standard(0x0000, 0x0000), 0x00000000u32));
+            (Tag::new_standard(0x0000, 0x0000), 0x00000000u32));
         assert_eq!(Meta::parse_field_tag(" ( 4321 , 5678 , \"creator\" ) ").unwrap(),
-            (Tag::private(0x4321, 0x5678, "creator"), 0xFFFFFFFFu32));
+            (Tag::new_private(0x4321, 0x5678, "creator"), 0xFFFFFFFFu32));
 
         let max_creator = String::from_iter(['Ы'; 64]);
         let long_tag = format!("(4321,5678,\"{max_creator}\")");
         assert_eq!(Meta::parse_field_tag(long_tag.as_str()).unwrap(),
-            (Tag::private(0x4321, 0x5678, max_creator.as_str()), 0xFFFFFFFFu32));
+            (Tag::new_private_cow(0x4321, 0x5678, max_creator.as_str()), 0xFFFFFFFFu32));
 
         assert_parser_err!(Meta::parse_field_tag, "", 0, "expecting Tag definition");
         assert_parser_err!(Meta::parse_field_tag, "A", 0, "expecting Tag definition");

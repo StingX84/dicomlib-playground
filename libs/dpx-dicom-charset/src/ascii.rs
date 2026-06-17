@@ -5,9 +5,7 @@ use std::str;
 pub(crate) fn try_decode_ascii(bytes: &[u8], codec_supports_ascii: bool) -> Option<Cow<'_, str>> {
     if bytes.is_empty() || (codec_supports_ascii && bytes.is_ascii()) {
         // SAFETY: empty or ASCII-only text is always a valid UTF-8 sequence.
-        Some(Cow::Borrowed(unsafe {
-            std::str::from_utf8_unchecked(bytes)
-        }))
+        Some(Cow::Borrowed(unsafe { std::str::from_utf8_unchecked(bytes) }))
     } else {
         None
     }
@@ -16,9 +14,7 @@ pub(crate) fn try_decode_ascii(bytes: &[u8], codec_supports_ascii: bool) -> Opti
 pub(crate) fn try_decode_ascii_if_has_no_esc_codes(bytes: &[u8], codec_supports_ascii: bool) -> Option<Cow<'_, str>> {
     if bytes.is_empty() || (codec_supports_ascii && bytes.is_ascii() && !bytes.iter().any(|&c| c == CODE_ESC)) {
         // SAFETY: empty or ASCII-only text is always a valid UTF-8 sequence.
-        Some(Cow::Borrowed(unsafe {
-            std::str::from_utf8_unchecked(bytes)
-        }))
+        Some(Cow::Borrowed(unsafe { std::str::from_utf8_unchecked(bytes) }))
     } else {
         None
     }

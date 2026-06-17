@@ -44,14 +44,15 @@
 /// Documentation topics
 pub mod _doc {
     pub mod builtin_terms;
-    pub mod special_characters;
     pub mod iso_ir_char_sets;
+    pub mod special_characters;
     pub mod supported_encodings;
 }
 
 pub mod ascii;
 pub mod char_class;
 mod codec;
+#[rustfmt::skip]
 pub mod kb;
 pub(crate) mod tables;
 mod term;

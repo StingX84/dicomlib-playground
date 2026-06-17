@@ -42,20 +42,12 @@ fn main() -> Result<()> {
 
     let file_name = &cli.docbook_path.join("part06").join("part06.xml");
     info!("Reading {}...", file_name.to_string_lossy());
-    let content = std::fs::read_to_string(file_name).with_whatever_context(|e| {
-        format!(
-            "couldn't open the file {}: {e}",
-            file_name.to_string_lossy()
-        )
-    })?;
-    let xml = roxmltree::Document::parse(&content).with_whatever_context(|e| {
-        format!(
-            "couldn't parse xml file {}: {e}",
-            file_name.to_string_lossy()
-        )
-    })?;
-    let version_06 = extract_version(xml.root_element())
-        .with_whatever_context(|| "unable to extract version string")?;
+    let content = std::fs::read_to_string(file_name)
+        .with_whatever_context(|e| format!("couldn't open the file {}: {e}", file_name.to_string_lossy()))?;
+    let xml = roxmltree::Document::parse(&content)
+        .with_whatever_context(|e| format!("couldn't parse xml file {}: {e}", file_name.to_string_lossy()))?;
+    let version_06 =
+        extract_version(xml.root_element()).with_whatever_context(|| "unable to extract version string")?;
 
     let mut tags = Vec::<Tag>::new();
     parse_table(&mut tags, xml.root_element(), "table_6-1", None)?;
@@ -65,56 +57,30 @@ fn main() -> Result<()> {
 
     let file_name = &cli.docbook_path.join("part07").join("part07.xml");
     info!("Reading {} ...", file_name.to_string_lossy());
-    let content = std::fs::read_to_string(file_name).with_whatever_context(|e| {
-        format!(
-            "couldn't open the file {}: {e}",
-            file_name.to_string_lossy()
-        )
-    })?;
-    let xml = roxmltree::Document::parse(&content).with_whatever_context(|e| {
-        format!(
-            "couldn't parse xml file {}: {e}",
-            file_name.to_string_lossy()
-        )
-    })?;
+    let content = std::fs::read_to_string(file_name)
+        .with_whatever_context(|e| format!("couldn't open the file {}: {e}", file_name.to_string_lossy()))?;
+    let xml = roxmltree::Document::parse(&content)
+        .with_whatever_context(|e| format!("couldn't parse xml file {}: {e}", file_name.to_string_lossy()))?;
 
-    let version_07 = extract_version(xml.root_element())
-        .with_whatever_context(|| "unable to extract version string")?;
-    parse_table(
-        &mut tags,
-        xml.root_element(),
-        "table_E.1-1",
-        Some(Source::Dicom),
-    )?;
-    parse_table(
-        &mut tags,
-        xml.root_element(),
-        "table_E.2-1",
-        Some(Source::Retired),
-    )?;
+    let version_07 =
+        extract_version(xml.root_element()).with_whatever_context(|| "unable to extract version string")?;
+    parse_table(&mut tags, xml.root_element(), "table_E.1-1", Some(Source::Dicom))?;
+    parse_table(&mut tags, xml.root_element(), "table_E.2-1", Some(Source::Retired))?;
 
     info!("Sorting ...");
     tags.sort_by(|l, r| l.tag.cmp(r.tag));
 
     info!("Writing {} ...", output_file_name.to_string_lossy());
 
-    let file = fs::File::create(&output_file_name)
-        .with_whatever_context(|e| format!("Unable to open output file({e})"))?;
+    let file =
+        fs::File::create(&output_file_name).with_whatever_context(|e| format!("Unable to open output file({e})"))?;
     let mut writer = std::io::BufWriter::new(file);
 
     for header_file_name in cli.headers {
-        let header = std::fs::read_to_string(&header_file_name).with_whatever_context(|e| {
-            format!(
-                "couldn't open the file {}: {e}",
-                header_file_name.to_string_lossy()
-            )
-        })?;
+        let header = std::fs::read_to_string(&header_file_name)
+            .with_whatever_context(|e| format!("couldn't open the file {}: {e}", header_file_name.to_string_lossy()))?;
         let header = header
-            .replacen(
-                "${VERSION}",
-                format!("{version_06} and {version_07}").as_str(),
-                1,
-            )
+            .replacen("${VERSION}", format!("{version_06} and {version_07}").as_str(), 1)
             .replacen("${DATE}", chrono::Local::now().to_rfc2822().as_str(), 1)
             .replacen("${USER}", whoami::username().unwrap_or_default().as_str(), 1)
             .replacen("${HOST}", whoami::hostname().unwrap_or_default().as_str(), 1)
@@ -188,9 +154,7 @@ struct Tag<'a> {
 fn abs_path<T: AsRef<Path>>(f: T) -> Result<PathBuf> {
     let f = f.as_ref();
     if f.is_relative() {
-        let rel_file_path = f
-            .parent()
-            .with_whatever_context(|| "target file is empty")?;
+        let rel_file_path = f.parent().with_whatever_context(|| "target file is empty")?;
 
         let file_path = env::current_dir()
             .with_whatever_context(|e| format!("unable to retrieve current working dir: {e}"))?
@@ -223,8 +187,7 @@ fn parse_table<'a, 'input>(
     source: Option<Source>,
 ) -> Result<()> {
     info!("Processing table {id}...");
-    let table =
-        find_by_id(root, id).with_whatever_context(|| format!("could not find table {id}"))?;
+    let table = find_by_id(root, id).with_whatever_context(|| format!("could not find table {id}"))?;
 
     let tbody = table
         .children()
@@ -281,10 +244,7 @@ fn parse_table<'a, 'input>(
     Ok(())
 }
 
-fn find_by_id<'a, 'input>(
-    input: roxmltree::Node<'a, 'input>,
-    id: &'_ str,
-) -> Option<roxmltree::Node<'a, 'input>> {
+fn find_by_id<'a, 'input>(input: roxmltree::Node<'a, 'input>, id: &'_ str) -> Option<roxmltree::Node<'a, 'input>> {
     if input.is_element() {
         if let Some(attr) = input.attribute((roxmltree::NS_XML_URI, "id")) {
             if attr == id {

@@ -9,6 +9,8 @@ use std::fmt;
 pub enum ErrorKind {
     /// OS-level I/O failure (read, write, seek, flush, etc.)
     Io,
+    /// Invalid configuration provided
+    Configuration,
     /// Network socket or connection level failure
     Network,
     /// Remote peer violated the DICOM protocol
@@ -28,14 +30,15 @@ pub enum ErrorKind {
 impl fmt::Display for ErrorKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Io               => write!(f, "I/O error"),
-            Self::Network          => write!(f, "network error"),
-            Self::Protocol         => write!(f, "DICOM protocol error"),
-            Self::InvalidData      => write!(f, "invalid DICOM data"),
+            Self::Io => write!(f, "I/O error"),
+            Self::Configuration => write!(f, "Configuration"),
+            Self::Network => write!(f, "network error"),
+            Self::Protocol => write!(f, "DICOM protocol error"),
+            Self::InvalidData => write!(f, "invalid DICOM data"),
             Self::UnsupportedFeature => write!(f, "unsupported DICOM feature"),
-            Self::NotFound         => write!(f, "resource not found"),
-            Self::AccessDenied     => write!(f, "access denied"),
-            Self::Internal         => write!(f, "internal error"),
+            Self::NotFound => write!(f, "resource not found"),
+            Self::AccessDenied => write!(f, "access denied"),
+            Self::Internal => write!(f, "internal error"),
         }
     }
 }
@@ -107,7 +110,7 @@ impl fmt::Display for DicomError {
         }
         match &self.message {
             Some(msg) => write!(f, "{msg}")?,
-            None      => write!(f, "{}", self.kind)?,
+            None => write!(f, "{}", self.kind)?,
         }
         write!(f, " (at {})", self.location)
     }
@@ -127,9 +130,7 @@ impl fmt::Debug for DicomError {
 
 impl std::error::Error for DicomError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        self.source
-            .as_deref()
-            .map(|s| s as &(dyn std::error::Error + 'static))
+        self.source.as_deref().map(|s| s as &(dyn std::error::Error + 'static))
     }
 }
 
@@ -169,13 +170,13 @@ pub trait ToErrorKind {
 impl ToErrorKind for std::io::Error {
     fn to_error_kind(&self) -> ErrorKind {
         match self.kind() {
-            std::io::ErrorKind::NotFound         => ErrorKind::NotFound,
+            std::io::ErrorKind::NotFound => ErrorKind::NotFound,
             std::io::ErrorKind::PermissionDenied => ErrorKind::AccessDenied,
             std::io::ErrorKind::ConnectionRefused
             | std::io::ErrorKind::ConnectionReset
             | std::io::ErrorKind::ConnectionAborted
-            | std::io::ErrorKind::BrokenPipe     => ErrorKind::Network,
-            _                                    => ErrorKind::Io,
+            | std::io::ErrorKind::BrokenPipe => ErrorKind::Network,
+            _ => ErrorKind::Io,
         }
     }
 }
@@ -216,7 +217,7 @@ impl<T> ErrContext<T> for Result<T> {
             let prefix = msg.into();
             e.message = Some(match e.message.take() {
                 Some(existing) => format!("{prefix}: {existing}"),
-                None           => format!("{prefix}: {}", e.kind),
+                None => format!("{prefix}: {}", e.kind),
             });
             e
         })
@@ -227,7 +228,7 @@ impl<T> ErrContext<T> for Result<T> {
             let prefix = f();
             e.message = Some(match e.message.take() {
                 Some(existing) => format!("{prefix}: {existing}"),
-                None           => format!("{prefix}: {}", e.kind),
+                None => format!("{prefix}: {}", e.kind),
             });
             e
         })
@@ -280,11 +281,15 @@ where
         // to this file rather than the user's call site.
         let loc = std::panic::Location::caller();
         self.map_err(|e| DicomError {
-            kind:     e.to_error_kind(),
-            kb:       None,
-            message:  Some(msg.into()),
-            location: Location { file: loc.file(), line: loc.line(), column: loc.column() },
-            source:   Some(Box::new(e)),
+            kind: e.to_error_kind(),
+            kb: None,
+            message: Some(msg.into()),
+            location: Location {
+                file: loc.file(),
+                line: loc.line(),
+                column: loc.column(),
+            },
+            source: Some(Box::new(e)),
         })
     }
 
@@ -292,11 +297,15 @@ where
     fn to_dicom_err_with(self, f: impl FnOnce() -> String) -> Result<T> {
         let loc = std::panic::Location::caller();
         self.map_err(|e| DicomError {
-            kind:     e.to_error_kind(),
-            kb:       None,
-            message:  Some(f()),
-            location: Location { file: loc.file(), line: loc.line(), column: loc.column() },
-            source:   Some(Box::new(e)),
+            kind: e.to_error_kind(),
+            kb: None,
+            message: Some(f()),
+            location: Location {
+                file: loc.file(),
+                line: loc.line(),
+                column: loc.column(),
+            },
+            source: Some(Box::new(e)),
         })
     }
 }

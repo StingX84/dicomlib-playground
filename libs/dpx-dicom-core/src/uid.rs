@@ -2,8 +2,9 @@
 
 use crate::*;
 use crate::{dicom_err, error::Result};
-use std::{fmt::Debug, fmt::Display};
+use std::{borrow::Cow, fmt::Debug, fmt::Display};
 
+#[rustfmt::skip]
 mod uid_meta;
 
 pub use uid_meta::META_LIST_DICOM;
@@ -23,7 +24,7 @@ pub const DEFAULT_UID_ROOT: &str = "1.2.3";
 /// than one digit, it should not start with 0. Maximum allowed length: 64
 /// chars.
 ///
-/// This structure stores its text in a [Cow](std::borrow::Cow) to minimize heap allocations.
+/// This structure stores its text in a [Cow] to minimize heap allocations.
 ///
 /// You can create this structure from `&str` or `String` using `from` method.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -261,11 +262,7 @@ impl<'a> Uid<'a> {
     /// );
     /// ```
     pub fn from_keyword(name: impl AsRef<str>) -> Option<Uid<'static>> {
-        crate::Context::with_current(|ctx| {
-            ctx.uid_dict()
-                .search_by_keyword(name)
-                .map(|m| m.uid.clone())
-        })
+        crate::Context::with_current(|ctx| ctx.uid_dict().search_by_keyword(name).map(|m| m.uid.clone()))
     }
 
     /// Validates this Uid according to a [DICOM specification]
@@ -407,11 +404,7 @@ impl<'a> Uid<'a> {
     /// );
     /// ```
     pub fn keyword(&self) -> Option<String> {
-        crate::Context::with_current(|ctx| {
-            ctx.uid_dict()
-                .search_by_uid(self)
-                .map(|m| m.keyword.to_string())
-        })
+        crate::Context::with_current(|ctx| ctx.uid_dict().search_by_uid(self).map(|m| m.keyword.to_string()))
     }
 
     /// Searches and returns Uid name in the current [Context]
@@ -427,11 +420,7 @@ impl<'a> Uid<'a> {
     /// );
     /// ```
     pub fn name(&self) -> Option<String> {
-        crate::Context::with_current(|ctx| {
-            ctx.uid_dict()
-                .search_by_uid(self)
-                .map(|m| m.name.to_string())
-        })
+        crate::Context::with_current(|ctx| ctx.uid_dict().search_by_uid(self).map(|m| m.name.to_string()))
     }
 
     /// Get the raw string Uid
@@ -570,8 +559,7 @@ impl Dictionary {
 
     /// Rebuilds a cache
     pub fn rebuild_cache(&mut self) {
-        let guessed_total_count =
-            self.statics.iter().fold(0, |acc, dict| acc + dict.0.len()) + self.dynamic.len();
+        let guessed_total_count = self.statics.iter().fold(0, |acc, dict| acc + dict.0.len()) + self.dynamic.len();
 
         let mut cache = DictionaryCache {
             by_uid: HashMap::with_capacity(guessed_total_count),
@@ -617,12 +605,7 @@ impl Dictionary {
             return cache.by_keyword.get(keyword.as_ref());
         }
 
-        if let Some(m) = self
-            .dynamic
-            .iter()
-            .rev()
-            .find(|m| m.keyword == keyword.as_ref())
-        {
+        if let Some(m) = self.dynamic.iter().rev().find(|m| m.keyword == keyword.as_ref()) {
             return Some(m);
         }
 

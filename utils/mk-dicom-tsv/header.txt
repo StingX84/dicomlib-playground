@@ -59,5 +59,6 @@
 #
 # Comments have a '#' at the beginning of the line. The file should be encoded
 # as UTF-8 without BOM.
+# cspell:disable
 #
 # Tag		VR	Name			Keyword			VM	Version

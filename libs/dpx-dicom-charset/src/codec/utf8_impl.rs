@@ -24,10 +24,7 @@ pub fn decode<'a>(bytes: &'a [u8], codec: &Codec) -> Cow<'a, str> {
 
                 if let Some(invalid_sequence_length) = e.error_len() {
                     rv.push_str(
-                        (codec.config.replacement_character_fn.0)(
-                            &after_valid[..invalid_sequence_length],
-                        )
-                        .as_ref(),
+                        (codec.config.replacement_character_fn.0)(&after_valid[..invalid_sequence_length]).as_ref(),
                     );
                     input = &after_valid[invalid_sequence_length..]
                 } else {

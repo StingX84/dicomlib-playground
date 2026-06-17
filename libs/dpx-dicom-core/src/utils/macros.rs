@@ -1,4 +1,3 @@
-
 /// Simplifies constant [Tag](crate::Tag)'s and a corresponding
 /// [tag::StaticMetaList](crate::tag::StaticMetaList) declaration.
 ///

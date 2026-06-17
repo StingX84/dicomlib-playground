@@ -1,14 +1,7 @@
-use arc_swap::ArcSwap;
 use crate::*;
+use arc_swap::ArcSwap;
 use std::{
-    cell::Cell,
-    fmt,
-    future::Future,
-    net::SocketAddr,
-    pin::Pin,
-    ptr::NonNull,
-    sync::LazyLock,
-    task,
+    borrow::Cow, cell::Cell, fmt, future::Future, net::SocketAddr, pin::Pin, ptr::NonNull, sync::LazyLock, task,
 };
 
 thread_local! {
@@ -19,11 +12,12 @@ thread_local! {
 // ArcSwap allows lock-free reads and atomic full-Arc replacement.
 static GLOBAL_CTX: LazyLock<ArcSwap<Context>> = LazyLock::new(|| {
     ArcSwap::from_pointee(Context {
-        assoc:    None,
-        action:   None,
+        assoc: None,
+        action: None,
         tag_dict: Some(Arc::new(tag::Dictionary::default())),
         uid_dict: Some(Arc::new(uid::Dictionary::default())),
-        prev:     None,
+        config: None,
+        prev: None,
     })
 });
 
@@ -32,12 +26,12 @@ static GLOBAL_CTX: LazyLock<ArcSwap<Context>> = LazyLock::new(|| {
 /// Description of a DICOM association carried by [`Context`].
 #[derive(Debug, Clone)]
 pub struct AssocDescription {
-    pub id:             u64,
-    pub peer_aet:       String,
-    pub local_aet:      String,
-    pub peer_addr:      Option<SocketAddr>,
-    pub local_addr:     Option<SocketAddr>,
-    pub is_incoming:    bool,
+    pub id: u64,
+    pub peer_aet: String,
+    pub local_aet: String,
+    pub peer_addr: Option<SocketAddr>,
+    pub local_addr: Option<SocketAddr>,
+    pub is_incoming: bool,
     pub is_tls_secured: bool,
 }
 
@@ -46,7 +40,7 @@ pub struct AssocDescription {
 #[derive(Clone, Copy)]
 struct ActionEntry {
     kind: &'static str,
-    id:   u64,
+    id: u64,
 }
 
 // ── Context ───────────────────────────────────────────────────────────────────
@@ -75,11 +69,12 @@ struct ActionEntry {
 /// });
 /// ```
 pub struct Context {
-    assoc:    Option<Arc<AssocDescription>>,
-    action:   Option<ActionEntry>,
+    assoc: Option<Arc<AssocDescription>>,
+    action: Option<ActionEntry>,
     tag_dict: Option<Arc<tag::Dictionary>>,
     uid_dict: Option<Arc<uid::Dictionary>>,
-    prev:     Option<Arc<Context>>,
+    config: Option<Arc<config::Config>>,
+    prev: Option<Arc<Context>>,
 }
 
 impl Context {
@@ -116,11 +111,12 @@ impl Context {
         });
         ContextBuilder {
             ctx: Arc::new(Context {
-                assoc:    None,
-                action:   None,
+                assoc: None,
+                action: None,
                 tag_dict: None,
                 uid_dict: None,
-                prev:     Some(prev),
+                config: None,
+                prev: Some(prev),
             }),
         }
     }
@@ -138,9 +134,14 @@ impl Context {
         // nested extend() calls chain from the global correctly.
         let global = Arc::clone(&GLOBAL_CTX.load());
         LOCAL_CTX.with(|cell| {
-            let ptr = NonNull::from(global.as_ref());
+            // SAFETY: `Arc::as_ptr` is non-null and carries provenance over the
+            // whole `ArcInner` allocation (refcounts included), so a nested
+            // `extend()` can reconstruct an `Arc` from this pointer. Deriving it
+            // through `&Context` would narrow provenance to the data range and
+            // make that reconstruction UB.
+            let ptr = unsafe { NonNull::new_unchecked(Arc::as_ptr(&global) as *mut Context) };
             let old = cell.replace(Some(ptr));
-            let rv  = f(unsafe { ptr.as_ref() });
+            let rv = f(unsafe { ptr.as_ref() });
             cell.set(old);
             rv
         })
@@ -168,6 +169,53 @@ impl Context {
             .expect("Context chain missing UID dictionary — global root must have one")
     }
 
+    /// Returns the nearest configuration layer in the context chain, if any.
+    pub fn config(&self) -> Option<&Arc<config::Config>> {
+        self.find(|n| n.config.as_ref())
+    }
+
+    /// Resolves a configuration value for `key`, honouring the layered context.
+    ///
+    /// Layers are searched from innermost to outermost: the first layer that
+    /// carries an *explicit* value for `key` (a matching conditional value, then
+    /// the unconditional one) wins. Conditional matching uses the association of
+    /// the active context (see [`Context::assoc`]). If no layer has an explicit
+    /// value, the registry default of the innermost layer is returned.
+    pub fn config_value(&self, key: &config::Key) -> Option<&config::Value> {
+        let attrs = self.match_attributes();
+
+        let mut innermost: Option<&config::Config> = None;
+        let mut node = Some(self);
+        while let Some(n) = node {
+            if let Some(cfg) = n.config.as_deref() {
+                if innermost.is_none() {
+                    innermost = Some(cfg);
+                }
+                if let Some(value) = cfg.get_explicit(key, &attrs) {
+                    return Some(value);
+                }
+            }
+            node = n.prev.as_deref();
+        }
+
+        innermost?.default_of(key)
+    }
+
+    /// Derives [`MatchAttributes`] from the active association, used to select
+    /// conditional configuration values.
+    fn match_attributes(&self) -> config::MatchAttributes {
+        match self.assoc() {
+            Some(a) => config::MatchAttributes {
+                peer_aet: Some(Cow::Owned(a.peer_aet.clone())),
+                local_aet: Some(Cow::Owned(a.local_aet.clone())),
+                peer_ip: a.peer_addr.map(|s| s.ip()),
+                local_ip: a.local_addr.map(|s| s.ip()),
+                local_port: a.local_addr.map(|s| s.port()),
+            },
+            None => config::MatchAttributes::default(),
+        }
+    }
+
     /// Iterates over all active actions from innermost to outermost.
     pub fn actions(&self) -> impl Iterator<Item = (&'static str, u64)> + '_ {
         ContextActionsIter { node: Some(self) }
@@ -193,7 +241,7 @@ impl Context {
             }
             match &node.prev {
                 Some(prev) => node = prev,
-                None       => return None,
+                None => return None,
             }
         }
     }
@@ -202,11 +250,12 @@ impl Context {
 impl fmt::Debug for Context {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Context")
-            .field("assoc",        &self.assoc)
-            .field("action",       &self.action.map(|a| (a.kind, a.id)))
+            .field("assoc", &self.assoc)
+            .field("action", &self.action.map(|a| (a.kind, a.id)))
             .field("has_tag_dict", &self.tag_dict.is_some())
             .field("has_uid_dict", &self.uid_dict.is_some())
-            .field("prev",         &self.prev.as_ref().map(|_| ".."))
+            .field("has_config", &self.config.is_some())
+            .field("prev", &self.prev.as_ref().map(|_| ".."))
             .finish()
     }
 }
@@ -267,6 +316,15 @@ impl ContextBuilder {
         self
     }
 
+    /// Installs a configuration layer for this context layer and descendants.
+    ///
+    /// Values not found here fall through to lower layers (see
+    /// [`Context::config_value`]).
+    pub fn config(mut self, c: Arc<config::Config>) -> Self {
+        self.ctx_mut().config = Some(c);
+        self
+    }
+
     /// Replaces the global root context with this layer and returns the
     /// previous global root. Use the returned `Arc` to restore it afterwards.
     pub fn install_global(self) -> Arc<Context> {
@@ -276,10 +334,14 @@ impl ContextBuilder {
     /// Installs this context layer for the duration of `f`, then restores
     /// whatever context was active before.
     pub fn provide<F: FnOnce() -> T, T>(self, f: F) -> T {
-        let ptr = NonNull::from(self.ctx.as_ref());
+        // SAFETY: `Arc::as_ptr` is non-null and preserves provenance over the
+        // whole `ArcInner` allocation, so a nested `extend()` can reconstruct an
+        // `Arc` from this pointer (see `extend`). Going through `&Context` would
+        // narrow provenance to the data range and make that reconstruction UB.
+        let ptr = unsafe { NonNull::new_unchecked(Arc::as_ptr(&self.ctx) as *mut Context) };
         LOCAL_CTX.with(|cell| {
             let old = cell.replace(Some(ptr));
-            let rv  = f();
+            let rv = f();
             cell.set(old);
             rv
         })
@@ -289,7 +351,10 @@ impl ContextBuilder {
     /// Wraps `future` so that this context layer is installed before every
     /// `poll()` and restored afterwards.
     pub fn scope<F: Future>(self, future: F) -> ContextScope<F> {
-        ContextScope { ctx: self.ctx, inner: future }
+        ContextScope {
+            ctx: self.ctx,
+            inner: future,
+        }
     }
 }
 
@@ -298,7 +363,7 @@ impl ContextBuilder {
 /// Wraps a [`Future`] so the associated [`Context`] layer is installed before
 /// every `poll()`. Created by [`ContextBuilder::scope`].
 pub struct ContextScope<F: Future> {
-    ctx:   Arc<Context>,
+    ctx: Arc<Context>,
     inner: F,
 }
 
@@ -311,12 +376,16 @@ impl<F: Future> Future for ContextScope<F> {
         //   from it, nothing is moved out of the struct.
         // - `inner: F` is structurally pinned: re-pinned via `Pin::new_unchecked`
         //   without moving, which is valid because `self` is already pinned.
-        let this  = unsafe { self.get_unchecked_mut() };
-        let ptr   = NonNull::from(this.ctx.as_ref());
+        let this = unsafe { self.get_unchecked_mut() };
+        // SAFETY: `Arc::as_ptr` is non-null and preserves provenance over the
+        // whole `ArcInner` allocation, so a nested `extend()` can reconstruct an
+        // `Arc` from this pointer (see `extend`). Going through `&Context` would
+        // narrow provenance to the data range and make that reconstruction UB.
+        let ptr = unsafe { NonNull::new_unchecked(Arc::as_ptr(&this.ctx) as *mut Context) };
         let inner = unsafe { Pin::new_unchecked(&mut this.inner) };
 
         LOCAL_CTX.with(|cell| {
-            let old    = cell.replace(Some(ptr));
+            let old = cell.replace(Some(ptr));
             let result = inner.poll(cx);
             cell.set(old);
             result
@@ -333,11 +402,11 @@ mod tests {
     fn make_assoc(id: u64, peer: &str, local: &str) -> Arc<AssocDescription> {
         Arc::new(AssocDescription {
             id,
-            peer_aet:       peer.into(),
-            local_aet:      local.into(),
-            peer_addr:      None,
-            local_addr:     None,
-            is_incoming:    true,
+            peer_aet: peer.into(),
+            local_aet: local.into(),
+            peer_addr: None,
+            local_addr: None,
+            is_incoming: true,
             is_tls_secured: false,
         })
     }
@@ -418,5 +487,103 @@ mod tests {
     fn actions_cleared_after_provide() {
         Context::extend().action("c_store_rq", 1).provide(|| {});
         Context::with_current(|ctx| assert!(!ctx.has_action("c_store_rq")));
+    }
+
+    // ── Configuration layering ────────────────────────────────────────────────
+
+    use crate::config::{ConditionalKey, ConditionalSettings, Config, Key, Registry, Settings, Value};
+
+    const KEY: Key = Key::new("test", 1);
+
+    fn config_with(settings: Settings, conditional: ConditionalSettings) -> Arc<config::Config> {
+        Arc::new(
+            Config::builder(Arc::new(Registry::new_empty()))
+                .settings(settings)
+                .conditional(conditional)
+                .build(),
+        )
+    }
+
+    #[test]
+    fn config_value_reads_unconditional_layer() {
+        let mut s = Settings::new();
+        s.set(KEY, Value::Int(7));
+        let cfg = config_with(s, ConditionalSettings::new());
+
+        Context::extend().config(cfg).provide(|| {
+            Context::with_current(|ctx| {
+                assert!(matches!(ctx.config_value(&KEY), Some(Value::Int(7))));
+            });
+        });
+    }
+
+    #[test]
+    fn config_value_missing_key_is_none() {
+        let cfg = config_with(Settings::new(), ConditionalSettings::new());
+        Context::extend().config(cfg).provide(|| {
+            Context::with_current(|ctx| assert!(ctx.config_value(&KEY).is_none()));
+        });
+    }
+
+    #[test]
+    fn config_value_selects_conditional_by_association() {
+        let mut cs = ConditionalSettings::new();
+        cs.add(ConditionalKey::unconditional(KEY), Value::Int(0));
+        cs.add(
+            ConditionalKey {
+                key: KEY,
+                peer_aet: Some("PEER".into()),
+                ..ConditionalKey::unconditional(KEY)
+            },
+            Value::Int(1),
+        );
+        let cfg = config_with(Settings::new(), cs);
+        let assoc = make_assoc(1, "PEER", "LOCAL");
+
+        Context::extend().assoc(assoc).config(cfg).provide(|| {
+            Context::with_current(|ctx| {
+                assert!(matches!(ctx.config_value(&KEY), Some(Value::Int(1))));
+            });
+        });
+    }
+
+    #[test]
+    fn inner_layer_overrides_outer_else_falls_through() {
+        let mut outer_s = Settings::new();
+        outer_s.set(KEY, Value::Int(1));
+        let outer = config_with(outer_s, ConditionalSettings::new());
+
+        // Inner layer has no value for KEY: lookup must fall through to outer.
+        let inner = config_with(Settings::new(), ConditionalSettings::new());
+
+        Context::extend().config(outer).provide(|| {
+            Context::extend().config(inner).provide(|| {
+                Context::with_current(|ctx| {
+                    assert!(matches!(ctx.config_value(&KEY), Some(Value::Int(1))));
+                });
+            });
+        });
+    }
+
+    #[test]
+    fn config_value_falls_back_to_registry_default() {
+        static METAS: [crate::config::KeyMeta; 1] = [crate::config::KeyMeta {
+            key: KEY,
+            is_advanced: false,
+            display_section: "Test",
+            concept: crate::config::Concept::new("k", "K", None),
+            value_meta: crate::config::ValueMeta::Int { min: None, max: None },
+            make_default: || Some(Value::Int(42)),
+        }];
+
+        let mut registry = Registry::new_empty();
+        registry.insert(&METAS[0]);
+        let cfg = Arc::new(Config::builder(Arc::new(registry)).build());
+
+        Context::extend().config(cfg).provide(|| {
+            Context::with_current(|ctx| {
+                assert!(matches!(ctx.config_value(&KEY), Some(Value::Int(42))));
+            });
+        });
     }
 }

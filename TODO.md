@@ -4,6 +4,19 @@ Legend:
 - Pending: ☐
 - Finished: ☑
 
+## Deep check with miri:
+```
+rustup toolchain install nightly --component miri
+rustup override set nightly
+cargo miri setup
+MIRIFLAGS=-Zmiri-disable-isolation cargo miri test
+rustup override set stable
+```
+
+## Regular check:
+```
+cargo fmt && cargo test && cargo doc
+```
 
 # Roadmap
 

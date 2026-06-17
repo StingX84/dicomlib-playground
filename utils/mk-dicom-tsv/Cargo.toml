@@ -17,7 +17,7 @@ path = "mk-dicom-tsv.rs"
 # Provides DICOM tag types used when writing output
 dpx-dicom-core = { path = "../../libs/dpx-dicom-core" }
 # Parses the DICOM standard's official XML attribute registry (PS3.6)
-roxmltree = "0.17"
+roxmltree = "0.21"
 # CLI argument parsing via derive macros
 clap = { version = "4.6", features = [ "derive" ]}
 # Ergonomic error handling for this utility (library code uses DicomError instead)
@@ -25,7 +25,7 @@ snafu = "0.9.1"
 # Logging facade for diagnostic output
 log = "0.4"
 # Colorized logger controlled by the RUST_LOG environment variable
-pretty_env_logger = "0.4"
+pretty_env_logger = "0.5"
 # Formats current date/time stamped into generated file headers
 chrono = "0.4"
 # Embeds the current username in generated file headers

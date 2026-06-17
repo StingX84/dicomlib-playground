@@ -12,19 +12,32 @@ pub type Result<T, E = Error> = ::core::result::Result<T, E>;
 #[cfg_attr(test, derive(PartialEq))]
 #[derive(Debug)]
 pub enum Error {
-    IncompleteStr { pos: usize },
-    InvalidChar { char: char, pos: usize },
-    ParseInt { pos: usize, source: ::std::num::ParseIntError },
-    NotAllowedChar { char: char, pos: usize },
+    IncompleteStr {
+        pos: usize,
+    },
+    InvalidChar {
+        char: char,
+        pos: usize,
+    },
+    ParseInt {
+        pos: usize,
+        source: ::std::num::ParseIntError,
+    },
+    NotAllowedChar {
+        char: char,
+        pos: usize,
+    },
 }
 
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::IncompleteStr { pos }        => write!(f, "incomplete str, break at {pos}"),
-            Self::InvalidChar { char, pos }    => write!(f, "invalid char, {char:?} break at {pos}"),
-            Self::ParseInt { pos, .. }         => write!(f, "parse int error, break at {pos}"),
-            Self::NotAllowedChar { char, pos } => write!(f, "not allowed char, {char:?} break at {pos}"),
+            Self::IncompleteStr { pos } => write!(f, "incomplete str, break at {pos}"),
+            Self::InvalidChar { char, pos } => write!(f, "invalid char, {char:?} break at {pos}"),
+            Self::ParseInt { pos, .. } => write!(f, "parse int error, break at {pos}"),
+            Self::NotAllowedChar { char, pos } => {
+                write!(f, "not allowed char, {char:?} break at {pos}")
+            }
         }
     }
 }
@@ -73,10 +86,7 @@ impl Unescaper {
             let c = if c != '\\' {
                 Ok(c)
             } else {
-                let c = self
-                    .chars
-                    .pop()
-                    .ok_or(Error::IncompleteStr { pos: current_pos })?;
+                let c = self.chars.pop().ok_or(Error::IncompleteStr { pos: current_pos })?;
                 let c = match c {
                     'b' => '\u{0008}',
                     'f' => '\u{000c}',
@@ -89,9 +99,7 @@ impl Unescaper {
                     'u' => self
                         .unescape_unicode_internal()
                         .map_err(|e| offset(e, self.chars.len()))?,
-                    'x' => self
-                        .unescape_byte_internal()
-                        .map_err(|e| offset(e, self.chars.len()))?,
+                    'x' => self.unescape_byte_internal().map_err(|e| offset(e, self.chars.len()))?,
                     _ => self
                         .unescape_octal_internal(c)
                         .map_err(|e| offset(e, self.chars.len()))?,
@@ -101,7 +109,10 @@ impl Unescaper {
 
             if let Some(v) = self.validator {
                 if !v(c) {
-                    return Err(Error::NotAllowedChar { pos: current_pos, char: c });
+                    return Err(Error::NotAllowedChar {
+                        pos: current_pos,
+                        char: c,
+                    });
                 }
             }
             unescaped.push(c);
@@ -111,10 +122,7 @@ impl Unescaper {
     }
 
     fn unescape_unicode_internal(&mut self) -> Result<char> {
-        let c = self
-            .chars
-            .pop()
-            .ok_or(Error::IncompleteStr { pos: 0 })?;
+        let c = self.chars.pop().ok_or(Error::IncompleteStr { pos: 0 })?;
         let mut unicode = String::new();
 
         // \u + { + regex(d*) + }
@@ -139,8 +147,7 @@ impl Unescaper {
             }
         }
 
-        let code = u16::from_str_radix(&unicode, 16)
-            .map_err(|source| Error::ParseInt { pos: 0, source })?;
+        let code = u16::from_str_radix(&unicode, 16).map_err(|source| Error::ParseInt { pos: 0, source })?;
         char::from_u32(code as u32).ok_or_else(|| Error::InvalidChar {
             char: unicode.chars().last().unwrap_or('\0'),
             pos: 0,
@@ -157,8 +164,7 @@ impl Unescaper {
             byte.push(c);
         }
 
-        Ok(u8::from_str_radix(&byte, 16)
-            .map_err(|source| Error::ParseInt { pos: 0, source })? as char)
+        Ok(u8::from_str_radix(&byte, 16).map_err(|source| Error::ParseInt { pos: 0, source })? as char)
     }
 
     fn unescape_octal_internal(&mut self, c: char) -> Result<char> {
@@ -190,11 +196,12 @@ impl Unescaper {
 
                 try_push_next(&mut octal);
             }
-            _ => return Err(Error::InvalidChar { char: c, pos: 0 }),
+            _ => {
+                return Err(Error::InvalidChar { char: c, pos: 0 });
+            }
         }
 
-        Ok(u8::from_str_radix(&octal, 8)
-            .map_err(|source| Error::ParseInt { pos: 0, source })? as char)
+        Ok(u8::from_str_radix(&octal, 8).map_err(|source| Error::ParseInt { pos: 0, source })? as char)
     }
 }
 

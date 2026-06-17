@@ -58,11 +58,7 @@ where
     } else if c >= GL_MIN as u32 && c < GL_MAX as u32 {
         // 'c < GL_MAX' "less than", because DICOM forbids usage of 0x7F character!
         CharClass::Default
-    } else if c == CODE_LF as u32
-        || c == CODE_CR as u32
-        || c == CODE_FF as u32
-        || c == CODE_TAB as u32
-    {
+    } else if c == CODE_LF as u32 || c == CODE_CR as u32 || c == CODE_FF as u32 || c == CODE_TAB as u32 {
         CharClass::Control
     } else {
         CharClass::Invalid
@@ -122,17 +118,12 @@ where
     // 'c < GL_MAX' "less than", because DICOM forbids usage of 0x7F character!
     if delimiter != 0 && c == delimiter as u32 {
         CharClass::Delimiter
-    } else if ((c >= GL_MIN as u32 && c < GL_MAX as u32)
-        || (c >= GR_MIN as u32 && c <= UNI_MAX_LEGAL_UTF32))
+    } else if ((c >= GL_MIN as u32 && c < GL_MAX as u32) || (c >= GR_MIN as u32 && c <= UNI_MAX_LEGAL_UTF32))
         && !(c >= UNI_SUR_HIGH_MIN as u32 && c <= UNI_SUR_HIGH_MAX as u32)
         && !(c >= UNI_SUR_LOW_MIN as u32 && c <= UNI_SUR_LOW_MAX as u32)
     {
         CharClass::Default
-    } else if c == CODE_LF as u32
-        || c == CODE_CR as u32
-        || c == CODE_FF as u32
-        || c == CODE_TAB as u32
-    {
+    } else if c == CODE_LF as u32 || c == CODE_CR as u32 || c == CODE_FF as u32 || c == CODE_TAB as u32 {
         CharClass::Control
     } else {
         CharClass::Invalid

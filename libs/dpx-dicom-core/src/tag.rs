@@ -11,12 +11,14 @@ mod meta_impl;
 mod tag_impl;
 mod tagkey_impl;
 
+#[rustfmt::skip]
 mod generic_meta;
 
 /// Built-in static list of [Meta] descriptions for standard DICOM Tags.
 ///
 /// This list is automatically registered in [`Dictionary`](crate::tag::Dictionary)
 #[cfg(feature = "static_dictionary")]
+#[rustfmt::skip]
 mod dicom_meta;
 
 /// Built-in static list of [Meta] description for DICOM attribute tags not defined by DICOM standard.
@@ -25,6 +27,7 @@ mod dicom_meta;
 /// To enable all DICONDE-specific naming, you should manually
 /// add this tag to a Dictionary with [add_static_list](crate::tag::Dictionary::add_static_list)
 #[cfg(feature = "static_dictionary")]
+#[rustfmt::skip]
 mod diconde_meta;
 
 /// A list of [Meta] structures for all of the [generic](mod@crate::tags::generic) attributes

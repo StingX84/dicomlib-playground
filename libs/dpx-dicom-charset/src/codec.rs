@@ -308,6 +308,7 @@ const WARN_DPXKB_DS_0009_IGNORED_DUPLICATE_VALUED: u16 = 1 << 11;
 /// `#dpxkb_ds_0012` - Promoted SingleByteWithoutExtensions to SingleByteWithExtensions in multi valued character set
 const WARN_DPXKB_DS_0012_SINGLE_BYTE_WITHOUT_EXTENSIONS_PROMOTED: u16 = 1 << 12;
 
+#[rustfmt::skip]
 const DPXKB_MAP: &[(u16, &str, &str)] = &[
     (
         FAIL_DPXKB_DS_0001_EMPTY_CHAR_SET,
@@ -454,11 +455,7 @@ impl Codec {
         let specific_character_set = specific_character_set.trim_spaces();
 
         if specific_character_set.is_empty() {
-            return Self::parse_failed(
-                specific_character_set,
-                config,
-                FAIL_DPXKB_DS_0001_EMPTY_CHAR_SET,
-            );
+            return Self::parse_failed(specific_character_set, config, FAIL_DPXKB_DS_0001_EMPTY_CHAR_SET);
         }
 
         if !specific_character_set.contains(&CODE_VALUES_SEPARATOR) {
@@ -532,11 +529,7 @@ impl Codec {
             let actual_char_set = self.specific_character_set();
             let message = if is_failed {
                 if !source.is_empty() {
-                    format!(
-                        "{} \"{}\"",
-                        warning_strings.join(", "),
-                        String::from_utf8_lossy(source)
-                    )
+                    format!("{} \"{}\"", warning_strings.join(", "), String::from_utf8_lossy(source))
                 } else {
                     warning_strings.join(", ")
                 }
@@ -585,20 +578,12 @@ impl Codec {
             let mut warnings: u16 = 0;
             if !term.is_standard_dicom() {
                 if !config.allow_non_standard_encodings {
-                    return Self::parse_failed(
-                        term_string,
-                        config,
-                        FAIL_DPXKB_DS_0003_NON_STANDARD_ENCODING,
-                    );
+                    return Self::parse_failed(term_string, config, FAIL_DPXKB_DS_0003_NON_STANDARD_ENCODING);
                 }
                 warnings |= WARN_DPXKB_DS_0004_ACCEPTED_NON_STANDARD_ENCODING;
             } else if matched_with != TermMatchedWith::Primary {
                 if !config.allow_encoding_aliases {
-                    return Self::parse_failed(
-                        term_string,
-                        config,
-                        FAIL_DPXKB_DS_0003_NON_STANDARD_ENCODING,
-                    );
+                    return Self::parse_failed(term_string, config, FAIL_DPXKB_DS_0003_NON_STANDARD_ENCODING);
                 }
                 warnings |= WARN_DPXKB_DS_0007_ACCEPTED_ALIAS;
             }
@@ -610,11 +595,7 @@ impl Codec {
         #[cfg(feature = "encoding_rs")]
         if let Some(e) = Encoding::for_label(term_string) {
             if !config.allow_non_standard_encodings {
-                return Self::parse_failed(
-                    term_string,
-                    config,
-                    FAIL_DPXKB_DS_0003_NON_STANDARD_ENCODING,
-                );
+                return Self::parse_failed(term_string, config, FAIL_DPXKB_DS_0003_NON_STANDARD_ENCODING);
             }
             return Self {
                 terms: Vec::new(),
@@ -622,10 +603,7 @@ impl Codec {
                 chosen_impl: ChosenImpl::External,
                 external: Some(e),
             }
-            .emit_parse_warnings(
-                term_string,
-                WARN_DPXKB_DS_0004_ACCEPTED_NON_STANDARD_ENCODING,
-            );
+            .emit_parse_warnings(term_string, WARN_DPXKB_DS_0004_ACCEPTED_NON_STANDARD_ENCODING);
         }
 
         Self::parse_failed(term_string, config, FAIL_DPXKB_DS_0002_UNKNOWN_ENCODING)
@@ -647,14 +625,13 @@ impl Codec {
             return ParseMultiFirst::Accept(Term::Iso2022Ir6, 0);
         }
 
-        let Some((term, matched_with)) = Term::search_by_keyword(term_string)
-            else {
-                #[cfg(feature = "encoding_rs")]
-                if Encoding::for_label(term_string).is_some() {
-                    return ParseMultiFirst::Fail(FAIL_DPXKB_DS_0005_MULTI_VALUED_NON_ISO_2022);
-                }
-                return ParseMultiFirst::Fail(FAIL_DPXKB_DS_0002_UNKNOWN_ENCODING);
-            };
+        let Some((term, matched_with)) = Term::search_by_keyword(term_string) else {
+            #[cfg(feature = "encoding_rs")]
+            if Encoding::for_label(term_string).is_some() {
+                return ParseMultiFirst::Fail(FAIL_DPXKB_DS_0005_MULTI_VALUED_NON_ISO_2022);
+            }
+            return ParseMultiFirst::Fail(FAIL_DPXKB_DS_0002_UNKNOWN_ENCODING);
+        };
 
         if !term.is_standard_dicom() || term.kind() == TermKind::MultiByteWithoutCodeExtensions {
             return ParseMultiFirst::Fail(FAIL_DPXKB_DS_0005_MULTI_VALUED_NON_ISO_2022);
@@ -668,10 +645,8 @@ impl Codec {
             warnings = WARN_DPXKB_DS_0007_ACCEPTED_ALIAS;
         }
 
-        if let (
-            TermKind::SingleByteWithoutCodeExtensions,
-            &CodecType::Iso2022NoExtensions(extended_variant),
-        ) = (term.kind(), &term.meta().mode)
+        if let (TermKind::SingleByteWithoutCodeExtensions, &CodecType::Iso2022NoExtensions(extended_variant)) =
+            (term.kind(), &term.meta().mode)
         {
             if !config.allow_iso2022_non_extensible_term_in_multi_valued_charset {
                 return ParseMultiFirst::Fail(FAIL_DPXKB_DS_0005_MULTI_VALUED_NON_ISO_2022);
@@ -692,11 +667,7 @@ impl Codec {
     /// - abort with error
     /// - ignore current value
     /// - or to continue with other values.
-    fn parse_multi_valued_next_value(
-        term_string: &[u8],
-        config: &Config,
-        term_list: &[Term],
-    ) -> ParseMultiOthers {
+    fn parse_multi_valued_next_value(term_string: &[u8], config: &Config, term_list: &[Term]) -> ParseMultiOthers {
         if term_string.is_empty() {
             if !config.ignore_multi_value_duplicates {
                 return ParseMultiOthers::Fail(FAIL_DPXKB_DS_0010_EMPTY_VALUE_IN_MULTI_VALUED);
@@ -704,14 +675,13 @@ impl Codec {
             return ParseMultiOthers::Ignore(WARN_DPXKB_DS_0008_IGNORED_EMPTY_VALUED);
         }
 
-        let Some((mut term, matched_with)) = Term::search_by_keyword(term_string)
-            else {
-                #[cfg(feature = "encoding_rs")]
-                if Encoding::for_label(term_string).is_some() {
-                    return ParseMultiOthers::Fail(FAIL_DPXKB_DS_0005_MULTI_VALUED_NON_ISO_2022);
-                }
-                return ParseMultiOthers::Fail(FAIL_DPXKB_DS_0002_UNKNOWN_ENCODING);
-            };
+        let Some((mut term, matched_with)) = Term::search_by_keyword(term_string) else {
+            #[cfg(feature = "encoding_rs")]
+            if Encoding::for_label(term_string).is_some() {
+                return ParseMultiOthers::Fail(FAIL_DPXKB_DS_0005_MULTI_VALUED_NON_ISO_2022);
+            }
+            return ParseMultiOthers::Fail(FAIL_DPXKB_DS_0002_UNKNOWN_ENCODING);
+        };
 
         if !term.is_standard_dicom() || term.kind() == TermKind::MultiByteWithoutCodeExtensions {
             return ParseMultiOthers::Fail(FAIL_DPXKB_DS_0005_MULTI_VALUED_NON_ISO_2022);
@@ -725,10 +695,8 @@ impl Codec {
             warnings |= WARN_DPXKB_DS_0007_ACCEPTED_ALIAS;
         }
 
-        if let (
-            TermKind::SingleByteWithoutCodeExtensions,
-            &CodecType::Iso2022NoExtensions(extended_variant),
-        ) = (term.kind(), &term.meta().mode)
+        if let (TermKind::SingleByteWithoutCodeExtensions, &CodecType::Iso2022NoExtensions(extended_variant)) =
+            (term.kind(), &term.meta().mode)
         {
             if !config.allow_iso2022_non_extensible_term_in_multi_valued_charset {
                 return ParseMultiOthers::Fail(FAIL_DPXKB_DS_0005_MULTI_VALUED_NON_ISO_2022);
@@ -805,10 +773,8 @@ impl Codec {
             if terms.len() > 1 {
                 // Convert "no-extensions" to "with-extensions".
                 for term in terms.iter_mut() {
-                    if let (
-                        TermKind::SingleByteWithoutCodeExtensions,
-                        &CodecType::Iso2022NoExtensions(ext_term),
-                    ) = (term.kind(), &term.meta().mode)
+                    if let (TermKind::SingleByteWithoutCodeExtensions, &CodecType::Iso2022NoExtensions(ext_term)) =
+                        (term.kind(), &term.meta().mode)
                     {
                         *term = ext_term;
                     }

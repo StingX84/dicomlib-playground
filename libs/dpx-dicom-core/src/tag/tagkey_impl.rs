@@ -1,5 +1,6 @@
 use super::*;
-use crate::{dicom_err, Cow};
+use crate::dicom_err;
+use std::borrow::Cow;
 
 // cSpell:ignore xxee XXXO XXXN
 
@@ -32,11 +33,13 @@ use crate::{dicom_err, Cow};
 /// in format `(gggg,eeee)`, where `gggg` and `eeee` is group and element numbers in hexadecimal form.\
 /// The same format used in [std::fmt::Display](#method.fmt) and [std::str::FromStr](#method.from_str) trait implementations.
 #[derive(Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize), serde(try_from = "&str", into = "String"))]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(try_from = "&str", into = "String")
+)]
 #[repr(transparent)]
-pub struct TagKey(
-    pub u32
-);
+pub struct TagKey(pub u32);
 
 impl TagKey {
     /// Creates a key from group and element
@@ -176,7 +179,6 @@ impl TagKey {
         } else {
             None // Not a private attribute or invalid private attribute
         }
-
     }
 
     // cSpell:ignore aabb
@@ -206,7 +208,9 @@ impl TagKey {
     /// ```
     pub const fn is_valid(&self) -> bool {
         (self.0 & 0x00010000u32 == 0x00u32)
-        || (self.0 & 0x00010000u32 == 0x00010000u32 && self.0 >= 0x00090000 && self.0 & 0xFFFF0000u32 != 0xFFFF0000u32)
+            || (self.0 & 0x00010000u32 == 0x00010000u32
+                && self.0 >= 0x00090000
+                && self.0 & 0xFFFF0000u32 != 0xFFFF0000u32)
     }
 
     /// Returns `true` if this tag may be used in a dataset body or a dataset header
@@ -243,11 +247,7 @@ impl TagKey {
     ///
     /// See also [search_by_key](crate::tag::Dictionary::search_by_key)
     pub fn name(&self) -> Option<Cow<'static, str>> {
-        crate::Context::with_current(|ctx| {
-            ctx.tag_dict()
-                .search_by_key(*self)
-                .map(|m| m.name.clone())
-        })
+        crate::Context::with_current(|ctx| ctx.tag_dict().search_by_key(*self).map(|m| m.name.clone()))
     }
 
     /// Transforms this Tag key to `Group Length` for this tag.
@@ -296,14 +296,14 @@ impl From<TagKey> for String {
 impl From<TagKey> for u32 {
     /// Returns unsigned 32-bit representation of TagKey. group number in high word and element number in low word.
     fn from(value: TagKey) -> Self {
-       value.0
+        value.0
     }
 }
 
 impl From<TagKey> for (u16, u16) {
     /// Returns unsigned 32-bit representation of TagKey. group number in high word and element number in low word.
     fn from(value: TagKey) -> Self {
-       (value.group(), value.element())
+        (value.group(), value.element())
     }
 }
 
@@ -339,9 +339,9 @@ impl From<(u16, u16)> for TagKey {
     }
 }
 
-impl<'a> PartialEq<Tag<'a>> for TagKey {
+impl PartialEq<Tag> for TagKey {
     #[inline]
-    fn eq(&self, other: &Tag<'a>) -> bool {
+    fn eq(&self, other: &Tag) -> bool {
         self.eq(&other.key)
     }
 }
@@ -360,9 +360,9 @@ impl PartialEq<(u16, u16)> for TagKey {
     }
 }
 
-impl<'a> PartialOrd<Tag<'a>> for TagKey {
+impl PartialOrd<Tag> for TagKey {
     #[inline]
-    fn partial_cmp(&self, other: &Tag<'a>) -> Option<std::cmp::Ordering> {
+    fn partial_cmp(&self, other: &Tag) -> Option<std::cmp::Ordering> {
         self.partial_cmp(&other.key)
     }
 }
@@ -406,13 +406,33 @@ impl ::core::str::FromStr for TagKey {
     /// # }
     /// ```
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if !s.starts_with('(') { return Err(dicom_err!(InvalidData, "missing opening brace for TagKey (expecting: `(gggg,eeee)`)")); }
-        if !s.ends_with(')') { return Err(dicom_err!(InvalidData, "missing closing brace for TagKey (expecting: `(gggg,eeee)`)")); }
+        if !s.starts_with('(') {
+            return Err(dicom_err!(
+                InvalidData,
+                "missing opening brace for TagKey (expecting: `(gggg,eeee)`)"
+            ));
+        }
+        if !s.ends_with(')') {
+            return Err(dicom_err!(
+                InvalidData,
+                "missing closing brace for TagKey (expecting: `(gggg,eeee)`)"
+            ));
+        }
 
         let mut components = s[1..s.len() - 1].splitn(3, ',');
 
-        let group_chars = components.next().ok_or_else(|| dicom_err!(InvalidData, "not enough components for TagKey (expecting: `(gggg,eeee)`)"))?;
-        let element_chars = components.next().ok_or_else(|| dicom_err!(InvalidData, "not enough components for TagKey (expecting: `(gggg,eeee)`)"))?;
+        let group_chars = components.next().ok_or_else(|| {
+            dicom_err!(
+                InvalidData,
+                "not enough components for TagKey (expecting: `(gggg,eeee)`)"
+            )
+        })?;
+        let element_chars = components.next().ok_or_else(|| {
+            dicom_err!(
+                InvalidData,
+                "not enough components for TagKey (expecting: `(gggg,eeee)`)"
+            )
+        })?;
 
         let group = u16::from_str_radix(group_chars, 16)
             .map_err(|e| dicom_err!(InvalidData, "unable to parse hex in TagKey: {e:?}"))?;
@@ -439,7 +459,6 @@ impl TryFrom<String> for TagKey {
         <TagKey as std::str::FromStr>::from_str(&value)
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -502,7 +521,7 @@ mod tests {
     #[cfg(feature = "serde")]
     #[test]
     fn with_serde() {
-        use serde_test::{assert_de_tokens, assert_ser_tokens, Token};
+        use serde_test::{Token, assert_de_tokens, assert_ser_tokens};
 
         let k = TagKey::from(0x12345678);
 

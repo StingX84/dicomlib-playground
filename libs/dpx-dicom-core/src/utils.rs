@@ -1,2 +1,2 @@
-pub(crate) mod unescape;
 pub(crate) mod macros;
+pub(crate) mod unescape;

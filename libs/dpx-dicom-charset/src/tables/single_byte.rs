@@ -1,6 +1,6 @@
 //! Single-byte encodings supported by the dpx-dicom-encoding crate.
 
-use super::{ForwardResult, BackwardResult};
+use super::{BackwardResult, ForwardResult};
 
 mod cp_1250;
 mod cp_1251;
@@ -30,6 +30,7 @@ mod iso_ir_234;
 mod iso_ir_6;
 mod koi8_r;
 
+pub use cp_866::*;
 pub use cp_1250::*;
 pub use cp_1251::*;
 pub use cp_1252::*;
@@ -39,23 +40,22 @@ pub use cp_1255::*;
 pub use cp_1256::*;
 pub use cp_1257::*;
 pub use cp_1258::*;
-pub use cp_866::*;
+pub use iso_ir_6::*;
+pub use iso_ir_13::*;
+pub use iso_ir_14::*;
 pub use iso_ir_100::*;
 pub use iso_ir_101::*;
 pub use iso_ir_109::*;
 pub use iso_ir_110::*;
 pub use iso_ir_126::*;
 pub use iso_ir_127::*;
-pub use iso_ir_13::*;
 pub use iso_ir_138::*;
-pub use iso_ir_14::*;
 pub use iso_ir_144::*;
 pub use iso_ir_148::*;
 pub use iso_ir_166::*;
 pub use iso_ir_203::*;
 pub use iso_ir_227::*;
 pub use iso_ir_234::*;
-pub use iso_ir_6::*;
 pub use koi8_r::*;
 
 /// Converter function, that always returns an invalid character

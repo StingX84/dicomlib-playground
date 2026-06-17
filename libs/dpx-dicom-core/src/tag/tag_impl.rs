@@ -1,5 +1,6 @@
 use super::*;
-use crate::{dicom_err, utils::unescape::unescape, Context, Cow, tag};
+use crate::{Context, dicom_err, tag, utils::unescape::unescape};
+use std::borrow::Cow;
 
 // cSpell:ignore xxee Тест
 
@@ -73,24 +74,27 @@ use crate::{dicom_err, utils::unescape::unescape, Context, Cow, tag};
 ///     https://dicom.nema.org/medical/dicom/current/output/chtml/part05/sect_7.8.html
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct Tag<'a> {
+pub struct Tag {
     pub key: TagKey,
-    pub creator: Option<Cow<'a, str>>,
+    pub creator: Option<Cow<'static, str>>,
 }
 
-impl<'a> Tag<'a> {
+impl Tag {
     /// Construct a new tag with a specified `TagKey` and optional "Private Creator"
     ///
     /// You better take one of the constantly known tags, than constructing your own.
-    pub const fn new(key: TagKey, creator: Option<Cow<'a, str>>) -> Self {
+    pub const fn new(key: TagKey, creator: Option<Cow<'static, str>>) -> Self {
         Self { key, creator }
     }
 
     /// Construct a Standard Attribute Tag with a specified `TagKey`
     ///
     /// You better take one of the constantly known tags, than constructing your own.
-    pub const fn standard(g: u16, e: u16) -> Self {
-        Self { key: TagKey::new(g, e), creator: None }
+    pub const fn new_standard(g: u16, e: u16) -> Self {
+        Self {
+            key: TagKey::new(g, e),
+            creator: None,
+        }
     }
 
     /// Construct a Private Attribute Tag with a specified `TagKey` and "Private Creator"
@@ -102,7 +106,7 @@ impl<'a> Tag<'a> {
     /// ### Panics:
     /// This method panic in in non-optimized builds with '-C debug-assertions`
     /// if the key is not private (see [is_private](TagKey)).
-    pub const fn private(g: u16, e: u16, creator: &'a str) -> Self {
+    pub const fn new_private(g: u16, e: u16, creator: &'static str) -> Self {
         let key = TagKey::new(g, e);
         debug_assert!(key.is_private());
         Self {
@@ -114,33 +118,41 @@ impl<'a> Tag<'a> {
         }
     }
 
-    /// Converts this tag into a "owned". one possibly allocating a memory for
-    /// `creator` field.
+    /// Construct a Private Attribute Tag with a specified `TagKey` and "Private Creator"
+    ///
+    /// It is recommended to make a global constant for each of the private
+    /// attribute supported and register it in the dictionary rather
+    /// constructing a Tag on each use.
+    ///
+    /// ### Panics:
+    /// This method panic in in non-optimized builds with '-C debug-assertions`
+    /// if the key is not private (see [is_private](TagKey)).
+    pub fn new_private_cow<T: Into<String>>(g: u16, e: u16, creator: T) -> Self {
+        let key = TagKey::new(g, e);
+        debug_assert!(key.is_private());
+        Self {
+            key,
+            creator: Some(Cow::Owned(creator.into())),
+        }
+    }
+
+    /// Ensures the `creator` field owns its string, allocating if it was a
+    /// borrowed (`'static`) string literal.
     ///
     /// Example:
     /// ```
     /// # use ::dpx_dicom_core::{Tag, TagKey};
     /// # use ::std::borrow::Cow;
-    /// let creator = String::from("Test");
-    /// // This method "borrows" creator and does not allocate
-    /// let borrowed = Tag::private(0x4321, 0x1000, creator.as_ref());
+    /// // A tag built from a string literal borrows it without allocation
+    /// let borrowed = Tag::new_private(0x4321, 0x1000, "Test");
     /// assert!(matches!(borrowed.creator, Some(Cow::Borrowed(_))));
     ///
-    /// // Cloning borrowed produces also borrowed without allocation
-    /// let borrowed_clone = borrowed.clone();
-    /// assert!(matches!(borrowed_clone.creator, Some(Cow::Borrowed(_))));
-    ///
-    /// // Conversion into borrowed allocates string internally
-    /// let owned = borrowed_clone.to_owned();
+    /// // Conversion into owned allocates the string on the heap
+    /// let owned = borrowed.to_owned();
     /// assert!(matches!(owned.creator, Some(Cow::Owned(_))));
-    ///
-    /// drop(creator);
-    /// // Next line would not compile
-    /// //println!("{}", borrowed);
-    /// println!("{}", owned);
     /// ```
-    pub fn to_owned(self) -> Tag<'static> {
-        Tag::<'static> {
+    pub fn to_owned(self) -> Tag {
+        Tag {
             key: self.key,
             creator: self.creator.map(|v| Cow::Owned(v.into_owned())),
         }
@@ -157,15 +169,11 @@ impl<'a> Tag<'a> {
     ///
     /// See also [search_by_tag](crate::tag::Dictionary::search_by_tag)
     pub fn name(&self) -> Option<String> {
-        Context::with_current(|ctx| {
-            ctx.tag_dict()
-                .search_by_tag(self)
-                .map(|m| m.name.to_string())
-        })
+        Context::with_current(|ctx| ctx.tag_dict().search_by_tag(self).map(|m| m.name.to_string()))
     }
 }
 
-impl<'a> std::fmt::Display for Tag<'a> {
+impl std::fmt::Display for Tag {
     /// Outputs this key in format `(gggg,eeee[,"creator"])`, where `gggg` and
     /// `eeee` are the group and element numbers in upper hexadecimal digits,
     /// `creator` - private creator string if present.
@@ -173,10 +181,10 @@ impl<'a> std::fmt::Display for Tag<'a> {
     /// Example:
     /// ```
     /// # use ::dpx_dicom_core::{Tag, TagKey};
-    /// let tag = Tag::private(0x4321, 0x10AA, "Test");
+    /// let tag = Tag::new_private(0x4321, 0x10AA, "Test");
     /// assert_eq!(tag.to_string(), "(4321,10AA,\"Test\")");
     /// assert_eq!(format!("{tag}"), "(4321,10AA,\"Test\")");
-    /// assert_eq!(format!("{}", Tag::standard(0x0008, 0x0005)), "(0008,0005)");
+    /// assert_eq!(format!("{}", Tag::new_standard(0x0008, 0x0005)), "(0008,0005)");
     /// ```
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if let Some(v) = &self.creator {
@@ -193,13 +201,13 @@ impl<'a> std::fmt::Display for Tag<'a> {
     }
 }
 
-impl<'a> From<Tag<'a>> for String {
-    fn from(value: Tag<'a>) -> Self {
+impl From<Tag> for String {
+    fn from(value: Tag) -> Self {
         format!("{value}")
     }
 }
 
-impl<'a> std::fmt::Debug for Tag<'a> {
+impl std::fmt::Debug for Tag {
     /// Outputs this key in format `Tag(gggg,eeee[,"creator"])`, where `gggg`
     /// and `eeee` are the group and element numbers in upper hexadecimal
     /// digits, `creator` - private creator string if present (escaped using
@@ -208,9 +216,9 @@ impl<'a> std::fmt::Debug for Tag<'a> {
     /// Example:
     /// ```
     /// # use ::dpx_dicom_core::{Tag, TagKey};
-    /// let tag = Tag::private(0x4321, 0x10AA, "Test");
+    /// let tag = Tag::new_private(0x4321, 0x10AA, "Test");
     /// assert_eq!(format!("{tag:?}"), "Tag(4321,10AA,\"Test\")");
-    /// let tag = Tag::standard(0x0008, 0x0005);
+    /// let tag = Tag::new_standard(0x0008, 0x0005);
     /// assert_eq!(format!("{tag:?}"), "Tag(0008,0005)");
     /// ```
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -223,41 +231,36 @@ impl<'a> std::fmt::Debug for Tag<'a> {
                 v.escape_default()
             )
         } else {
-            write!(
-                f,
-                "Tag({:04X},{:04X})",
-                self.key.group(),
-                self.key.element()
-            )
+            write!(f, "Tag({:04X},{:04X})", self.key.group(), self.key.element())
         }
     }
 }
 
-impl<'a> PartialEq<TagKey> for Tag<'a> {
+impl PartialEq<TagKey> for Tag {
     fn eq(&self, other: &TagKey) -> bool {
         self.key.eq(other)
     }
 }
 
-impl<'a> PartialEq<u32> for Tag<'a> {
+impl PartialEq<u32> for Tag {
     fn eq(&self, other: &u32) -> bool {
         self.key.0.eq(other)
     }
 }
 
-impl<'a> PartialOrd<TagKey> for Tag<'a> {
+impl PartialOrd<TagKey> for Tag {
     fn partial_cmp(&self, other: &TagKey) -> Option<std::cmp::Ordering> {
         self.key.partial_cmp(other)
     }
 }
 
-impl<'a> PartialOrd<u32> for Tag<'a> {
+impl PartialOrd<u32> for Tag {
     fn partial_cmp(&self, other: &u32) -> Option<std::cmp::Ordering> {
         self.key.0.partial_cmp(other)
     }
 }
 
-impl<'a> ::core::str::FromStr for Tag<'a> {
+impl ::core::str::FromStr for Tag {
     type Err = DicomError;
     /// Parses a text representation of the Tag
     ///
@@ -267,7 +270,7 @@ impl<'a> ::core::str::FromStr for Tag<'a> {
     ///
     /// Where `gggg` and `eeee` - hexadecimal group and element numbers,
     /// `creator` - private creator with special characters escaped in C-like
-    /// escapes (see )
+    /// escapes (see [std::ascii::escape_default])
     ///
     /// Examples:
     /// ```
@@ -275,35 +278,55 @@ impl<'a> ::core::str::FromStr for Tag<'a> {
     /// # use ::core::str::FromStr;
     /// # fn main() -> Result<(), DicomError> {
     /// assert_eq!(Tag::from_str("(0008,0005)")?,
-    ///     Tag::standard(0x0008, 0x0005));
+    ///     Tag::new_standard(0x0008, 0x0005));
     /// assert_eq!(Tag::from_str(r#"(4321,AA10,"Test")"#)?,
-    ///     Tag::private(0x4321, 0xAA10, "Test"));
+    ///     Tag::new_private(0x4321, 0xAA10, "Test"));
     /// assert_eq!(Tag::from_str(r#"(4321,AA10,"💖\tТест")"#)?,
-    ///     Tag::private(0x4321, 0xAA10, "💖\tТест"));
+    ///     Tag::new_private(0x4321, 0xAA10, "💖\tТест"));
     ///
     /// let key: Tag = "(0008,0005)".parse()?;
-    /// assert_eq!(key, Tag::standard(0x0008, 0x0005));
+    /// assert_eq!(key, Tag::new_standard(0x0008, 0x0005));
     ///
     /// assert!(Tag::from_str("OOPS").is_err());
     /// # Ok(())
     /// # }
     /// ```
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(Tag::try_from(s)?.to_owned())
+        Tag::try_from(s)
     }
 }
 
-impl<'a> TryFrom<&'a str> for Tag<'a> {
+impl TryFrom<&str> for Tag {
     type Error = DicomError;
     /// See trait `FromStr::from_str` implementation for this struct
-    fn try_from(s: &'a str) -> Result<Self, Self::Error> {
-        if !s.starts_with('(') { return Err(dicom_err!(InvalidData, "missing opening brace for Tag (expecting: `(gggg,eeee[,\"creator\"])`)")); }
-        if !s.ends_with(')') { return Err(dicom_err!(InvalidData, "missing closing brace for Tag (expecting: `(gggg,eeee[,\"creator\"])`)")); }
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
+        if !s.starts_with('(') {
+            return Err(dicom_err!(
+                InvalidData,
+                "missing opening brace for Tag (expecting: `(gggg,eeee[,\"creator\"])`)"
+            ));
+        }
+        if !s.ends_with(')') {
+            return Err(dicom_err!(
+                InvalidData,
+                "missing closing brace for Tag (expecting: `(gggg,eeee[,\"creator\"])`)"
+            ));
+        }
 
         let mut components = s[1..s.len() - 1].splitn(3, ',');
 
-        let group_chars = components.next().ok_or_else(|| dicom_err!(InvalidData, "not enough components for Tag (expecting: `(gggg,eeee[,\"creator\"])`)"))?;
-        let element_chars = components.next().ok_or_else(|| dicom_err!(InvalidData, "not enough components for Tag (expecting: `(gggg,eeee[,\"creator\"])`)"))?;
+        let group_chars = components.next().ok_or_else(|| {
+            dicom_err!(
+                InvalidData,
+                "not enough components for Tag (expecting: `(gggg,eeee[,\"creator\"])`)"
+            )
+        })?;
+        let element_chars = components.next().ok_or_else(|| {
+            dicom_err!(
+                InvalidData,
+                "not enough components for Tag (expecting: `(gggg,eeee[,\"creator\"])`)"
+            )
+        })?;
 
         let group = u16::from_str_radix(group_chars, 16)
             .map_err(|e| dicom_err!(InvalidData, "unable to parse hex in Tag: {e:?}"))?;
@@ -311,22 +334,32 @@ impl<'a> TryFrom<&'a str> for Tag<'a> {
         let element = u16::from_str_radix(element_chars, 16)
             .map_err(|e| dicom_err!(InvalidData, "unable to parse hex in Tag: {e:?}"))?;
 
-        let creator: Option<Cow<'a, str>> = match components.next() {
+        let creator: Option<Cow<'static, str>> = match components.next() {
             None => None,
             Some(creator) => {
-                if !creator.starts_with('"') { return Err(dicom_err!(InvalidData, "missing opening quote in Tag creator (expecting: `(gggg,eeee[,\"creator\"])`)")); }
-                if !creator[1..].ends_with('"') { return Err(dicom_err!(InvalidData, "missing closing quote in Tag creator (expecting: `(gggg,eeee[,\"creator\"])`)")); }
+                if !creator.starts_with('"') {
+                    return Err(dicom_err!(
+                        InvalidData,
+                        "missing opening quote in Tag creator (expecting: `(gggg,eeee[,\"creator\"])`)"
+                    ));
+                }
+                if !creator[1..].ends_with('"') {
+                    return Err(dicom_err!(
+                        InvalidData,
+                        "missing closing quote in Tag creator (expecting: `(gggg,eeee[,\"creator\"])`)"
+                    ));
+                }
                 let creator = &creator[1..creator.len() - 1];
 
                 match creator.len() {
                     0 => None,
                     _ => {
                         if !creator.contains('\\') {
-                            Some(Cow::Borrowed(creator))
+                            Some(Cow::Owned(creator.to_owned()))
                         } else {
-                            Some(Cow::Owned(unescape(creator).map_err(|e|
+                            Some(Cow::Owned(unescape(creator).map_err(|e| {
                                 dicom_err!(InvalidData, "unable to parse Tag creator: {e}")
-                            )?))
+                            })?))
                         }
                     }
                 }
@@ -337,11 +370,11 @@ impl<'a> TryFrom<&'a str> for Tag<'a> {
     }
 }
 
-impl TryFrom<String> for Tag<'static> {
+impl TryFrom<String> for Tag {
     type Error = DicomError;
     /// See trait `FromStr::from_str` implementation for this struct
     fn try_from(value: String) -> Result<Self, Self::Error> {
-        Ok(Tag::try_from(value.as_str())?.to_owned())
+        Tag::try_from(value.as_str())
     }
 }
 
@@ -356,17 +389,17 @@ mod tests {
         use ::core::str::FromStr;
 
         assert_eq!(Tag::from_str("(0008,0005)").unwrap(),
-            Tag::standard(0x0008, 0x0005));
+            Tag::new_standard(0x0008, 0x0005));
 
         assert_eq!(Tag::from_str(r#"(4321,AA10,"Test")"#).unwrap(),
-            Tag::private(0x4321, 0xAA10, "Test"));
+            Tag::new_private(0x4321, 0xAA10, "Test"));
         assert_eq!(Tag::from_str(r#"(4321,AA10,"Test")"#).unwrap(),
-            Tag::private(0x4321, 0xAA10, "Test"));
+            Tag::new_private(0x4321, 0xAA10, "Test"));
         assert_eq!(Tag::from_str(r#"(4321,AA10,"")"#).unwrap(),
-            Tag::private(0x4321, 0xAA10, ""));
+            Tag::new_private(0x4321, 0xAA10, ""));
 
         let key: Tag = "(0008,0005)".parse().unwrap();
-        assert_eq!(key, Tag::standard(0x0008, 0x0005));
+        assert_eq!(key, Tag::new_standard(0x0008, 0x0005));
 
         // Try all the errors
         assert!(Tag::from_str("").is_err());

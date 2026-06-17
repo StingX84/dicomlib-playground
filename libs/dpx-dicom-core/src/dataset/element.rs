@@ -41,8 +41,8 @@ pub enum ElementValue<'a> {
 
 #[derive(Clone)]
 enum Inner<'a> {
-    Owned{tag: Tag<'static>, value: ElementValue<'static>, context: ElementContext},
-    Borrowed{tag: Tag<'a>, value: ElementValue<'a>, context: &'a ElementContext},
+    Owned{tag: Tag, value: ElementValue<'static>, context: ElementContext},
+    Borrowed{tag: Tag, value: ElementValue<'a>, context: &'a ElementContext},
 }
 
 pub struct Element<'a> { inner: Inner<'a> }

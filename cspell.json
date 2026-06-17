@@ -27,6 +27,8 @@
         "jpip",
         "mbtowc",
         "miri",
+        "MIRIFLAGS",
+        "Multiframe",
         "natvis",
         "nonidentifying",
         "oids",
@@ -37,8 +39,11 @@
         "romaji",
         "roxmltree",
         "rustfmt",
+        "rustup",
+        "serde",
         "smpte",
         "splitn",
+        "Suboperations",
         "tagkey",
         "uids",
         "uninit",
@@ -46,6 +51,7 @@
         "wctomb",
         "whatwg",
         "xfer",
+        "Zmiri",
         "zzzz-list-ending"
     ]
 }

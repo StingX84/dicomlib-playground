@@ -12,14 +12,14 @@ repository.workspace = true
 version.workspace = true
 
 [features]
-default = []                      #["encoding_rs"]
+default = []
 encoding_rs = ["dep:encoding_rs"]
 
 [dependencies]
 
 # Core DICOM types and error handling
 dpx-dicom-core = { path = "../dpx-dicom-core" }
-# Mozilla's WHATWG Encoding implementation; covers ISO 8859-x, Shift-JIS, and other DICOM-permitted charsets
+# Mozilla's WHATWG Encoding implementation; covers ISO 8859-x, Shift-JIS, and other DICOM-permitted character sets
 encoding_rs = { version = "0.8", optional = true }
 # Structured, async-aware logging and diagnostics
 tracing = "0.1"

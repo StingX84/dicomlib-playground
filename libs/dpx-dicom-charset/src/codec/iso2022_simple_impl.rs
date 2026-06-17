@@ -1,8 +1,8 @@
 use crate::{
-    ascii::{try_decode_ascii, try_encode_ascii, StringExt},
-    tables::{constants::*, Region, Table, TableKind, TABLE_G1_ALWAYS_IDENTITY},
-    term::CodecType,
     Codec, Term,
+    ascii::{StringExt, try_decode_ascii, try_encode_ascii},
+    tables::{Region, TABLE_G1_ALWAYS_IDENTITY, Table, TableKind, constants::*},
+    term::CodecType,
 };
 use std::borrow::Cow;
 
@@ -10,10 +10,9 @@ pub fn get_tables(term: Term, codec: &Codec) -> (&'static Table, &'static Table)
     fn int_get_tables(term: Term, codec: &Codec) -> Option<(&'static Table, &'static Table)> {
         let mut tables = match term.meta().mode {
             CodecType::Iso2022NoExtensions(extended_version) => {
-                let CodecType::Iso2022WithExtensions(g0_table, g1_table) = extended_version.meta().mode
-                    else {
-                        return None;
-                    };
+                let CodecType::Iso2022WithExtensions(g0_table, g1_table) = extended_version.meta().mode else {
+                    return None;
+                };
                 (g0_table, g1_table)
             }
             CodecType::Iso2022WithExtensions(g0_table, g1_table) => (g0_table, g1_table),
@@ -65,12 +64,10 @@ pub fn decode<'a>(bytes: &'a [u8], codec: &Codec) -> Cow<'a, str> {
 
     let (
         &Table {
-            forward: forward_g0,
-            ..
+            forward: forward_g0, ..
         },
         &Table {
-            forward: forward_g1,
-            ..
+            forward: forward_g1, ..
         },
     ) = get_tables(term, codec);
 
@@ -78,11 +75,7 @@ pub fn decode<'a>(bytes: &'a [u8], codec: &Codec) -> Cow<'a, str> {
     let mut input = bytes;
 
     while let Some(&c) = input.first() {
-        let (consumed, code_point) = if c < 0x80 {
-            forward_g0(input)
-        } else {
-            forward_g1(input)
-        };
+        let (consumed, code_point) = if c < 0x80 { forward_g0(input) } else { forward_g1(input) };
         match code_point {
             None => {
                 let bad_input = &input[..consumed as usize];
@@ -109,12 +102,10 @@ pub fn encode<'a>(string: &'a str, codec: &Codec) -> Cow<'a, [u8]> {
 
     let (
         &Table {
-            backward: backward_g0,
-            ..
+            backward: backward_g0, ..
         },
         &Table {
-            backward: backward_g1,
-            ..
+            backward: backward_g1, ..
         },
     ) = get_tables(term, codec);
 
@@ -164,9 +155,9 @@ pub fn encode<'a>(string: &'a str, codec: &Codec) -> Cow<'a, [u8]> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tables::*;
     use crate::Config;
     use crate::Term::*;
+    use crate::tables::*;
 
     macro_rules! codec {
         ( $($term:ident),* $(+ $member:ident = $value:expr)?) => {
@@ -234,37 +225,24 @@ mod tests {
         assert!(std::ptr::eq(g0, &TABLE_G0_ISO_IR_6));
         assert!(std::ptr::eq(g1, &TABLE_G1_ALWAYS_INVALID));
         // We can override identity table with some other table
-        let (g0, g1) = get_tables(
-            IsoIr6,
-            codec!(IsoIr6 + set_g1_for_iso_ir_6 = Some(IsoIr100)),
-        );
+        let (g0, g1) = get_tables(IsoIr6, codec!(IsoIr6 + set_g1_for_iso_ir_6 = Some(IsoIr100)));
         assert!(std::ptr::eq(g0, &TABLE_G0_ISO_IR_6));
         assert!(std::ptr::eq(g1, &TABLE_G1_ISO_IR_100));
         // But, some Terms does not specifies G1, so it can remain not designated
-        let (g0, g1) = get_tables(
-            IsoIr6,
-            codec!(IsoIr6 + set_g1_for_iso_ir_6 = Some(Iso2022Ir159)),
-        );
+        let (g0, g1) = get_tables(IsoIr6, codec!(IsoIr6 + set_g1_for_iso_ir_6 = Some(Iso2022Ir159)));
         assert!(std::ptr::eq(g0, &TABLE_G0_ISO_IR_6));
         assert!(std::ptr::eq(g1, &TABLE_G1_ALWAYS_INVALID));
         // Overridden term should support ISO-2022. Else, it will take no effect.
-        let (g0, g1) = get_tables(
-            IsoIr6,
-            codec!(IsoIr6 + set_g1_for_iso_ir_6 = Some(IsoIr192)),
-        );
+        let (g0, g1) = get_tables(IsoIr6, codec!(IsoIr6 + set_g1_for_iso_ir_6 = Some(IsoIr192)));
         assert!(std::ptr::eq(g0, &TABLE_G0_ISO_IR_6));
         assert!(std::ptr::eq(g1, &TABLE_G1_ALWAYS_IDENTITY));
         let (g0, g1) = get_tables(IsoIr6, codec!(IsoIr6 + set_g1_for_iso_ir_6 = Some(Gb18030)));
         assert!(std::ptr::eq(g0, &TABLE_G0_ISO_IR_6));
         assert!(std::ptr::eq(g1, &TABLE_G1_ALWAYS_IDENTITY));
-        let (g0, g1) = get_tables(
-            IsoIr6,
-            codec!(IsoIr6 + set_g1_for_iso_ir_6 = Some(NonDicomCp1250)),
-        );
+        let (g0, g1) = get_tables(IsoIr6, codec!(IsoIr6 + set_g1_for_iso_ir_6 = Some(NonDicomCp1250)));
         assert!(std::ptr::eq(g0, &TABLE_G0_ISO_IR_6));
         assert!(std::ptr::eq(g1, &TABLE_G1_ALWAYS_IDENTITY));
     }
-
 
     #[test]
     fn can_borrow_ascii() {

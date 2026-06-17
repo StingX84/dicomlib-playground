@@ -7,8 +7,6 @@
 
 #![allow(non_upper_case_globals)]
 
-#[rustfmt::skip]
-
 // cSpell:disable
 
 /// [Application Contenxt](https://dicom.nema.org/medical/dicom/current/output/html/part07.html#chapter_A "PS3.7 \"A. Application Context Usage (Normative)\"")

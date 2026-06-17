@@ -1,8 +1,7 @@
 {
 	"recommendations": [
-        "panicbit.cargo",
         "streetsidesoftware.code-spell-checker",
-        "serayuzgur.crates",
+        "fill-labs.dependi",
         "usernamehw.errorlens",
         "tamasfe.even-better-toml",
         "streetsidesoftware.code-spell-checker-russian",

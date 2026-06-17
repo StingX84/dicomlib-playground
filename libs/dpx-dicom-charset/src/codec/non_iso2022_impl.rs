@@ -1,8 +1,8 @@
 use crate::{
-    ascii::{try_decode_ascii, try_encode_ascii, StringExt},
+    Codec, Term,
+    ascii::{StringExt, try_decode_ascii, try_encode_ascii},
     tables::constants::*,
     term::CodecType,
-    Codec, Term,
 };
 use std::borrow::Cow;
 
@@ -14,10 +14,9 @@ pub fn decode<'a>(bytes: &'a [u8], codec: &Codec) -> Cow<'a, str> {
         return rv;
     }
 
-    let CodecType::NonIso2022(forward, _) = term_meta.mode
-        else {
-            panic!("Bug: unexpected term mode");
-        };
+    let CodecType::NonIso2022(forward, _) = term_meta.mode else {
+        panic!("Bug: unexpected term mode");
+    };
 
     let mut rv = String::with_capacity(bytes.len().next_power_of_two());
     let mut input = bytes;
@@ -47,10 +46,9 @@ pub fn encode<'a>(string: &'a str, codec: &Codec) -> Cow<'a, [u8]> {
         return rv;
     }
 
-    let CodecType::NonIso2022(_, backward) = term_meta.mode
-        else {
-            panic!("Bug: unexpected term mode");
-        };
+    let CodecType::NonIso2022(_, backward) = term_meta.mode else {
+        panic!("Bug: unexpected term mode");
+    };
 
     let mut rv = Vec::<u8>::with_capacity(string.len().next_power_of_two());
     // None of our codecs could produce more than 4 chars, but to be extra safe for
@@ -109,26 +107,14 @@ mod tests {
 
     #[test]
     fn can_process_single_byte() {
-        assert_eq!(
-            encode("а\n区\t", codec!(NonDicomCp1251)).as_ref(),
-            b"\xE0\n?\t"
-        );
-        assert_eq!(
-            decode(b"\xE0\n\x98\t", codec!(NonDicomCp1251)).as_ref(),
-            "а\n�\t"
-        );
+        assert_eq!(encode("а\n区\t", codec!(NonDicomCp1251)).as_ref(), b"\xE0\n?\t");
+        assert_eq!(decode(b"\xE0\n\x98\t", codec!(NonDicomCp1251)).as_ref(), "а\n�\t");
     }
 
     #[test]
     fn can_process_multi_byte() {
-        assert_eq!(
-            encode("а\n区\t", codec!(Gbk)).as_ref(),
-            b"\xA7\xD1\x0A\xC7\xF8\x09"
-        );
-        assert_eq!(
-            decode(b"\xA7\xD1\x0A\xC7\xF8\x09", codec!(Gbk)).as_ref(),
-            "а\n区\t"
-        );
+        assert_eq!(encode("а\n区\t", codec!(Gbk)).as_ref(), b"\xA7\xD1\x0A\xC7\xF8\x09");
+        assert_eq!(decode(b"\xA7\xD1\x0A\xC7\xF8\x09", codec!(Gbk)).as_ref(), "а\n区\t");
     }
 }
 
@@ -189,10 +175,7 @@ mod gb18030_tests {
         decode_gb18030(b"\xFF\x32\x9A\x33", "\u{FFFD}\u{0032}\u{FFFD}"); // not \u{FFFD}\u{0032}\u{FFFD}\u{0033} !
         decode_gb18030(b"\xFF\x40\x00", "\u{FFFD}\u{0040}\u{0000}");
         decode_gb18030(b"\xE3\xFF\x9A\x33\x00", "\u{FFFD}\u{FFFD}\u{0033}\u{0000}");
-        decode_gb18030(
-            b"\xFF\x32\x9A\x33\x00",
-            "\u{FFFD}\u{0032}\u{FFFD}\u{0033}\u{0000}",
-        );
+        decode_gb18030(b"\xFF\x32\x9A\x33\x00", "\u{FFFD}\u{0032}\u{FFFD}\u{0033}\u{0000}");
 
         // Four bytes
         decode_gb18030(b"\x81\x30\x81\x30", "\u{0080}");

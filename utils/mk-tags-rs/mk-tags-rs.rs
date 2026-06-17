@@ -65,25 +65,11 @@ fn run() -> Result<()> {
     dict.add_from_file(&cli.input_tsv)
         .err_context_with(|| format!("parsing {}", cli.input_tsv.to_string_lossy()))?;
 
-    info!(
-        "Writing tags to {} ...",
-        output_tags_file_name.to_string_lossy()
-    );
-    write_tags_to_file(
-        dict.iter(),
-        &cli.tags_header_file_name,
-        &output_tags_file_name,
-    )?;
+    info!("Writing tags to {} ...", output_tags_file_name.to_string_lossy());
+    write_tags_to_file(dict.iter(), &cli.tags_header_file_name, &output_tags_file_name)?;
 
-    info!(
-        "Writing metas to {} ...",
-        output_metas_file_name.to_string_lossy()
-    );
-    write_metas_to_file(
-        dict.iter(),
-        &cli.metas_header_file_name,
-        &output_metas_file_name,
-    )?;
+    info!("Writing metas to {} ...", output_metas_file_name.to_string_lossy());
+    write_metas_to_file(dict.iter(), &cli.metas_header_file_name, &output_metas_file_name)?;
 
     info!("Done");
 

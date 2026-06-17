@@ -1,6 +1,7 @@
 use super::*;
-use crate::{dicom_err, dicom_ctx, Cow};
+use crate::{dicom_ctx, dicom_err};
 use std::{
+    borrow::Cow,
     cmp::Ordering,
     fmt::Debug,
     io::{self, BufRead},
@@ -152,8 +153,7 @@ impl Dictionary {
     /// may call [rebuild_cache](Self::rebuild_cache) after creation or any
     /// mutating function call.
     pub fn new() -> Self {
-        let mut statics: Vec<&'static StaticMetaList> =
-            inventory::iter::<StaticMetaList>.into_iter().collect();
+        let mut statics: Vec<&'static StaticMetaList> = inventory::iter::<StaticMetaList>.into_iter().collect();
         statics.insert(0, &META_LIST_GENERIC);
         Self {
             statics,
@@ -227,7 +227,9 @@ impl Dictionary {
                 break;
             }
             match Meta::from_tsv_line(line.trim()) {
-                Err(e) => return Err(dicom_ctx!(e, "parse error on line {line_number} in dictionary file")),
+                Err(e) => {
+                    return Err(dicom_ctx!(e, "parse error on line {line_number} in dictionary file"));
+                }
                 Ok(Some(meta)) => dict.push(meta),
                 Ok(None) => (),
             }
@@ -304,8 +306,14 @@ impl Dictionary {
     /// ```
     pub fn add_from_file(&mut self, file_name: impl AsRef<Path>) -> Result<()> {
         use std::fs::File;
-        let file = File::open(file_name.as_ref())
-            .map_err(|e| dicom_err!(Io, "unable to open dictionary file \"{}\"", file_name.as_ref().display()).with_source(e))?;
+        let file = File::open(file_name.as_ref()).map_err(|e| {
+            dicom_err!(
+                Io,
+                "unable to open dictionary file \"{}\"",
+                file_name.as_ref().display()
+            )
+            .with_source(e)
+        })?;
         self.add_from_memory(file)
     }
 
@@ -316,8 +324,7 @@ impl Dictionary {
             masked: Vec::new(),
         };
 
-        let guessed_total_count =
-            self.statics.iter().fold(0, |acc, dict| acc + dict.0.len()) + self.dynamic.len();
+        let guessed_total_count = self.statics.iter().fold(0, |acc, dict| acc + dict.0.len()) + self.dynamic.len();
         cache.vec.reserve(guessed_total_count);
 
         let masked_total_count = self
@@ -344,9 +351,7 @@ impl Dictionary {
         }
 
         cache.vec.sort_by(Self::cmp_cache);
-        cache
-            .vec
-            .dedup_by(|l, r| Self::cmp_cache(l, r) == Ordering::Equal);
+        cache.vec.dedup_by(|l, r| Self::cmp_cache(l, r) == Ordering::Equal);
 
         self.cache = Some(cache);
     }
@@ -404,7 +409,7 @@ impl Dictionary {
     ///
     /// If cache is invalidated, linear search is performed against dynamic and
     /// all the static lists. If cache is available, binary search is performed.
-    pub fn search_by_tag<'a>(&self, tag: &'a Tag<'a>) -> Option<&Meta> {
+    pub fn search_by_tag(&self, tag: &Tag) -> Option<&Meta> {
         if !tag.key.is_private_attribute() {
             // This search will be slightly faster, because no "creator" comparisons involved
             return self.search_by_key(tag.key);
@@ -416,16 +421,13 @@ impl Dictionary {
                 return None;
             }
             // Step 1: exact original
-            if let Some(meta) = Self::cache_search_sorted_with_creator(cache, tag.key, &tag.creator)
-            {
+            if let Some(meta) = Self::cache_search_sorted_with_creator(cache, tag.key, &tag.creator) {
                 return Some(meta);
             }
             if tag.creator.is_some() {
                 // Step 2 a: if creator: exact canonical
                 if let Some(canonical_key) = tag.key.to_canonical_if_private() {
-                    if let Some(meta) =
-                        Self::cache_search_sorted_with_creator(cache, canonical_key, &tag.creator)
-                    {
+                    if let Some(meta) = Self::cache_search_sorted_with_creator(cache, canonical_key, &tag.creator) {
                         return Some(meta);
                     }
                 }
@@ -438,16 +440,13 @@ impl Dictionary {
                 return Some(meta);
             }
             // Step 3: search in masked
-            if let Some(meta) = Self::cache_search_masked_with_creator(cache, tag.key, &tag.creator)
-            {
+            if let Some(meta) = Self::cache_search_masked_with_creator(cache, tag.key, &tag.creator) {
                 return Some(meta);
             }
             if tag.creator.is_some() {
                 // Step 4 a: if creator: masked canonical
                 if let Some(canonical_key) = tag.key.to_canonical_if_private() {
-                    if let Some(meta) =
-                        Self::cache_search_masked_with_creator(cache, canonical_key, &tag.creator)
-                    {
+                    if let Some(meta) = Self::cache_search_masked_with_creator(cache, canonical_key, &tag.creator) {
                         return Some(meta);
                     }
                 }
@@ -499,10 +498,7 @@ impl Dictionary {
     ///
     /// Note: no tags deduplication or sorting involved!
     pub fn iter(&self) -> impl Iterator<Item = &Meta> {
-        self.statics
-            .iter()
-            .flat_map(|m| m.0)
-            .chain(self.dynamic.iter())
+        self.statics.iter().flat_map(|m| m.0).chain(self.dynamic.iter())
     }
 
     /// Returns an iterator over cached array of [Meta] structs.
@@ -617,10 +613,7 @@ impl Dictionary {
         key: TagKey,
         creator: &'b Option<Cow<'b, str>>,
     ) -> Option<&'a Meta> {
-        match c
-            .vec
-            .binary_search_by(|v| Self::cmp_cache_key_creator(v, key, creator))
-        {
+        match c.vec.binary_search_by(|v| Self::cmp_cache_key_creator(v, key, creator)) {
             Ok(index) => {
                 // Exact match found
 
@@ -643,10 +636,7 @@ impl Dictionary {
     /// positioned to "lower_bound" of a searched string peeks one element ahead
     /// and one element behind for the match.
     fn cache_search_sorted(c: &DictCache, key: TagKey) -> Option<&Meta> {
-        match c
-            .vec
-            .binary_search_by(|v| Self::cmp_cache_key_creator(v, key, &None))
-        {
+        match c.vec.binary_search_by(|v| Self::cmp_cache_key_creator(v, key, &None)) {
             Ok(index) => {
                 // Exact match found
 
@@ -744,11 +734,7 @@ impl Dictionary {
 
     /// Comparator function for searching `DictCache::sorted` array by [TagKey]
     /// and private creator
-    fn cmp_cache_key_creator<'a>(
-        l: &DictCacheEntryNormal,
-        r_key: TagKey,
-        r_creator: &'a Creator<'a>,
-    ) -> Ordering {
+    fn cmp_cache_key_creator<'a>(l: &DictCacheEntryNormal, r_key: TagKey, r_creator: &'a Creator<'a>) -> Ordering {
         match l.0.as_u32().cmp(&r_key.as_u32()) {
             Ordering::Less => Ordering::Less,
             Ordering::Greater => Ordering::Greater,
@@ -764,10 +750,7 @@ impl Dictionary {
     /// contains a tuple of `bool` and matched `Meta`. `bool` indicates the
     /// confidence of the match. `true` - exact match, `false` - matched with
     /// some "generalization".
-    fn search_in_ary<'a, T: Iterator<Item = &'a Meta>>(
-        iter: T,
-        tag: &Tag,
-    ) -> Option<(bool, &'a Meta)> {
+    fn search_in_ary<'a, T: Iterator<Item = &'a Meta>>(iter: T, tag: &Tag) -> Option<(bool, &'a Meta)> {
         let mut matched = None;
 
         if !tag.key.is_private_attribute() {
@@ -784,9 +767,7 @@ impl Dictionary {
                     return Some((v.tag.creator.is_none(), v));
                 }
             }
-        } else if let Some(canonical_key) =
-            tag.key.to_canonical_if_private().filter(|v| *v != tag.key)
-        {
+        } else if let Some(canonical_key) = tag.key.to_canonical_if_private().filter(|v| *v != tag.key) {
             // Search for a private attribute with a known "creator"
             for v in iter {
                 if v.tag.key.as_u32() == tag.key.as_u32() & v.mask {
@@ -800,9 +781,7 @@ impl Dictionary {
                     }
                 }
 
-                if v.tag.key.as_u32() == canonical_key.as_u32() & v.mask
-                    && v.tag.creator == tag.creator
-                {
+                if v.tag.key.as_u32() == canonical_key.as_u32() & v.mask && v.tag.creator == tag.creator {
                     return Some((true, v));
                 }
             }
@@ -829,6 +808,7 @@ impl Dictionary {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(not(miri))]
     use crate::tags;
 
     mod keys {
@@ -881,57 +861,46 @@ mod tests {
             assert_search(dict, &m.tag, &m.tag);
         }
 
-        assert_search(dict, &Tag::standard(0x1010, 0x1234), &keys::ZonalMap);
+        assert_search(dict, &Tag::new_standard(0x1010, 0x1234), &keys::ZonalMap);
 
-        assert_search(dict, &Tag::standard(0x6001, 0x0010), &keys::OverlayRows);
+        assert_search(dict, &Tag::new_standard(0x6001, 0x0010), &keys::OverlayRows);
 
         // If input has a creator, dict should ignore 0x12AB with no creator and fall back to 0x10AB
         assert_search(
             dict,
-            &Tag::private(0x4321, 0x12AB, "vendor2"),
+            &Tag::new_private(0x4321, 0x12AB, "vendor2"),
             &keys::Vendor2_4321_AB,
         );
 
         // If input has no creator, and dict has no creator dict should match 0x12AB
-        assert_search(dict, &Tag::standard(0x4321, 0x12AB), &keys::Vendor4_4321_AB);
+        assert_search(dict, &Tag::new_standard(0x4321, 0x12AB), &keys::Vendor4_4321_AB);
 
         // If input has no creator, but dict has one dict should also match
-        assert_search(dict, &Tag::standard(0x4321, 0x14AB), &keys::Vendor6_4321_AB);
+        assert_search(dict, &Tag::new_standard(0x4321, 0x14AB), &keys::Vendor6_4321_AB);
 
         // If input has a creator, and dict has no creator, it should match
         assert_search(
             dict,
-            &Tag::private(0x4321, 0x12AB, "unknown"),
+            &Tag::new_private(0x4321, 0x12AB, "unknown"),
             &keys::Vendor4_4321_AB,
         );
 
         // Should not coerce to canonical form if no private creator given
-        assert!(dict.search_by_tag(&Tag::standard(0x4321, 0x15AB)).is_none());
+        assert!(dict.search_by_tag(&Tag::new_standard(0x4321, 0x15AB)).is_none());
 
         // Should not match 0x14AB because of different creator. Also should not match
         // "canonical" 0x10AB, because "canonical" form requires exact creator match.
-        assert!(dict
-            .search_by_tag(&Tag::private(0x4321, 0x14AB, "unknown"))
-            .is_none());
+        assert!(
+            dict.search_by_tag(&Tag::new_private(0x4321, 0x14AB, "unknown"))
+                .is_none()
+        );
 
         // Should find private reservations
-        assert_search(
-            dict,
-            &Tag::standard(0x1221, 0x0022),
-            &keys::PrivateReservation,
-        );
+        assert_search(dict, &Tag::new_standard(0x1221, 0x0022), &keys::PrivateReservation);
         // Should find arbitrary group length
-        assert_search(
-            dict,
-            &Tag::standard(0xB00A, 0x0000),
-            &keys::GenericGroupLength,
-        );
+        assert_search(dict, &Tag::new_standard(0xB00A, 0x0000), &keys::GenericGroupLength);
         // Should find private group length
-        assert_search(
-            dict,
-            &Tag::standard(0xB00B, 0x0000),
-            &keys::PrivateGroupLength,
-        );
+        assert_search(dict, &Tag::new_standard(0xB00B, 0x0000), &keys::PrivateGroupLength);
     }
 
     #[test]
@@ -978,26 +947,17 @@ mod tests {
                 tags::EscapeTriplet
             );
             assert_eq!(
-                dict.search_by_tag(&Tag::standard(0x1221, 0x0022))
-                    .unwrap()
-                    .tag
-                    .key,
+                dict.search_by_tag(&Tag::new_standard(0x1221, 0x0022)).unwrap().tag.key,
                 tags::generic::PrivateReservation
             );
             // Should find arbitrary group length
             assert_eq!(
-                dict.search_by_tag(&Tag::standard(0xB00A, 0x0000))
-                    .unwrap()
-                    .tag
-                    .key,
+                dict.search_by_tag(&Tag::new_standard(0xB00A, 0x0000)).unwrap().tag.key,
                 tags::generic::GroupLength
             );
             // Should find private group length
             assert_eq!(
-                dict.search_by_tag(&Tag::standard(0xB00B, 0x0000))
-                    .unwrap()
-                    .tag
-                    .key,
+                dict.search_by_tag(&Tag::new_standard(0xB00B, 0x0000)).unwrap().tag.key,
                 tags::generic::PrivateGroupLength
             );
         }

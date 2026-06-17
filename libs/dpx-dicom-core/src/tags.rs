@@ -16,7 +16,9 @@
 
 #![allow(non_upper_case_globals, unused_imports)]
 
+#[rustfmt::skip]
 pub mod generic;
+#[rustfmt::skip]
 pub mod diconde;
 
 use crate::{Tag, TagKey};

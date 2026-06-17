@@ -1,9 +1,9 @@
 use super::iso2022_simple_impl::get_tables;
 use crate::{
-    ascii::{try_decode_ascii_if_has_no_esc_codes, try_encode_ascii, StringExt},
-    tables::{constants::*, Region, Table, ISO_TABLES},
-    term::CodecType,
     Codec, Context,
+    ascii::{StringExt, try_decode_ascii_if_has_no_esc_codes, try_encode_ascii},
+    tables::{ISO_TABLES, Region, Table, constants::*},
+    term::CodecType,
 };
 use std::{borrow::Cow, ptr};
 
@@ -68,45 +68,40 @@ fn extract_esc_sequence_length(bytes: &[u8]) -> Option<usize> {
 /// Searches [ISO_TABLES] for a specified ESC sequence limiting
 /// the search only in tables supported in the provided `term_list`.
 /// Returns Some(table) if found, None otherwise.
-fn find_iso_table_by_esc_sequence_within_terms(
-    sequence: &[u8],
-    codec: &Codec,
-) -> Option<&'static Table> {
-    ISO_TABLES.iter()
-    .find(|&&table| {
-        if table.esc != sequence {
-            return false;
-        }
+fn find_iso_table_by_esc_sequence_within_terms(sequence: &[u8], codec: &Codec) -> Option<&'static Table> {
+    ISO_TABLES
+        .iter()
+        .find(|&&table| {
+            if table.esc != sequence {
+                return false;
+            }
 
-        // Check if this table used in one of codec's terms.
-        codec.terms.iter().any(|term| {
-            let tables = match term.meta().mode {
-                CodecType::Iso2022NoExtensions(extended_version) => {
-                    let CodecType::Iso2022WithExtensions(g0_table, g1_table) = extended_version.meta().mode
-                        else {
+            // Check if this table used in one of codec's terms.
+            codec.terms.iter().any(|term| {
+                let tables = match term.meta().mode {
+                    CodecType::Iso2022NoExtensions(extended_version) => {
+                        let CodecType::Iso2022WithExtensions(g0_table, g1_table) = extended_version.meta().mode else {
                             panic!("Bug: Iso2022NoExtensions should point to Iso2022WithExtensions");
                         };
-                    (g0_table, g1_table)
-                },
-                CodecType::Iso2022WithExtensions(g0_table, g1_table) => {
-                    (g0_table, g1_table)
-                },
-                _ => {
-                    panic!("Bug: Using ISO2022 codec with non ISO2022 term!");
-                },
-            };
-            ptr::eq(tables.0, table) || ptr::eq(tables.1, table)
+                        (g0_table, g1_table)
+                    }
+                    CodecType::Iso2022WithExtensions(g0_table, g1_table) => (g0_table, g1_table),
+                    _ => {
+                        panic!("Bug: Using ISO2022 codec with non ISO2022 term!");
+                    }
+                };
+                ptr::eq(tables.0, table) || ptr::eq(tables.1, table)
+            })
         })
-    })
-    .map(|&table| {
-        // Replace with "modern" variant if allowed and available
-        if codec.config.use_modern_code_page {
-            if let Some(modern) = table.modern {
-                return modern;
+        .map(|&table| {
+            // Replace with "modern" variant if allowed and available
+            if codec.config.use_modern_code_page {
+                if let Some(modern) = table.modern {
+                    return modern;
+                }
             }
-        }
-        table
-    })
+            table
+        })
 }
 
 pub fn decode<'a>(bytes: &'a [u8], codec: &Codec, context: &Context) -> Cow<'a, str> {
@@ -141,19 +136,14 @@ pub fn decode<'a>(bytes: &'a [u8], codec: &Codec, context: &Context) -> Cow<'a, 
 
             let esc_sequence = &input[1..(esc_seq_length + 1)];
 
-            if let Some(new_iso_table) =
-                find_iso_table_by_esc_sequence_within_terms(esc_sequence, codec)
-            {
+            if let Some(new_iso_table) = find_iso_table_by_esc_sequence_within_terms(esc_sequence, codec) {
                 if new_iso_table.region == Region::G0 {
                     g0 = new_iso_table;
                 } else {
                     g1 = new_iso_table;
                 }
             } else {
-                rv.push_str(
-                    (codec.config.replacement_character_fn.0)(&input[..(esc_seq_length + 1)])
-                        .as_ref(),
-                );
+                rv.push_str((codec.config.replacement_character_fn.0)(&input[..(esc_seq_length + 1)]).as_ref());
             }
             input = &input[(esc_seq_length + 1)..];
             continue;
@@ -269,9 +259,7 @@ pub fn encode<'a>(string: &'a str, codec: &Codec, context: &Context) -> Cow<'a, 
     }
 
     for code_point in string.chars() {
-        if code_point as u32 <= GL_MAX as u32
-            && should_reset_tables(code_point as u8, extra_delimiters)
-        {
+        if code_point as u32 <= GL_MAX as u32 && should_reset_tables(code_point as u8, extra_delimiters) {
             if !ptr::eq(g0, initial_g0) {
                 emit_esc!(initial_g0.esc);
             }
@@ -357,27 +345,16 @@ mod tests {
         assert_eq!(decode(b"\x1B", codec!(IsoIr6), context!()), "�");
         assert_eq!(decode(b"\x1B\x28", codec!(IsoIr6), context!()), "�\u{28}");
         assert_eq!(decode(b"\x1B\x28\x49", codec!(IsoIr6), context!()), "�");
-        assert_eq!(
-            decode(b"\x1B\x20\x21\x22\x2E\x7E", codec!(IsoIr6), context!()),
-            "�"
-        );
+        assert_eq!(decode(b"\x1B\x20\x21\x22\x2E\x7E", codec!(IsoIr6), context!()), "�");
         assert_eq!(decode(b"\x1B\x28\x42", codec!(IsoIr6), context!()), "");
     }
 
     #[test]
     fn can_borrow_ascii() {
-        assert!(
-            matches!(decode(b"ASCII", codec!(IsoIr6), context!()), Cow::Borrowed(x) if x == "ASCII")
-        );
-        assert!(
-            matches!(decode(b"\xAA", codec!(IsoIr6), context!()), Cow::Owned(x) if x == "\u{AA}")
-        );
-        assert!(
-            matches!(encode("ASCII", codec!(IsoIr6), context!()), Cow::Borrowed(x) if x == b"ASCII")
-        );
-        assert!(
-            matches!(encode("\u{AA}", codec!(IsoIr6), context!()), Cow::Owned(x) if x == b"\xAA")
-        );
+        assert!(matches!(decode(b"ASCII", codec!(IsoIr6), context!()), Cow::Borrowed(x) if x == "ASCII"));
+        assert!(matches!(decode(b"\xAA", codec!(IsoIr6), context!()), Cow::Owned(x) if x == "\u{AA}"));
+        assert!(matches!(encode("ASCII", codec!(IsoIr6), context!()), Cow::Borrowed(x) if x == b"ASCII"));
+        assert!(matches!(encode("\u{AA}", codec!(IsoIr6), context!()), Cow::Owned(x) if x == b"\xAA"));
         // Decoder must not borrow if ESC character presents
         assert!(matches!(decode(b"\x1B", codec!(IsoIr6), context!()), Cow::Owned(x) if x == "�"));
         // Empty strings considered as a valid ASCII
@@ -485,10 +462,6 @@ mod tests {
 
         // Encoder should switch back to initial G0 at the end if last used G0
         // was 94x94 set. Currently, the encoder always switches back to initial G0.
-        assert_eq!(
-            encode("", codec!(Iso2022Ir6, Iso2022Ir87), context!()).as_ref(),
-            b""
-        );
-
+        assert_eq!(encode("", codec!(Iso2022Ir6, Iso2022Ir87), context!()).as_ref(), b"");
     }
 }
