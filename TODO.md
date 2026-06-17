@@ -15,7 +15,7 @@ rustup override set stable
 
 ## Regular check:
 ```
-cargo fmt && cargo test && cargo doc
+cargo fmt && cargo clippy && cargo test && cargo doc
 ```
 
 # Roadmap

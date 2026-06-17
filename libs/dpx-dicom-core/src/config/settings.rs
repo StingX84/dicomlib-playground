@@ -53,9 +53,9 @@ impl IntoIterator for Settings {
 ///
 /// All fields are optional; an absent field is a wildcard for that dimension.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct MatchAttributes {
-    pub peer_aet: Option<Cow<'static, str>>,
-    pub local_aet: Option<Cow<'static, str>>,
+pub struct MatchAttributes<'a> {
+    pub peer_aet: Option<&'a str>,
+    pub local_aet: Option<&'a str>,
     pub peer_ip: Option<std::net::IpAddr>,
     pub local_ip: Option<std::net::IpAddr>,
     pub local_port: Option<u16>,
@@ -119,6 +119,20 @@ impl ConditionalSettings {
     /// An entry is a candidate only if every attribute it constrains is present
     /// in `attrs` and equal. Among candidates, the highest specificity score wins.
     pub fn get(&self, key: &Key, attrs: &MatchAttributes) -> Option<&Value> {
+        fn scored_match<T1, T2: PartialEq<T1>>(score: u32, existing: &Option<T1>, test: &Option<T2>) -> Option<u32> {
+            match (existing, test) {
+                (Some(_), None) => None,
+                (Some(existing_peer_aet), Some(test_peer_aet)) => {
+                    if test_peer_aet != existing_peer_aet {
+                        None
+                    } else {
+                        Some(score)
+                    }
+                }
+                _ => Some(0),
+            }
+        }
+
         self.0
             .iter()
             .filter_map(|(ck, v)| {
@@ -126,36 +140,12 @@ impl ConditionalSettings {
                     return None;
                 }
                 let mut score = 0u32;
-                if ck.peer_aet.is_some() {
-                    if attrs.peer_aet.is_none() || ck.peer_aet != attrs.peer_aet {
-                        return None;
-                    }
-                    score += 16;
-                }
-                if ck.local_aet.is_some() {
-                    if attrs.local_aet.is_none() || ck.local_aet != attrs.local_aet {
-                        return None;
-                    }
-                    score += 8;
-                }
-                if ck.peer_ip.is_some() {
-                    if attrs.peer_ip.is_none() || ck.peer_ip != attrs.peer_ip {
-                        return None;
-                    }
-                    score += 4;
-                }
-                if ck.local_ip.is_some() {
-                    if attrs.local_ip.is_none() || ck.local_ip != attrs.local_ip {
-                        return None;
-                    }
-                    score += 2;
-                }
-                if ck.local_port.is_some() {
-                    if attrs.local_port.is_none() || ck.local_port != attrs.local_port {
-                        return None;
-                    }
-                    score += 1;
-                }
+                score += scored_match(16, &ck.peer_aet, &attrs.peer_aet)?;
+                score += scored_match(8, &ck.local_aet, &attrs.local_aet)?;
+                score += scored_match(4, &ck.peer_ip, &attrs.peer_ip)?;
+                score += scored_match(2, &ck.local_ip, &attrs.local_ip)?;
+                score += scored_match(1, &ck.local_port, &attrs.local_port)?;
+
                 Some((score, v))
             })
             .max_by_key(|(score, _)| *score)

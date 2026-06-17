@@ -117,8 +117,8 @@ pub enum ValueMeta {
         max_length: Option<usize>,
     },
     Complex {
-        kind: &'static str,
-        limits: HashMap<&'static str, &'static str>,
+        ty: &'static dyn super::ComplexType,
+        limits: &'static [(&'static str, &'static str)],
     },
 }
 
@@ -251,10 +251,11 @@ impl ValueMeta {
                 Ok(())
             }
 
-            // Complex values carry opaque, application-defined payloads that this
-            // generic pass cannot inspect; they are accepted here and left to the
-            // owning module's cross-key validation.
-            (ValueMeta::Complex { .. }, Value::Complex(_)) => Ok(()),
+            // Complex values are application-defined; the registered codec is the
+            // only thing that understands the concrete type, so delegate to it.
+            (ValueMeta::Complex { ty, .. }, Value::Complex(any)) => {
+                ty.validate(any.as_ref())
+            }
 
             (meta, value) => Err(dicom_err!(
                 Internal,

@@ -1,7 +1,7 @@
 use crate::*;
 use arc_swap::ArcSwap;
 use std::{
-    borrow::Cow, cell::Cell, fmt, future::Future, net::SocketAddr, pin::Pin, ptr::NonNull, sync::LazyLock, task,
+    cell::Cell, fmt, future::Future, net::SocketAddr, pin::Pin, ptr::NonNull, sync::LazyLock, task,
 };
 
 thread_local! {
@@ -203,11 +203,11 @@ impl Context {
 
     /// Derives [`MatchAttributes`] from the active association, used to select
     /// conditional configuration values.
-    fn match_attributes(&self) -> config::MatchAttributes {
+    fn match_attributes<'a>(&'a self) -> config::MatchAttributes<'a> {
         match self.assoc() {
             Some(a) => config::MatchAttributes {
-                peer_aet: Some(Cow::Owned(a.peer_aet.clone())),
-                local_aet: Some(Cow::Owned(a.local_aet.clone())),
+                peer_aet: Some(a.peer_aet.as_ref()),
+                local_aet: Some(a.local_aet.as_ref()),
                 peer_ip: a.peer_addr.map(|s| s.ip()),
                 local_ip: a.local_addr.map(|s| s.ip()),
                 local_port: a.local_addr.map(|s| s.port()),
