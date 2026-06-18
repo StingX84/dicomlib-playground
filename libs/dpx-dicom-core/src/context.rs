@@ -1,8 +1,6 @@
 use crate::*;
 use arc_swap::ArcSwap;
-use std::{
-    cell::Cell, fmt, future::Future, net::SocketAddr, pin::Pin, ptr::NonNull, sync::LazyLock, task,
-};
+use std::{cell::Cell, fmt, future::Future, net::SocketAddr, pin::Pin, ptr::NonNull, sync::LazyLock, task};
 
 thread_local! {
     static LOCAL_CTX: Cell<Option<NonNull<Context>>> = const { Cell::new(None) };
@@ -203,16 +201,16 @@ impl Context {
 
     /// Derives [`MatchAttributes`] from the active association, used to select
     /// conditional configuration values.
-    fn match_attributes<'a>(&'a self) -> config::MatchAttributes<'a> {
+    fn match_attributes<'a>(&'a self) -> config::settings::MatchAttributes<'a> {
         match self.assoc() {
-            Some(a) => config::MatchAttributes {
+            Some(a) => config::settings::MatchAttributes {
                 peer_aet: Some(a.peer_aet.as_ref()),
                 local_aet: Some(a.local_aet.as_ref()),
                 peer_ip: a.peer_addr.map(|s| s.ip()),
                 local_ip: a.local_addr.map(|s| s.ip()),
                 local_port: a.local_addr.map(|s| s.port()),
             },
-            None => config::MatchAttributes::default(),
+            None => config::settings::MatchAttributes::default(),
         }
     }
 
@@ -491,7 +489,9 @@ mod tests {
 
     // ── Configuration layering ────────────────────────────────────────────────
 
-    use crate::config::{ConditionalKey, ConditionalSettings, Config, Key, Registry, Settings, Value};
+    use crate::config::{
+        Config, Key, Registry, Value, settings::ConditionalKey, settings::ConditionalSettings, settings::Settings,
+    };
 
     const KEY: Key = Key::new("test", 1);
 
@@ -567,13 +567,13 @@ mod tests {
 
     #[test]
     fn config_value_falls_back_to_registry_default() {
-        static METAS: [crate::config::KeyMeta; 1] = [crate::config::KeyMeta {
+        static METAS: [config::meta::KeyMeta; 1] = [config::meta::KeyMeta {
             key: KEY,
-            is_advanced: false,
-            display_section: "Test",
-            concept: crate::config::Concept::new("k", "K", None),
-            value_meta: crate::config::ValueMeta::Int { min: None, max: None },
-            make_default: || Some(Value::Int(42)),
+            edit: None,
+            store: None,
+            nullable: false,
+            default: Some(|| Value::Int(42)),
+            value_meta: config::meta::ValueMeta::Int { min: None, max: None },
         }];
 
         let mut registry = Registry::new_empty();

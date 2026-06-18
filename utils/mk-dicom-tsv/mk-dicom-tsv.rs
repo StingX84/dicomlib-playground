@@ -246,10 +246,10 @@ fn parse_table<'a, 'input>(
 
 fn find_by_id<'a, 'input>(input: roxmltree::Node<'a, 'input>, id: &'_ str) -> Option<roxmltree::Node<'a, 'input>> {
     if input.is_element() {
-        if let Some(attr) = input.attribute((roxmltree::NS_XML_URI, "id")) {
-            if attr == id {
-                return Some(input);
-            }
+        if let Some(attr) = input.attribute((roxmltree::NS_XML_URI, "id"))
+            && attr == id
+        {
+            return Some(input);
         }
 
         input.children().find_map(|c| find_by_id(c, id))
@@ -261,10 +261,10 @@ fn find_by_id<'a, 'input>(input: roxmltree::Node<'a, 'input>, id: &'_ str) -> Op
 fn get_cell_text<'a, 'input>(td: roxmltree::Node<'a, 'input>) -> &'a str {
     let mut child_opt = Some(td);
     while let Some(n) = child_opt {
-        if let Some(cn) = n.first_child() {
-            if let Some(s) = cn.text().map(|s| s.trim()).filter(|s| !s.is_empty()) {
-                return s;
-            }
+        if let Some(cn) = n.first_child()
+            && let Some(s) = cn.text().map(|s| s.trim()).filter(|s| !s.is_empty())
+        {
+            return s;
         }
         child_opt = n.first_element_child();
     }

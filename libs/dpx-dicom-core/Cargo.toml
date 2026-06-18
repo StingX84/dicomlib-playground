@@ -25,16 +25,18 @@ static_dictionary = []
 
 # Lock-free atomic swapping of Arc pointers for shared global DICOM context without a mutex
 arc-swap = "1.9.1"
+# Fast CRC32 for data integrity verification in DICOM datasets
+crc32fast = "1.5"
+# Cross-platform file system path manipulation and normalization
+glob = "0.3"
 # Link-time registration of VR types, tag dictionaries, and other extensible DICOM registries
 inventory = "0.3"
 # Machine-unique identifier used as a component in generated DICOM UIDs
 machine-uid = "0.6"
-# Fast CRC32 for data integrity verification in DICOM datasets
-crc32fast = "1.5"
-# Structured, async-aware logging and diagnostics throughout the library
-tracing = "0.1"
 # Regular expression matching for per-key configuration value validation
 regex = "1.11"
+# Structured, async-aware logging and diagnostics throughout the library
+tracing = "0.1"
 
 ##################
 # Optional dependencies

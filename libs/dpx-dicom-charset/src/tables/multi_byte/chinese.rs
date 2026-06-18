@@ -246,9 +246,7 @@ fn backward_whatwg_gb18030(mode: Mode, out: &mut [u8], code: u32) -> BackwardRes
     }
 
     // > 8. Set pointer to the index gb18030 ranges pointer for code point.
-    let Some(pointer) = backward_whatwg_gb18030_ranges(code) else {
-        return None;
-    };
+    let pointer = backward_whatwg_gb18030_ranges(code)?;
 
     // > 9. Let byte1 be pointer / (10 × 126 × 10).
     let byte1 = (pointer / (10 * 126 * 10)) as u8;

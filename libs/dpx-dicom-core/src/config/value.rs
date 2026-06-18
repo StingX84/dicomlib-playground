@@ -2,7 +2,7 @@
 //!
 //! A [`Value`] is the dynamically-typed payload stored against a configuration
 //! [`Key`](super::Key). Its concrete shape is described and constrained by the
-//! corresponding [`ValueMeta`](super::ValueMeta) in the [`Registry`](super::Registry).
+//! corresponding [`ValueMeta`](super::meta::ValueMeta) in the [`Registry`](super::registry::Registry).
 
 use crate::{Arc, Map};
 
@@ -17,11 +17,9 @@ pub enum ValueFile {
 }
 
 /// A dynamically-typed configuration value.
-///
-/// Each variant corresponds to a [`ValueMeta`](super::ValueMeta) shape. The
-/// pairing is verified by [`ValueMeta::validate`](super::ValueMeta::validate).
 #[derive(Debug, Clone)]
 pub enum Value {
+    Null,
     Bool(bool),
     String(String),
     Int(i64),
@@ -30,6 +28,7 @@ pub enum Value {
     Tag(crate::tag::Tag),
     Vr(crate::vr::Vr),
     File(ValueFile),
+    Object(super::Config),
     Vec(Vec<Value>),
     Map(Map<Value, Value>),
     Complex(Arc<dyn std::any::Any + Send + Sync>),
@@ -39,6 +38,7 @@ impl Value {
     /// Returns a short, stable name of the value's variant, used in diagnostics.
     pub fn kind_name(&self) -> &'static str {
         match self {
+            Value::Null => "Null",
             Value::Bool(_) => "Bool",
             Value::String(_) => "String",
             Value::Int(_) => "Int",
@@ -47,6 +47,7 @@ impl Value {
             Value::Tag(_) => "Tag",
             Value::Vr(_) => "Vr",
             Value::File(_) => "File",
+            Value::Object(_) => "Object",
             Value::Vec(_) => "Vec",
             Value::Map(_) => "Map",
             Value::Complex(_) => "Complex",

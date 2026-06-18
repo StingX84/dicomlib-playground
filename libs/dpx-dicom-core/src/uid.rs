@@ -718,7 +718,7 @@ mod tests {
             "BasicTextSRStorage"
         );
         assert_eq!(
-            dict.search_by_uid(&Uid::from(uids::svc_storage::BasicTextSRStorage))
+            dict.search_by_uid(Uid::from(uids::svc_storage::BasicTextSRStorage))
                 .unwrap()
                 .keyword
                 .as_ref(),

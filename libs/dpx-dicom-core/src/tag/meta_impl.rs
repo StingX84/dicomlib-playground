@@ -361,7 +361,6 @@ impl Meta {
     /// Expects exactly 4 hexadecimal or 'X' characters.
     ///
     /// Returns numeric component and its mask.
-
     fn parse_tag_component(s: &str) -> Result<(u16, u16), MetaParseErr> {
         let s = s.trim();
         let mut mask = 0u16;
@@ -772,7 +771,7 @@ impl Eq for Meta {}
 
 impl PartialOrd for Meta {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.tag.partial_cmp(&other.tag)
+        Some(self.cmp(other))
     }
 }
 

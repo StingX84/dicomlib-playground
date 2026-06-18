@@ -40,7 +40,7 @@ pub fn decode<'a>(bytes: &'a [u8], codec: &Codec) -> Cow<'a, str> {
 }
 
 pub fn encode(string: &str) -> Cow<'_, [u8]> {
-    return Cow::Borrowed(string.as_bytes());
+    Cow::Borrowed(string.as_bytes())
 }
 
 #[cfg(test)]

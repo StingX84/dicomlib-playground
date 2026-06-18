@@ -4,7 +4,7 @@
 //! payload owned by the application. To let the library load, save and validate
 //! such a value without knowing its concrete type, the application supplies a
 //! [`ComplexType`] — a fully `static` descriptor referenced from
-//! [`ValueMeta::Complex`](super::ValueMeta::Complex).
+//! [`ValueMeta::Complex`](super::meta::ValueMeta::Complex).
 //!
 //! A [`ComplexType`] exchanges values through [`ConfigNode`], a backend-neutral
 //! mirror of a serialized subtree that maps one-to-one onto JSON. A GUI/TUI
@@ -18,7 +18,7 @@ use std::any::Any;
 /// A backend-neutral, JSON-shaped view of a serialized value subtree.
 ///
 /// Loaders parse their format (YAML today) into this; codecs decode from and
-/// encode to it. It is only materialised transiently around load/save.
+/// encode to it. It is only materialized transiently around load/save.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ConfigNode {
     Null,
@@ -84,13 +84,13 @@ impl ConfigNode {
     /// Returns a short, stable name of the node's variant, for diagnostics.
     pub fn kind_name(&self) -> &'static str {
         match self {
-            ConfigNode::Null    => "Null",
+            ConfigNode::Null => "Null",
             ConfigNode::Bool(_) => "Bool",
-            ConfigNode::Int(_)  => "Int",
+            ConfigNode::Int(_) => "Int",
             ConfigNode::Float(_) => "Float",
-            ConfigNode::Str(_)  => "Str",
-            ConfigNode::Seq(_)  => "Seq",
-            ConfigNode::Map(_)  => "Map",
+            ConfigNode::Str(_) => "Str",
+            ConfigNode::Seq(_) => "Seq",
+            ConfigNode::Map(_) => "Map",
         }
     }
 }
@@ -99,7 +99,7 @@ impl ConfigNode {
 ///
 /// Implemented by the application — typically on a zero-sized unit struct held
 /// in a `static`, so the whole descriptor lives in read-only memory with no
-/// heap allocation. The only allocation involved is the [`Arc`] holding an
+/// heap allocation. The only allocation involved is the [`Arc`](std::sync::Arc) holding an
 /// individual decoded value, which is shared cheaply across configuration layers.
 ///
 /// ```
@@ -161,8 +161,6 @@ pub trait ComplexType: Send + Sync + 'static {
 // `&'static dyn ComplexType` field does not block that derive.
 impl std::fmt::Debug for dyn ComplexType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ComplexType")
-            .field("name", &self.name())
-            .finish()
+        f.debug_struct("ComplexType").field("name", &self.name()).finish()
     }
 }

@@ -38,8 +38,8 @@ pub type PfnForward = fn(input: &[u8]) -> ForwardResult;
 ///
 /// # Params:
 /// - _output_ - Buffer for the output string. Should be large enough for the
-///  encoding. Currently, no encoding will produce more than 4 bytes, but for
-///  "future-proof" compatibility, provide 16 bytes.
+///   encoding. Currently, no encoding will produce more than 4 bytes, but for
+///   "future-proof" compatibility, provide 16 bytes.
 /// - _code_ - Unicode code point to write. Typically, `char as u32`
 ///
 /// # Returns:

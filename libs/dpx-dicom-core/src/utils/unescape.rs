@@ -107,13 +107,13 @@ impl Unescaper {
                 Ok(c)
             }?;
 
-            if let Some(v) = self.validator {
-                if !v(c) {
-                    return Err(Error::NotAllowedChar {
-                        pos: current_pos,
-                        char: c,
-                    });
-                }
+            if let Some(v) = self.validator
+                && !v(c)
+            {
+                return Err(Error::NotAllowedChar {
+                    pos: current_pos,
+                    char: c,
+                });
             }
             unescaped.push(c);
         }

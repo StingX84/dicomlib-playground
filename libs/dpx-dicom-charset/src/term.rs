@@ -650,14 +650,12 @@ impl Term {
             l_filtered.eq(r_filtered)
         }
 
-        let fuzzy_match = Self::all().iter().find_map(|e| {
+        Self::all().iter().find_map(|e| {
             e.keywords
                 .iter()
                 .find(|&&t| fuzzy_compare(t.as_bytes(), keyword))
                 .map(|_| (e.term, TermMatchedWith::Fuzzy))
-        });
-
-        fuzzy_match
+        })
     }
 }
 
@@ -668,8 +666,8 @@ mod tests {
     #[test]
     fn is_all_terms_listed_in_order_of_definition() {
         let all_terms = Term::all();
-        for code in 0..=MAX_TERM {
-            assert_eq!(all_terms[code].term, Term::from_u8(code as u8).unwrap());
+        for (code, term_meta) in all_terms.iter().enumerate() {
+            assert_eq!(term_meta.term, Term::from_u8(code as u8).unwrap());
         }
     }
 }

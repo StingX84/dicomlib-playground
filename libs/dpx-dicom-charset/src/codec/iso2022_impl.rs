@@ -95,10 +95,10 @@ fn find_iso_table_by_esc_sequence_within_terms(sequence: &[u8], codec: &Codec) -
         })
         .map(|&table| {
             // Replace with "modern" variant if allowed and available
-            if codec.config.use_modern_code_page {
-                if let Some(modern) = table.modern {
-                    return modern;
-                }
+            if codec.config.use_modern_code_page
+                && let Some(modern) = table.modern
+            {
+                return modern;
             }
             table
         })
@@ -295,22 +295,22 @@ mod tests {
 
     macro_rules! codec {
         ( $($term:ident),* $(+ $member:ident = $value:expr)?) => {
-            &(|| {
+            &{
                 #[allow(unused_mut)]
                 let mut config = Config::default();
                 $(config.$member = $value;)?
                 Codec { terms: vec![$($term),*], config, ..Default::default() }
-            })()
+            }
         };
     }
     macro_rules! context {
         ( $($member:ident = $value:expr),*) => {
-            &(|| {
+            &{
                 #[allow(unused_mut)]
                 let mut context = Context::default();
                 $(context.$member = $value;)*
                 context
-            })()
+            }
         };
     }
 
@@ -359,7 +359,7 @@ mod tests {
         assert!(matches!(decode(b"\x1B", codec!(IsoIr6), context!()), Cow::Owned(x) if x == "�"));
         // Empty strings considered as a valid ASCII
         assert!(matches!(encode("", codec!(IsoIr6), context!()), Cow::Borrowed(x) if x == b""));
-        assert!(matches!(decode(b"", codec!(IsoIr6), context!()), Cow::Borrowed(x) if x == ""));
+        assert!(matches!(decode(b"", codec!(IsoIr6), context!()), Cow::Borrowed(x) if x.is_empty()));
     }
 
     #[test]

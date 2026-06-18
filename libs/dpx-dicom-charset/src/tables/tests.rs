@@ -207,7 +207,7 @@ fn invalid_always_fails() {
     }
     let mut dummy = [0x00_u8; 1];
     for wc in [0x00_u32, 0x20, 0x55, 0x80, 0xF0, 0xFF, 0x100, 0xFFFF] {
-        assert!(matches!(backward_invalid(&mut dummy, wc), None))
+        assert!(backward_invalid(&mut dummy, wc).is_none());
     }
 }
 

@@ -864,7 +864,7 @@ impl Codec {
     /// Internal function, that selects a best suitable codec within
     /// specified `terms` and `config`. Does not work with `encoding_rs`
     /// based codec.
-    fn choose_impl(terms: &Vec<Term>, _: &Config) -> ChosenImpl {
+    fn choose_impl(terms: &[Term], _: &Config) -> ChosenImpl {
         let term = *terms.first().expect("Bug! Term list should not be empty!");
 
         match term.meta().mode {
@@ -892,7 +892,7 @@ impl Codec {
     /// If not, allocates a new [String].
     pub fn decode<'a>(&self, bytes: &'a [u8], context: &Context) -> Cow<'a, str> {
         match self.chosen_impl {
-            ChosenImpl::Utf8 => utf8_impl::decode(bytes, &self),
+            ChosenImpl::Utf8 => utf8_impl::decode(bytes, self),
             ChosenImpl::Iso2022Simple => iso2022_simple_impl::decode(bytes, self),
             ChosenImpl::Iso2022Extended => iso2022_impl::decode(bytes, self, context),
             ChosenImpl::NonIso2022 => non_iso2022_impl::decode(bytes, self),

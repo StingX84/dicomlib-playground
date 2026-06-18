@@ -144,7 +144,7 @@ mod gb18030_tests {
     #[test]
     fn gb18030_decode() {
         // Empty
-        decode_gb18030(b"", &"");
+        decode_gb18030(b"", "");
 
         // ASCII
         decode_gb18030(b"\x61\x62", "\u{0061}\u{0062}");

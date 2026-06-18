@@ -5,7 +5,7 @@
 //! supplies metadata and defaults. Layers are stacked through [`Context`](crate::context);
 //! the hot-swappable global manager that owns the base layer is added in a later phase.
 
-use super::{ConditionalSettings, Key, MatchAttributes, Registry, Settings, Value};
+use super::{Key, Registry, Value, settings::ConditionalSettings, settings::MatchAttributes, settings::Settings};
 use crate::Arc;
 
 /// An immutable configuration layer.

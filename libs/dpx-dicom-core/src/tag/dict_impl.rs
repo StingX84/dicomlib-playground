@@ -426,10 +426,10 @@ impl Dictionary {
             }
             if tag.creator.is_some() {
                 // Step 2 a: if creator: exact canonical
-                if let Some(canonical_key) = tag.key.to_canonical_if_private() {
-                    if let Some(meta) = Self::cache_search_sorted_with_creator(cache, canonical_key, &tag.creator) {
-                        return Some(meta);
-                    }
+                if let Some(canonical_key) = tag.key.to_canonical_if_private()
+                    && let Some(meta) = Self::cache_search_sorted_with_creator(cache, canonical_key, &tag.creator)
+                {
+                    return Some(meta);
                 }
                 // Step 3: find an exact attribute with None creator
                 if let Some(meta) = Self::cache_search_sorted_with_creator(cache, tag.key, &None) {
@@ -445,10 +445,10 @@ impl Dictionary {
             }
             if tag.creator.is_some() {
                 // Step 4 a: if creator: masked canonical
-                if let Some(canonical_key) = tag.key.to_canonical_if_private() {
-                    if let Some(meta) = Self::cache_search_masked_with_creator(cache, canonical_key, &tag.creator) {
-                        return Some(meta);
-                    }
+                if let Some(canonical_key) = tag.key.to_canonical_if_private()
+                    && let Some(meta) = Self::cache_search_masked_with_creator(cache, canonical_key, &tag.creator)
+                {
+                    return Some(meta);
                 }
                 // Step 5: find a masked attribute with None creator
                 if let Some(meta) = Self::cache_search_masked_with_creator(cache, tag.key, &None) {

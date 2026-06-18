@@ -135,7 +135,7 @@ impl std::error::Error for DicomError {
 }
 
 /// Convenience `Result` alias. The error type defaults to [`DicomError`].
-pub type Result<T, E = DicomError> = std::result::Result<T, E>;
+pub type Result<T = (), E = DicomError> = std::result::Result<T, E>;
 
 // ============================================================================
 // ToErrorKind
