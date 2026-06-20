@@ -14,7 +14,7 @@ pub struct Validator<'a> {
     pub key_meta: &'a KeyMeta,
     pub value_meta: &'a ValueMeta,
     pub vec_index: Option<usize>,
-    pub map_key: Option<&'a Value>,
+    pub map_key: Option<&'a str>,
     pub file: Option<(&'a str, usize)>,
     pub parent: Option<&'a Validator<'a>>,
 }
@@ -217,7 +217,6 @@ impl<'a> Validator<'a> {
 
             (
                 ValueMeta::Map {
-                    keys,
                     values,
                     min_length,
                     max_length,
@@ -226,13 +225,6 @@ impl<'a> Validator<'a> {
             ) => {
                 Validator::check_range("map", entries.len(), min_length, max_length)?;
                 for (k, v) in entries.iter() {
-                    let sub_stack = Validator {
-                        value_meta: keys,
-                        parent: Some(self),
-                        ..*self
-                    };
-                    sub_stack.validate(k).err_context("invalid map key")?;
-
                     let sub_stack = Validator {
                         map_key: Some(k),
                         parent: Some(self),

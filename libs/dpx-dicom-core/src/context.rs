@@ -6,7 +6,9 @@ thread_local! {
     static LOCAL_CTX: Cell<Option<NonNull<Context>>> = const { Cell::new(None) };
 }
 
-// The global root: always carries default dictionaries.
+// cSpell:ignore METAS
+
+// The global root: always carries default dictionaries and a base configuration.
 // ArcSwap allows lock-free reads and atomic full-Arc replacement.
 static GLOBAL_CTX: LazyLock<ArcSwap<Context>> = LazyLock::new(|| {
     ArcSwap::from_pointee(Context {
@@ -14,7 +16,9 @@ static GLOBAL_CTX: LazyLock<ArcSwap<Context>> = LazyLock::new(|| {
         action: None,
         tag_dict: Some(Arc::new(tag::Dictionary::default())),
         uid_dict: Some(Arc::new(uid::Dictionary::default())),
-        config: None,
+        config: Some(Arc::new(
+            config::Config::builder(Arc::new(config::Registry::new())).build(),
+        )),
         prev: None,
     })
 });
@@ -87,6 +91,41 @@ impl Context {
     /// ```
     pub fn global() -> &'static ArcSwap<Context> {
         &GLOBAL_CTX
+    }
+
+    /// Returns the base configuration carried by the global root.
+    ///
+    /// The global root always carries a base configuration, so this never
+    /// returns `None`. Override layers installed with [`ContextBuilder::config`]
+    /// shadow it for the duration of a call tree.
+    ///
+    /// This is a crate-internal accessor; the public single source of truth for
+    /// the application-wide configuration is
+    /// [`GlobalConfig`](crate::config::GlobalConfig).
+    pub(crate) fn global_config() -> Arc<config::Config> {
+        GLOBAL_CTX
+            .load()
+            .config
+            .clone()
+            .expect("global root must always carry a base configuration")
+    }
+
+    /// Atomically publishes `config` as the global base configuration.
+    ///
+    /// Only the root node's `config` field is replaced; the default dictionaries
+    /// and any other root state are preserved, and no context layer is added, so
+    /// repeated hot-reloads do not grow the chain. Lock-free for readers.
+    pub(crate) fn publish_global_config(config: Arc<config::Config>) {
+        GLOBAL_CTX.rcu(|old| {
+            Arc::new(Context {
+                assoc: old.assoc.clone(),
+                action: old.action,
+                tag_dict: old.tag_dict.clone(),
+                uid_dict: old.uid_dict.clone(),
+                config: Some(Arc::clone(&config)),
+                prev: old.prev.clone(),
+            })
+        });
     }
 
     /// Creates a [`ContextBuilder`] extending the currently installed context.
@@ -167,9 +206,11 @@ impl Context {
             .expect("Context chain missing UID dictionary — global root must have one")
     }
 
-    /// Returns the nearest configuration layer in the context chain, if any.
-    pub fn config(&self) -> Option<&Arc<config::Config>> {
+    /// Returns the effective configuration, walking the chain toward the global
+    /// root which always carries a base configuration.
+    pub fn config(&self) -> &Arc<config::Config> {
         self.find(|n| n.config.as_ref())
+            .expect("Context chain missing configuration — global root must have one")
     }
 
     /// Resolves a configuration value for `key`, honouring the layered context.
@@ -325,8 +366,28 @@ impl ContextBuilder {
 
     /// Replaces the global root context with this layer and returns the
     /// previous global root. Use the returned `Arc` to restore it afterwards.
+    ///
+    /// The installed root is always self-contained: any of the required fields
+    /// (tag dictionary, UID dictionary, base configuration) that this builder
+    /// does not set are inherited from the previous root, and the new root has no
+    /// parent. This preserves the invariant that the global root carries every
+    /// required field, so accessors like [`Context::config`] and
+    /// [`Context::tag_dict`] can never fail, and repeated installs do not grow a
+    /// parent chain.
     pub fn install_global(self) -> Arc<Context> {
-        GLOBAL_CTX.swap(self.ctx)
+        let mut prev = None;
+        GLOBAL_CTX.rcu(|old| {
+            prev = Some(Arc::clone(old));
+            Arc::new(Context {
+                assoc: self.ctx.assoc.clone(),
+                action: self.ctx.action,
+                tag_dict: self.ctx.tag_dict.clone().or_else(|| old.tag_dict.clone()),
+                uid_dict: self.ctx.uid_dict.clone().or_else(|| old.uid_dict.clone()),
+                config: self.ctx.config.clone().or_else(|| old.config.clone()),
+                prev: None,
+            })
+        });
+        prev.expect("ArcSwap::rcu always invokes its closure at least once")
     }
 
     /// Installs this context layer for the duration of `f`, then restores
@@ -585,5 +646,24 @@ mod tests {
                 assert!(matches!(ctx.config_value(&KEY), Some(Value::Int(42))));
             });
         });
+    }
+
+    #[test]
+    fn install_global_inherits_missing_required_fields() {
+        // Installing a root that only sets a configuration must not drop the
+        // dictionaries: the new self-contained root inherits them from the
+        // previous root, so the required-field accessors can never panic.
+        let cfg = config_with(Settings::new(), ConditionalSettings::new());
+        let prev = Context::extend().config(Arc::clone(&cfg)).install_global();
+
+        Context::with_current(|ctx| {
+            // Inherited from the previous root rather than the builder.
+            let _ = ctx.tag_dict();
+            let _ = ctx.uid_dict();
+            // The field we explicitly installed.
+            assert!(Arc::ptr_eq(ctx.config(), &cfg));
+        });
+
+        Context::global().store(prev);
     }
 }

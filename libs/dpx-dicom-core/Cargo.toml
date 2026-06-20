@@ -13,7 +13,7 @@ version.workspace = true
 
 [features]
 default = ["serde"]
-serde = ["dep:serde"]
+serde = ["dep:serde", "dep:serde-saphyr", "dep:humantime"]
 unstable = []
 static_dictionary = []
 
@@ -43,6 +43,10 @@ tracing = "0.1"
 
 # Serialization/deserialization support for DICOM types (tags, VRs, UIDs, etc.)
 serde = { version = "1.0", optional = true, features = ["derive"] }
+# Streaming, schema-driven YAML deserialization with source locations for the config loader
+serde-saphyr = { version = "0.0.27", optional = true }
+# Human-friendly duration parsing ("10s", "5m") for configuration values
+humantime = { version = "2.3", optional = true }
 
 [dev-dependencies]
 # Test helpers for asserting serde round-trip behavior

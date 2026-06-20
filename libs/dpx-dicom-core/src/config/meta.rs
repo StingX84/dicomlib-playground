@@ -116,7 +116,6 @@ pub enum ValueMeta {
         stride: Option<usize>,
     },
     Map {
-        keys: &'static ValueMeta,
         values: &'static ValueMeta,
         min_length: Option<usize>,
         max_length: Option<usize>,

@@ -1,0 +1,113 @@
+# Example configuration file this configuration system should be able to read
+app: "my_application" # Application name. If not equals to our application name, then fail to load.
+version: 1 # Configuration version. If greater, than current -> fail. If less than current -> "upgrade" procedure. If equal to current -> ok, continue.
+dicom: # Configuration section
+  local_aet: # Accepts "single" or list of local AE titles for this application
+    - SERVER_AE_NOAUTH
+    - SERVER_AE
+    - SERVER_AE_WIN
+    - SERVER_AE_ISO
+  listen:
+    - addr: 127.0.0.1:104 # Port is optional: TLS: 2762; Non-TLS,*nix-NonRoot: 11112; Non-TLS,*nix-Root or Linux(cap_net_bind_service) or Windows: 104.
+    - addr: "[::1]:104"
+    - addr: 2a09:31c0:cafe::61
+    - addr: localhost
+      tls:
+        enabled: true
+        ignore_errors: true # optional. Overrides dicom.tls.server.ignore_errors
+      local_aet: # 0-n whitelist of local AE titles accepted on this address. Must be defined in "local_aet". Not limited, if list is null or empty.
+        - SERVER_AE
+    - addr: 10.3.4.5
+      bind: 10.3.4.5
+      tcp_options:
+        no_delay: true
+        timeout: 60s # OS-dependent socket timeout
+  association:
+    - artim_timeout: 10s # Timeout on association establishment (as declared in DICOM standard)
+    - reuse_timeout: 1s # Timeout after last outgoing association usage before it is released. Use 0 to disable associations reuse.
+    - idle_timeout: 60s # Timeout after last message in association before it forced to abort.
+    - connect_timeout: 10s # Timeout after connection was initiated to the moment remote accepts it.
+    - inbound_messages_queue_limit: 5 # Maximum amount of incoming messages per association in input queue. When exceeded, association reading paused.
+    - inbound_commands_parallel_limit: 50 # Maximum amount of parallel commands executed. When exceeded, no new "messages" processed from "inbound_messages_queue".
+    - pdu_size: 32768 # Proposed PDU size in outgoing associations.
+    - pdu_size_min: 14 # Minimum allowed PDU size in incoming associations.
+    - pdu_size_max: 131072 # Maximum allowed PDU size in incoming associations.
+    - max: 10 # Max parallel associations. No new DICOM connections are accepted when exceeded. 0 disables the limit.
+    - auth_allow_login_only: false # Allow login-only authentication.
+    - auth_default_login: "user" # Default login if no authentication information present
+    - auth_default_login: null
+      when:
+        local_aet: SERVER_AE_NOAUTH # One or more 
+    - default_aet: SERVER_AE # Default Local AE title for outgoing associations
+  encoding: # incoming_set and incoming_change accepts special value "auto-cyr", which autodetects encoding ("Windows-1251", "ISO 8859-5", "UTF-8") based on dataset text content.
+    - default: ISO_IR 192 # Used when app creates a new dataset
+    - incoming_set: # Sets attribute "SpecificCharacterSet (0008,0005)" for incoming datasets.
+    - incoming_set: ISO_IR 144 # Just interpret data as "ISO_IR 144" regardless of what dataset says.
+      when:
+        local_aet: SERVER_AE_ISO
+    - incoming_change: # Changes (decode -> encode) encoding of the dataset. Accepts two encodings. First - source (if null - current), Second - target (if null - current).
+    - incoming_change: # Recode from non standard encoding to UTF-8.
+      - cp1251
+      - ISO_IR 192
+      when:
+        local_aet: SERVER_AE_WIN
+    - outgoing_set: # Sets attribute "SpecificCharacterSet (0008,0005)" for incoming datasets. Accepts special value "auto-cyr", which autodetects encoding ("Windows-1251", "ISO 8859-5", "UTF-8") based on dataset content.
+    - outgoing_change: # Changes (decode -> encode) encoding of the dataset. Accepts two encodings. First - source (if not set - current), Second - target (if not set - current).
+  devices: # List of peer devices
+    - peer_aet: CLIENT1
+      addr: 10.5.6.7:11112 # Accepts single address or structure
+      strict_ip: true # Require, that incoming connection with "peer_aet" must match address from "addr"
+      uid: 051DD1D5-F00E-4D2E-9E28-8B14CD26720F # Optional unique identifier. Used to match this device to the database entry.
+      local_aet: SERVER_AE # Accepts 0-n AET's. First one used in outgoing associations to this client. Others used as "allow" list of how client could call us.
+      auth: # Authorization in outgoing associations
+        login: user1
+        jwt: true # Generate and use JWT token with "sub" equal to "login"
+    - peer_aet: CLIENT2
+      addr: 192.168.100.100
+      auth:
+        login: user2
+        password: pass
+    - peer_aet: CLIENT3
+      addr: 192.168.100.101
+      auth:
+        saml_assertion:
+          file_name: auth/server_saml_assertion.xml
+          reload: true
+jwt: # Jwt settings: public keys, algorithms with private keys
+  payload: # Optional. Expected exact match fields in payload.
+    aud: PACS
+  sign:
+    algorithm: RS256 # One of None, HS256, HS384, HS512, RS256, RS384, RS512, ES256, ES384, ES512. См. https://tools.ietf.org/html/rfc7518
+    private_key:
+      file_name: jwt_private.pem
+      reload: true
+  verify: # List of accepted public keys
+    - algorithm: RS256
+      public_key:
+        file_name: jwt_public.pem
+        reload: true
+  expire_time: 60m
+  refresh_time: 5m
+tls:
+  default: # Default SSL options for server & client connections
+    ca_file:
+      file_name: ssl/ca.pem
+      hot_reload: true
+    # - ca_dir: ssl/ca # Use one of "ca_file" or "ca_dir".
+    private_key:
+      file_name: ssl/key.pem
+      hot_reload: true
+    private_key_type: "rsa" # One of "auto", "rsa", "dsa", "dh"
+    private_key_password: "some_pass" # Leave empty if private key
+    certificate:
+      file_name: ssl/cert.pem
+      hot_reload: true
+    require_peer_cert: false
+    verify_cn_match_to: aet # One of "aet", "ip", "domain"
+    ignore_errors: false
+    handshake_timeout: 3s # Timeout from moment connection has established(or accepted) to the moment TLS handshake completes.
+  server: # default server SSL options (overrides "default:"). Used for incoming connections.
+    private_key:
+      content: "direct PEM content ... "
+  client: # default client SSL options (overrides "default:"). Used for outgoing connections.
+    require_peer_cert: true

@@ -12,6 +12,8 @@
 //!   provides a unified interface for accessing configuration values.
 
 pub mod complex;
+#[cfg(feature = "serde")]
+pub mod loader;
 pub mod manager;
 pub mod meta;
 pub mod registry;
@@ -20,7 +22,9 @@ pub(crate) mod validator;
 pub mod value;
 
 pub use complex::{ComplexType, ConfigNode};
-pub use manager::{Config, ConfigBuilder};
+#[cfg(feature = "serde")]
+pub use loader::YamlLoader;
+pub use manager::{Config, ConfigBuilder, GlobalConfig};
 pub use registry::{Registry, StaticRegistry};
 pub use value::{Value, ValueFile};
 

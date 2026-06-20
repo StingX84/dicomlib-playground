@@ -30,7 +30,7 @@ pub enum Value {
     File(ValueFile),
     Object(super::Config),
     Vec(Vec<Value>),
-    Map(Map<Value, Value>),
+    Map(Map<String, Value>),
     Complex(Arc<dyn std::any::Any + Send + Sync>),
 }
 

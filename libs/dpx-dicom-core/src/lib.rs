@@ -7,6 +7,7 @@
 pub mod config;
 pub mod context;
 pub mod error;
+pub mod event;
 pub mod tag;
 #[rustfmt::skip]
 pub mod tags;
