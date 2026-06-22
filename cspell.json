@@ -6,6 +6,7 @@
     "language": "en",
     // words - list of words to be always considered correct
     "words": [
+        "artim",
         "astm",
         "chrono",
         "clippy",
@@ -23,10 +24,12 @@
         "ggggeeee",
         "hanja",
         "hexdigit",
+        "humantime",
         "jisx",
         "jpegls",
         "jpip",
         "mbtowc",
+        "metas",
         "miri",
         "MIRIFLAGS",
         "Multiframe",
@@ -42,6 +45,7 @@
         "roxmltree",
         "rustfmt",
         "rustup",
+        "saphyr",
         "serde",
         "smpte",
         "splitn",

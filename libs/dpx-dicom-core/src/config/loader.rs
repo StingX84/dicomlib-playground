@@ -3,9 +3,9 @@
 //! The loader does not build a whole-document DOM. Instead it drives
 //! `serde-saphyr` with [`serde::de::DeserializeSeed`]s guided by the
 //! [`Registry`]: as the parser walks the document, each key is routed against a
-//! path index built from the registered [`StoreConcept`](super::meta::StoreConcept)
-//! names, and each value is mapped to a [`Value`] according to its
-//! [`ValueMeta`].
+//! path index built from the registered keys' [`Key`](super::Key) paths and their
+//! [`conditional`](super::meta::KeyMeta::conditional)/[`runtime`](super::meta::KeyMeta::runtime)
+//! flags, and each value is mapped to a [`Value`] according to its [`ValueMeta`].
 //!
 //! Because errors are raised *during* deserialization, `serde-saphyr` stamps
 //! them with a precise `line:column`; the loader prepends the file name to
@@ -13,8 +13,8 @@
 //!
 //! ## YAML shape
 //!
-//! A key's [`StoreConcept::name`](super::meta::StoreConcept::name) is a dotted
-//! path. For non-conditional keys the path leads straight to the value:
+//! A key's [`Key`](super::Key) path is a dotted path. For plain (non-conditional)
+//! keys the path leads straight to the value:
 //!
 //! ```yaml
 //! dicom:
@@ -34,37 +34,31 @@
 //!       when: { peer_aet: PEER }
 //! ```
 
+use super::map::{Condition, Map};
 use super::meta::{KeyMeta, ValueMeta};
-use super::settings::{ConditionalKey, ConditionalSettings, Settings};
 use super::value::ValueFile;
-use super::{Config, ConfigNode, Key, Registry, Value};
+use super::{ComplexConfigNode, Config, LayerId, OBJECT_LAYER_ID, Registry, SubstVars, Value};
 use crate::IntoDicomErr;
-use crate::{Arc, HashMap, dicom_err, error::Result};
+use crate::network::{HostDefinition, Network, NetworkDefinition};
+use crate::{Arc, HashMap, dicom_err, ensure, error::Result};
 
 use serde::Deserialize;
 use serde::de::{self, DeserializeSeed, Deserializer, MapAccess, SeqAccess, Visitor};
-use std::borrow::Cow;
 use std::cell::{Cell, RefCell};
 use std::fmt;
-use std::net::IpAddr;
 use std::path::{Path, PathBuf};
+
+pub const CONFIG_LAYER_ID: LayerId = LayerId::Borrowed("file");
 
 /// Loads configuration from a YAML file or a directory of `*.yml` files.
 pub struct YamlLoader {
     registry: Arc<Registry>,
-    app_name: String,
-    version: u32,
 }
 
 impl YamlLoader {
-    /// Creates a loader bound to a metadata `registry`, the expected application
-    /// name, and the application's current configuration `version`.
-    pub fn new(registry: Arc<Registry>, app_name: impl Into<String>, version: u32) -> YamlLoader {
-        YamlLoader {
-            registry,
-            app_name: app_name.into(),
-            version,
-        }
+    /// Creates a loader bound to a metadata `registry`
+    pub fn new(registry: Arc<Registry>) -> YamlLoader {
+        YamlLoader { registry }
     }
 
     /// Loads configuration from `path`.
@@ -74,27 +68,22 @@ impl YamlLoader {
     /// later files overriding earlier ones (last value wins).
     pub fn load(&self, path: impl AsRef<Path>) -> Result<Config> {
         let files = collect_files(path.as_ref())?;
-        if files.is_empty() {
-            return Err(dicom_err!(
-                NotFound,
-                "no configuration found at {}",
-                path.as_ref().display()
-            ));
-        }
+        ensure!(
+            !files.is_empty(),
+            NotFound,
+            "no configuration found at {}",
+            path.as_ref().display()
+        );
 
         let index = build_index(&self.registry)?;
         let acc = Accumulator {
-            settings: RefCell::new(Settings::new()),
-            conditional: RefCell::new(ConditionalSettings::new()),
-            found_version: Cell::new(None),
+            map: RefCell::new(Map::new()),
         };
 
         for file in &files {
             let text = std::fs::read_to_string(file).to_dicom_err_with(|| format!("cannot read {}", file.display()))?;
             let ctx = LoadCtx {
                 index: &index,
-                app_name: self.app_name.as_str(),
-                current_version: self.version,
                 acc: &acc,
             };
             parse_document(&text, &file.display().to_string(), &ctx)?;
@@ -107,14 +96,10 @@ impl YamlLoader {
     pub fn load_str(&self, text: &str) -> Result<Config> {
         let index = build_index(&self.registry)?;
         let acc = Accumulator {
-            settings: RefCell::new(Settings::new()),
-            conditional: RefCell::new(ConditionalSettings::new()),
-            found_version: Cell::new(None),
+            map: RefCell::new(Map::new()),
         };
         let ctx = LoadCtx {
             index: &index,
-            app_name: self.app_name.as_str(),
-            current_version: self.version,
             acc: &acc,
         };
         parse_document(text, "<memory>", &ctx)?;
@@ -122,12 +107,11 @@ impl YamlLoader {
     }
 
     fn finalize(&self, acc: Accumulator) -> Result<Config> {
-        let version = acc.found_version.get().unwrap_or(self.version);
-        Ok(Config::builder(self.registry.clone())
-            .settings(acc.settings.into_inner())
-            .conditional(acc.conditional.into_inner())
-            .version(version)
-            .build())
+        Ok(Config::new(
+            CONFIG_LAYER_ID,
+            self.registry.clone(),
+            acc.map.into_inner(),
+        ))
     }
 }
 
@@ -160,12 +144,17 @@ enum IndexNode<'a> {
 fn build_index(registry: &Registry) -> Result<IndexNode<'_>> {
     let mut root = IndexNode::Branch(HashMap::new());
     for km in registry.iter() {
-        let Some(store) = &km.store else { continue };
-        let segments: Vec<&str> = store.name.split('.').collect();
-        if segments.iter().any(|s| s.is_empty()) {
-            return Err(dicom_err!(Configuration, "empty path segment in {:?}", store.name));
+        if km.runtime {
+            continue;
         }
-        if store.conditional {
+        let segments: Vec<&str> = km.key.0.split('.').collect();
+        ensure!(
+            !segments.iter().any(|s| s.is_empty()),
+            Configuration,
+            "empty path segment in {:?}",
+            km.key.0
+        );
+        if km.conditional {
             insert_conditional(&mut root, &segments, km)?;
         } else {
             insert_leaf(&mut root, &segments, km)?;
@@ -201,29 +190,25 @@ fn branch_descend<'a, 'n>(
 fn insert_leaf<'a>(root: &mut IndexNode<'a>, segments: &[&str], km: &'a KeyMeta) -> Result<()> {
     let (last, parents) = segments.split_last().expect("non-empty path");
     let map = branch_descend(root, parents)?;
-    if map.contains_key(*last) {
-        return Err(dicom_err!(Configuration, "duplicate configuration path {last:?}"));
-    }
+    ensure!(!map.contains_key(*last), Configuration, "duplicate configuration path {last:?}");
     map.insert((*last).to_string(), IndexNode::Leaf(km));
     Ok(())
 }
 
 fn insert_conditional<'a>(root: &mut IndexNode<'a>, segments: &[&str], km: &'a KeyMeta) -> Result<()> {
-    if segments.len() < 2 {
-        return Err(dicom_err!(
-            Configuration,
-            "conditional key {:?} needs a list path and a key",
-            km.store.as_ref().map(|s| s.name)
-        ));
-    }
+    ensure!(
+        segments.len() >= 2,
+        Configuration,
+        "conditional key {:?} needs a list path and a key",
+        km.key.0
+    );
     let (key_seg, list_path) = segments.split_last().expect("len >= 2");
-    if *key_seg == "when" {
-        return Err(dicom_err!(
-            Configuration,
-            "conditional key must not be named 'when' ({:?})",
-            km.store.as_ref().map(|s| s.name)
-        ));
-    }
+    ensure!(
+        *key_seg != "when",
+        Configuration,
+        "conditional key must not be named 'when' ({:?})",
+        km.key.0
+    );
     let (list_seg, parents) = list_path.split_last().expect("len >= 2");
     let map = branch_descend(root, parents)?;
     let entry = map
@@ -231,9 +216,7 @@ fn insert_conditional<'a>(root: &mut IndexNode<'a>, segments: &[&str], km: &'a K
         .or_insert_with(|| IndexNode::CondList(HashMap::new()));
     match entry {
         IndexNode::CondList(keys) => {
-            if keys.contains_key(*key_seg) {
-                return Err(dicom_err!(Configuration, "duplicate conditional key {key_seg:?}"));
-            }
+            ensure!(!keys.contains_key(*key_seg), Configuration, "duplicate conditional key {key_seg:?}");
             keys.insert((*key_seg).to_string(), km);
             Ok(())
         }
@@ -247,15 +230,11 @@ fn insert_conditional<'a>(root: &mut IndexNode<'a>, segments: &[&str], km: &'a K
 // ── Load context ────────────────────────────────────────────────────────────
 
 struct Accumulator {
-    settings: RefCell<Settings>,
-    conditional: RefCell<ConditionalSettings>,
-    found_version: Cell<Option<u32>>,
+    map: RefCell<Map>,
 }
 
 struct LoadCtx<'a> {
     index: &'a IndexNode<'a>,
-    app_name: &'a str,
-    current_version: u32,
     acc: &'a Accumulator,
 }
 
@@ -296,7 +275,6 @@ impl<'de> serde::Deserialize<'de> for Document {
         let ctx = current_ctx();
         d.deserialize_map(MapWalk {
             branch: root_branch(ctx),
-            is_root: true,
         })?;
         Ok(Document)
     }
@@ -313,8 +291,6 @@ fn root_branch<'a>(ctx: &'a LoadCtx<'a>) -> &'a HashMap<String, IndexNode<'a>> {
 /// happens inside key deserialization so `serde-saphyr` stamps the key's
 /// `line:column` onto any error.
 enum Routed<'a> {
-    App,
-    Version,
     Branch(&'a HashMap<String, IndexNode<'a>>),
     Leaf(&'a KeyMeta),
     Cond(&'a HashMap<String, &'a KeyMeta>),
@@ -322,7 +298,6 @@ enum Routed<'a> {
 
 struct KeySeed<'a> {
     branch: &'a HashMap<String, IndexNode<'a>>,
-    is_root: bool,
 }
 
 impl<'de, 'a> DeserializeSeed<'de> for KeySeed<'a> {
@@ -338,12 +313,6 @@ impl<'de, 'a> Visitor<'de> for KeySeed<'a> {
         write!(f, "a configuration key")
     }
     fn visit_str<E: de::Error>(self, key: &str) -> std::result::Result<Routed<'a>, E> {
-        if self.is_root && key == "app" {
-            return Ok(Routed::App);
-        }
-        if self.is_root && key == "version" {
-            return Ok(Routed::Version);
-        }
         match self.branch.get(key) {
             Some(IndexNode::Branch(child)) => Ok(Routed::Branch(child)),
             Some(IndexNode::Leaf(km)) => Ok(Routed::Leaf(km)),
@@ -369,7 +338,6 @@ fn validate_leaf(km: &KeyMeta, value: &Value) -> std::result::Result<(), String>
 
 struct MapWalk<'a> {
     branch: &'a HashMap<String, IndexNode<'a>>,
-    is_root: bool,
 }
 
 impl<'de, 'a> DeserializeSeed<'de> for MapWalk<'a> {
@@ -386,38 +354,13 @@ impl<'de, 'a> Visitor<'de> for MapWalk<'a> {
     }
     fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> std::result::Result<(), A::Error> {
         let ctx = current_ctx();
-        while let Some(routed) = map.next_key_seed(KeySeed {
-            branch: self.branch,
-            is_root: self.is_root,
-        })? {
+        while let Some(routed) = map.next_key_seed(KeySeed { branch: self.branch })? {
             match routed {
-                Routed::App => {
-                    let got: String = map.next_value()?;
-                    if got != ctx.app_name {
-                        return Err(de::Error::custom(format!(
-                            "configuration is for application {got:?}, expected {:?}",
-                            ctx.app_name
-                        )));
-                    }
-                }
-                Routed::Version => {
-                    let got: u32 = map.next_value()?;
-                    if got > ctx.current_version {
-                        return Err(de::Error::custom(format!(
-                            "configuration version {got} is newer than supported {}",
-                            ctx.current_version
-                        )));
-                    }
-                    ctx.acc.found_version.set(Some(got));
-                }
-                Routed::Branch(child) => map.next_value_seed(MapWalk {
-                    branch: child,
-                    is_root: false,
-                })?,
+                Routed::Branch(child) => map.next_value_seed(MapWalk { branch: child })?,
                 Routed::Leaf(km) => {
-                    let value = map.next_value_seed(ValueSeed::new(&km.value_meta, km.nullable))?;
+                    let value = map.next_value_seed(ValueSeed::new(&km.value_meta))?;
                     validate_leaf(km, &value).map_err(de::Error::custom)?;
-                    ctx.acc.settings.borrow_mut().set(km.key, value);
+                    ctx.acc.map.borrow_mut().add(km.key, value, None);
                 }
                 Routed::Cond(keys) => map.next_value_seed(CondListSeed { keys })?,
             }
@@ -469,7 +412,7 @@ impl<'de, 'a> Visitor<'de> for CondElementSeed<'a> {
     fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> std::result::Result<(), A::Error> {
         let ctx = current_ctx();
         let mut setting: Option<(&KeyMeta, Value)> = None;
-        let mut filter = Filter::default();
+        let mut filter = Condition::default();
 
         while let Some(key) = map.next_key::<String>()? {
             if key == "when" {
@@ -480,7 +423,7 @@ impl<'de, 'a> Visitor<'de> for CondElementSeed<'a> {
                         "a conditional entry must describe exactly one setting",
                     ));
                 }
-                let value = map.next_value_seed(ValueSeed::new(&km.value_meta, km.nullable))?;
+                let value = map.next_value_seed(ValueSeed::new(&km.value_meta))?;
                 validate_leaf(km, &value).map_err(de::Error::custom)?;
                 setting = Some((km, value));
             } else {
@@ -491,57 +434,36 @@ impl<'de, 'a> Visitor<'de> for CondElementSeed<'a> {
         }
 
         let (km, value) = setting.ok_or_else(|| de::Error::custom("conditional entry has no known setting key"))?;
-        let cond_key = filter.into_key(km.key);
-        ctx.acc.conditional.borrow_mut().add(cond_key, value);
+        ctx.acc.map.borrow_mut().add(km.key, value, Some(filter));
         Ok(())
-    }
-}
-
-#[derive(Default)]
-struct Filter {
-    peer_aet: Option<String>,
-    local_aet: Option<String>,
-    peer_ip: Option<IpAddr>,
-    local_ip: Option<IpAddr>,
-    local_port: Option<u16>,
-}
-
-impl Filter {
-    fn into_key(self, key: Key) -> ConditionalKey {
-        ConditionalKey {
-            key,
-            peer_aet: self.peer_aet.map(Cow::Owned),
-            local_aet: self.local_aet.map(Cow::Owned),
-            peer_ip: self.peer_ip,
-            local_ip: self.local_ip,
-            local_port: self.local_port,
-        }
     }
 }
 
 struct FilterSeed;
 
 impl<'de> DeserializeSeed<'de> for FilterSeed {
-    type Value = Filter;
-    fn deserialize<D: Deserializer<'de>>(self, d: D) -> std::result::Result<Filter, D::Error> {
+    type Value = Condition;
+    fn deserialize<D: Deserializer<'de>>(self, d: D) -> std::result::Result<Condition, D::Error> {
         d.deserialize_map(self)
     }
 }
 
 impl<'de> Visitor<'de> for FilterSeed {
-    type Value = Filter;
+    type Value = Condition;
     fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "a 'when' filter object")
     }
-    fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> std::result::Result<Filter, A::Error> {
-        let mut filter = Filter::default();
+    fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> std::result::Result<Condition, A::Error> {
+        let mut filter = Condition::default();
         while let Some(key) = map.next_key::<String>()? {
             match key.as_str() {
+                "is_tls_used" => filter.is_tls_used = Some(map.next_value()?),
+                "is_incoming" => filter.is_incoming = Some(map.next_value()?),
+                "is_virtual" => filter.is_virtual = Some(map.next_value()?),
                 "peer_aet" => filter.peer_aet = Some(map.next_value()?),
                 "local_aet" => filter.local_aet = Some(map.next_value()?),
-                "peer_ip" => filter.peer_ip = Some(parse_ip(&map.next_value::<String>()?)?),
-                "local_ip" => filter.local_ip = Some(parse_ip(&map.next_value::<String>()?)?),
-                "local_port" => filter.local_port = Some(map.next_value()?),
+                "peer_network" => filter.peer_network = Some(parse_ip(&map.next_value::<String>()?)?),
+                "local_network" => filter.local_network = Some(parse_ip(&map.next_value::<String>()?)?),
                 other => {
                     return Err(de::Error::custom(format!("unknown 'when' filter {other:?}")));
                 }
@@ -551,21 +473,22 @@ impl<'de> Visitor<'de> for FilterSeed {
     }
 }
 
-fn parse_ip<E: de::Error>(s: &str) -> std::result::Result<IpAddr, E> {
-    s.parse()
-        .map_err(|_| de::Error::custom(format!("invalid IP address {s:?}")))
+fn parse_ip<E: de::Error>(s: &str) -> std::result::Result<Network, E> {
+    let definition = s
+        .parse::<NetworkDefinition>()
+        .map_err(|e| de::Error::custom(format!("{e}")))?;
+    definition.resolve_sync().map_err(|e| de::Error::custom(format!("{e}")))
 }
 
 // ── Value mapping ───────────────────────────────────────────────────────────
 
 struct ValueSeed<'a> {
     meta: &'a ValueMeta,
-    nullable: bool,
 }
 
 impl<'a> ValueSeed<'a> {
-    fn new(meta: &'a ValueMeta, nullable: bool) -> ValueSeed<'a> {
-        ValueSeed { meta, nullable }
+    fn new(meta: &'a ValueMeta) -> ValueSeed<'a> {
+        ValueSeed { meta }
     }
 }
 
@@ -573,22 +496,18 @@ impl<'de, 'a> DeserializeSeed<'de> for ValueSeed<'a> {
     type Value = Value;
     fn deserialize<D: Deserializer<'de>>(self, d: D) -> std::result::Result<Value, D::Error> {
         if let ValueMeta::Complex { ty, .. } = self.meta {
-            let node = ConfigNode::deserialize(d)?;
+            let node = ComplexConfigNode::deserialize(d)?;
             return ty
                 .decode(&node)
                 .map(Value::Complex)
                 .map_err(|e| de::Error::custom(format!("{e}")));
         }
-        d.deserialize_any(MetaVisitor {
-            meta: self.meta,
-            nullable: self.nullable,
-        })
+        d.deserialize_any(MetaVisitor { meta: self.meta })
     }
 }
 
 struct MetaVisitor<'a> {
     meta: &'a ValueMeta,
-    nullable: bool,
 }
 
 impl<'a> MetaVisitor<'a> {
@@ -606,8 +525,8 @@ impl<'de, 'a> Visitor<'de> for MetaVisitor<'a> {
 
     fn visit_bool<E: de::Error>(self, v: bool) -> std::result::Result<Value, E> {
         match self.meta {
-            ValueMeta::Bool => Ok(Value::Bool(v)),
-            ValueMeta::Vec { items, .. } => single_vec(items, Value::Bool(v)),
+            ValueMeta::Bool { .. } => Ok(Value::Bool(v)),
+            ValueMeta::Vec { .. } => Ok(Value::Vec(vec![Value::Bool(v)])),
             _ => Err(self.mismatch("a boolean")),
         }
     }
@@ -615,7 +534,7 @@ impl<'de, 'a> Visitor<'de> for MetaVisitor<'a> {
     fn visit_i64<E: de::Error>(self, v: i64) -> std::result::Result<Value, E> {
         match self.meta {
             ValueMeta::Int { .. } => Ok(Value::Int(v)),
-            ValueMeta::Vec { items, .. } => single_vec(items, scalar_int(items, v)?),
+            ValueMeta::Vec { items, .. } => Ok(Value::Vec(vec![scalar_int(items, v)?])),
             _ => Err(self.mismatch("an integer")),
         }
     }
@@ -637,7 +556,7 @@ impl<'de, 'a> Visitor<'de> for MetaVisitor<'a> {
     }
 
     fn visit_unit<E: de::Error>(self) -> std::result::Result<Value, E> {
-        if self.nullable {
+        if self.meta.is_nullable() {
             Ok(Value::Null)
         } else {
             Err(de::Error::custom("value must not be null"))
@@ -653,7 +572,7 @@ impl<'de, 'a> Visitor<'de> for MetaVisitor<'a> {
             return Err(self.mismatch("a list"));
         };
         let mut out = Vec::new();
-        while let Some(v) = seq.next_element_seed(ValueSeed::new(items, false))? {
+        while let Some(v) = seq.next_element_seed(ValueSeed::new(items))? {
             out.push(v);
         }
         Ok(Value::Vec(out))
@@ -661,19 +580,12 @@ impl<'de, 'a> Visitor<'de> for MetaVisitor<'a> {
 
     fn visit_map<A: MapAccess<'de>>(self, map: A) -> std::result::Result<Value, A::Error> {
         match self.meta {
-            ValueMeta::Object { items, .. } => visit_object(items, map),
+            ValueMeta::Object { meta: items, .. } => visit_object(items, map),
             ValueMeta::Map { values, .. } => visit_value_map(values, map),
             ValueMeta::File { .. } => visit_file_map(map),
             _ => Err(self.mismatch("an object")),
         }
     }
-}
-
-/// Wraps a single value into a one-element vector (scalar-to-list coercion).
-fn single_vec<E: de::Error>(items: &ValueMeta, v: Value) -> std::result::Result<Value, E> {
-    // The item meta must accept the value; it was produced for that meta below.
-    let _ = items;
-    Ok(Value::Vec(vec![v]))
 }
 
 fn scalar_int<E: de::Error>(items: &ValueMeta, v: i64) -> std::result::Result<Value, E> {
@@ -689,10 +601,21 @@ enum ScalarErr {
 }
 
 /// Maps a YAML scalar string to a [`Value`] according to `meta`.
+///
+/// Fields whose meta opts into substitution have `$VAR`/`${VAR}` expanded
+/// through the global [`SubstVars`] before mapping. The `Vec` arm recurses with
+/// the item meta, so list elements expand based on the item's flag, not the list's.
 fn scalar_str(meta: &ValueMeta, v: &str) -> std::result::Result<Value, ScalarErr> {
+    let substituted;
+    let v: &str = if meta.is_support_subst() {
+        substituted = SubstVars::current().expand(v);
+        &substituted
+    } else {
+        v
+    };
     match meta {
         ValueMeta::String { .. } => Ok(Value::String(v.to_string())),
-        ValueMeta::Enum { one_of } => one_of
+        ValueMeta::Enum { one_of, .. } => one_of
             .iter()
             .find(|(_, name, _)| *name == v)
             .map(|(code, _, _)| Value::Enum(code))
@@ -710,8 +633,24 @@ fn scalar_str(meta: &ValueMeta, v: &str) -> std::result::Result<Value, ScalarErr
             .map_err(|e| ScalarErr::Custom(format!("invalid VR {v:?}: {e}"))),
         ValueMeta::File { .. } => Ok(Value::File(ValueFile::Name {
             path: v.to_string(),
-            auto_reload: false,
+            hot_reload: false,
         })),
+        ValueMeta::Network { .. } => v
+            .parse::<NetworkDefinition>()
+            .and_then(|d| d.resolve_sync())
+            .map(Value::Network)
+            .map_err(|e| ScalarErr::Custom(format!("invalid network {v:?}: {e}"))),
+        ValueMeta::Host { default_port, .. } => {
+            let mut def = v
+                .parse::<HostDefinition>()
+                .map_err(|e| ScalarErr::Custom(format!("invalid host {v:?}: {e}")))?;
+            if let Some(port) = default_port {
+                def.set_default_port(*port);
+            }
+            def.resolve_sync()
+                .map(Value::Host)
+                .map_err(|e| ScalarErr::Custom(format!("invalid host {v:?}: {e}")))
+        }
         ValueMeta::Vec { items, .. } => {
             let item = scalar_str(items, v)?;
             Ok(Value::Vec(vec![item]))
@@ -722,25 +661,25 @@ fn scalar_str(meta: &ValueMeta, v: &str) -> std::result::Result<Value, ScalarErr
 
 /// Builds a nested [`Value::Object`] from a YAML map routed by `items`.
 fn visit_object<'de, A: MapAccess<'de>>(items: &'static [KeyMeta], mut map: A) -> std::result::Result<Value, A::Error> {
-    let mut nested = Settings::new();
+    let mut nested = Map::new();
     while let Some(key) = map.next_key::<String>()? {
         let km = items
             .iter()
-            .find(|k| k.store.as_ref().is_some_and(|s| s.name == key))
+            .find(|k| k.key.0 == key)
             .ok_or_else(|| de::Error::custom(format!("unknown field {key:?}")))?;
-        let value = map.next_value_seed(ValueSeed::new(&km.value_meta, km.nullable))?;
+        let value = map.next_value_seed(ValueSeed::new(&km.value_meta))?;
         validate_leaf(km, &value).map_err(de::Error::custom)?;
-        nested.set(km.key, value);
+        nested.add(km.key, value, None);
     }
-    let registry = Arc::new(Registry::new_from(items));
-    Ok(Value::Object(Config::builder(registry).settings(nested).build()))
+    let registry = Arc::new(Registry::new_from_meta(items));
+    Ok(Value::Object(Config::new(OBJECT_LAYER_ID, registry, nested)))
 }
 
 /// Builds a [`Value::Map`] of string keys to values typed by `values`.
 fn visit_value_map<'de, A: MapAccess<'de>>(values: &ValueMeta, mut map: A) -> std::result::Result<Value, A::Error> {
     let mut out = crate::Map::new();
     while let Some(key) = map.next_key::<String>()? {
-        let value = map.next_value_seed(ValueSeed::new(values, false))?;
+        let value = map.next_value_seed(ValueSeed::new(values))?;
         out.insert(key, value);
     }
     Ok(Value::Map(out))
@@ -762,7 +701,7 @@ fn visit_file_map<'de, A: MapAccess<'de>>(mut map: A) -> std::result::Result<Val
     match (path, content) {
         (Some(p), None) => Ok(Value::File(ValueFile::Name {
             path: p,
-            auto_reload: reload,
+            hot_reload: reload,
         })),
         (None, Some(c)) => Ok(Value::File(ValueFile::Content(c.into_bytes()))),
         (Some(_), Some(_)) => Err(de::Error::custom("file has both a path and inline content")),
@@ -772,7 +711,7 @@ fn visit_file_map<'de, A: MapAccess<'de>>(mut map: A) -> std::result::Result<Val
 
 // ── ConfigNode deserialization (for Complex values) ─────────────────────────
 
-impl<'de> serde::Deserialize<'de> for ConfigNode {
+impl<'de> serde::Deserialize<'de> for ComplexConfigNode {
     fn deserialize<D: Deserializer<'de>>(d: D) -> std::result::Result<Self, D::Error> {
         d.deserialize_any(ConfigNodeVisitor)
     }
@@ -781,50 +720,50 @@ impl<'de> serde::Deserialize<'de> for ConfigNode {
 struct ConfigNodeVisitor;
 
 impl<'de> Visitor<'de> for ConfigNodeVisitor {
-    type Value = ConfigNode;
+    type Value = ComplexConfigNode;
     fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "any YAML value")
     }
-    fn visit_bool<E: de::Error>(self, v: bool) -> std::result::Result<ConfigNode, E> {
-        Ok(ConfigNode::Bool(v))
+    fn visit_bool<E: de::Error>(self, v: bool) -> std::result::Result<ComplexConfigNode, E> {
+        Ok(ComplexConfigNode::Bool(v))
     }
-    fn visit_i64<E: de::Error>(self, v: i64) -> std::result::Result<ConfigNode, E> {
-        Ok(ConfigNode::Int(v))
+    fn visit_i64<E: de::Error>(self, v: i64) -> std::result::Result<ComplexConfigNode, E> {
+        Ok(ComplexConfigNode::Int(v))
     }
-    fn visit_u64<E: de::Error>(self, v: u64) -> std::result::Result<ConfigNode, E> {
-        Ok(ConfigNode::Int(i64::try_from(v).unwrap_or(i64::MAX)))
+    fn visit_u64<E: de::Error>(self, v: u64) -> std::result::Result<ComplexConfigNode, E> {
+        Ok(ComplexConfigNode::Int(i64::try_from(v).unwrap_or(i64::MAX)))
     }
-    fn visit_f64<E: de::Error>(self, v: f64) -> std::result::Result<ConfigNode, E> {
-        Ok(ConfigNode::Float(v))
+    fn visit_f64<E: de::Error>(self, v: f64) -> std::result::Result<ComplexConfigNode, E> {
+        Ok(ComplexConfigNode::Float(v))
     }
-    fn visit_str<E: de::Error>(self, v: &str) -> std::result::Result<ConfigNode, E> {
-        Ok(ConfigNode::Str(v.to_string()))
+    fn visit_str<E: de::Error>(self, v: &str) -> std::result::Result<ComplexConfigNode, E> {
+        Ok(ComplexConfigNode::Str(v.to_string()))
     }
-    fn visit_string<E: de::Error>(self, v: String) -> std::result::Result<ConfigNode, E> {
-        Ok(ConfigNode::Str(v))
+    fn visit_string<E: de::Error>(self, v: String) -> std::result::Result<ComplexConfigNode, E> {
+        Ok(ComplexConfigNode::Str(v))
     }
-    fn visit_unit<E: de::Error>(self) -> std::result::Result<ConfigNode, E> {
-        Ok(ConfigNode::Null)
+    fn visit_unit<E: de::Error>(self) -> std::result::Result<ComplexConfigNode, E> {
+        Ok(ComplexConfigNode::Null)
     }
-    fn visit_none<E: de::Error>(self) -> std::result::Result<ConfigNode, E> {
-        Ok(ConfigNode::Null)
+    fn visit_none<E: de::Error>(self) -> std::result::Result<ComplexConfigNode, E> {
+        Ok(ComplexConfigNode::Null)
     }
-    fn visit_some<D: Deserializer<'de>>(self, d: D) -> std::result::Result<ConfigNode, D::Error> {
-        ConfigNode::deserialize(d)
+    fn visit_some<D: Deserializer<'de>>(self, d: D) -> std::result::Result<ComplexConfigNode, D::Error> {
+        ComplexConfigNode::deserialize(d)
     }
-    fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> std::result::Result<ConfigNode, A::Error> {
+    fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> std::result::Result<ComplexConfigNode, A::Error> {
         let mut out = Vec::new();
-        while let Some(v) = seq.next_element::<ConfigNode>()? {
+        while let Some(v) = seq.next_element::<ComplexConfigNode>()? {
             out.push(v);
         }
-        Ok(ConfigNode::Seq(out))
+        Ok(ComplexConfigNode::Seq(out))
     }
-    fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> std::result::Result<ConfigNode, A::Error> {
+    fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> std::result::Result<ComplexConfigNode, A::Error> {
         let mut out = Vec::new();
-        while let Some((k, v)) = map.next_entry::<String, ConfigNode>()? {
+        while let Some((k, v)) = map.next_entry::<String, ComplexConfigNode>()? {
             out.push((k, v));
         }
-        Ok(ConfigNode::Map(out))
+        Ok(ComplexConfigNode::Map(out))
     }
 }
 
@@ -833,49 +772,51 @@ impl<'de> Visitor<'de> for ConfigNodeVisitor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::meta::{EditName, MaybeGenerated, StoreConcept};
-    use crate::config::settings::MatchAttributes;
-
-    const fn sc(name: &'static str, conditional: bool) -> Option<StoreConcept> {
-        Some(StoreConcept { name, conditional })
-    }
+    use crate::config::meta::{EditName, MaybeGenerated, ValueDefault};
+    use crate::config::{ConfigValues, Key};
+    use crate::network::AssocDescription;
 
     static STRING_ITEM: ValueMeta = ValueMeta::String {
         regexp: None,
-        min_length: None,
-        max_length: None,
-        support_subst: false,
+        min: None,
+        max: None,
+        subst: false,
+        nullable: false,
     };
 
     static LISTEN_ITEMS: [KeyMeta; 2] = [
         KeyMeta {
-            key: Key::new("t.obj", 0),
+            key: Key::new("addr"),
             edit: None,
-            store: sc("addr", false),
-            nullable: false,
-            default: None,
+            conditional: false,
+            runtime: false,
+            default: ValueDefault::Default,
             value_meta: ValueMeta::String {
                 regexp: None,
-                min_length: None,
-                max_length: None,
-                support_subst: false,
+                min: None,
+                max: None,
+                subst: false,
+                nullable: false,
             },
         },
         KeyMeta {
-            key: Key::new("t.obj", 1),
+            key: Key::new("port"),
             edit: None,
-            store: sc("port", false),
-            nullable: true,
-            default: None,
+            conditional: false,
+            runtime: false,
+            default: ValueDefault::Default,
             value_meta: ValueMeta::Int {
                 min: Some(0),
                 max: Some(65535),
+                subst: false,
+                nullable: true,
             },
         },
     ];
     static LISTEN_OBJ: ValueMeta = ValueMeta::Object {
-        items: &LISTEN_ITEMS,
+        meta: &LISTEN_ITEMS,
         validate: |_| Ok(()),
+        nullable: false,
     };
 
     static ENC_CHOICES: [(u32, &str, EditName); 2] = [
@@ -899,90 +840,100 @@ mod tests {
         ),
     ];
 
-    const K_ARTIM: Key = Key::new("t", 0);
-    const K_MAX: Key = Key::new("t", 1);
-    const K_LOCAL_AET: Key = Key::new("t", 2);
-    const K_LISTEN: Key = Key::new("t", 3);
-    const K_MODE: Key = Key::new("t", 4);
-    const K_DELIM: Key = Key::new("t", 5);
+    const K_ARTIM: Key = Key::new("dicom.association.artim_timeout");
+    const K_MAX: Key = Key::new("dicom.association.max");
+    const K_LOCAL_AET: Key = Key::new("dicom.local_aet");
+    const K_LISTEN: Key = Key::new("dicom.listen");
+    const K_MODE: Key = Key::new("mode");
+    const K_DELIM: Key = Key::new("delimiters");
 
     static METAS: [KeyMeta; 6] = [
         KeyMeta {
             key: K_ARTIM,
             edit: None,
-            store: sc("dicom.association.artim_timeout", true),
-            nullable: false,
-            default: None,
-            value_meta: ValueMeta::Duration { min: None, max: None },
+            conditional: true,
+            runtime: false,
+            default: ValueDefault::Default,
+            value_meta: ValueMeta::Duration {
+                min: None,
+                max: None,
+                subst: false,
+                nullable: false,
+            },
         },
         KeyMeta {
             key: K_MAX,
             edit: None,
-            store: sc("dicom.association.max", true),
-            nullable: false,
-            default: None,
+            conditional: true,
+            runtime: false,
+            default: ValueDefault::Default,
             value_meta: ValueMeta::Int {
                 min: Some(0),
                 max: None,
+                subst: false,
+                nullable: false,
             },
         },
         KeyMeta {
             key: K_LOCAL_AET,
             edit: None,
-            store: sc("dicom.local_aet", false),
-            nullable: false,
-            default: None,
+            conditional: false,
+            runtime: false,
+            default: ValueDefault::Default,
             value_meta: ValueMeta::Vec {
                 items: &STRING_ITEM,
                 min_length: None,
                 max_length: None,
                 stride: None,
+                nullable: false,
             },
         },
         KeyMeta {
             key: K_LISTEN,
             edit: None,
-            store: sc("dicom.listen", false),
-            nullable: false,
-            default: None,
+            conditional: false,
+            runtime: false,
+            default: ValueDefault::Default,
             value_meta: ValueMeta::Vec {
                 items: &LISTEN_OBJ,
                 min_length: None,
                 max_length: None,
                 stride: None,
+                nullable: false,
             },
         },
         KeyMeta {
             key: K_MODE,
             edit: None,
-            store: sc("mode", false),
-            nullable: false,
-            default: None,
+            conditional: false,
+            runtime: false,
+            default: ValueDefault::Default,
             value_meta: ValueMeta::Enum {
                 one_of: MaybeGenerated::Static(&ENC_CHOICES),
+                subst: false,
+                nullable: false,
             },
         },
         KeyMeta {
             key: K_DELIM,
             edit: None,
-            store: sc("delimiters", false),
-            nullable: false,
-            default: None,
+            conditional: false,
+            runtime: false,
+            default: ValueDefault::Default,
             value_meta: ValueMeta::Map {
                 values: &STRING_ITEM,
                 min_length: None,
                 max_length: None,
+                nullable: false,
             },
         },
     ];
 
     fn loader() -> YamlLoader {
-        YamlLoader::new(Arc::new(Registry::new_from(&METAS)), "testapp", 1)
+        YamlLoader::new(Arc::new(Registry::new_from_meta(&METAS)))
     }
 
     const DOC: &str = "\
-app: testapp
-version: 1
 mode: fix
 dicom:
   local_aet:
@@ -1003,46 +954,45 @@ dicom:
     #[test]
     fn loads_scalars_lists_objects_and_conditionals() {
         let cfg = loader().load_str(DOC).expect("load");
-        let none = MatchAttributes::default();
 
         // Enum mapped by store name.
-        assert!(matches!(cfg.get(&K_MODE, &none), Some(Value::Enum(1))));
+        assert!(matches!(cfg.config_get(&K_MODE, None), Some(Value::Enum(1))));
 
         // Scalar-or-list: explicit list of strings.
-        match cfg.get(&K_LOCAL_AET, &none) {
+        match cfg.config_get(&K_LOCAL_AET, None) {
             Some(Value::Vec(v)) => assert_eq!(v.len(), 2),
             other => panic!("local_aet: {other:?}"),
         }
 
         // Vec of objects with a nullable field omitted in the 2nd element.
-        match cfg.get(&K_LISTEN, &none) {
+        match cfg.config_get(&K_LISTEN, None) {
             Some(Value::Vec(v)) => assert_eq!(v.len(), 2),
             other => panic!("listen: {other:?}"),
         }
 
         // Conditional duration (unconditional entry).
         assert!(matches!(
-            cfg.get(&K_ARTIM, &none),
+            cfg.config_get(&K_ARTIM, None),
             Some(Value::Duration(d)) if d.as_secs() == 10
         ));
 
         // Conditional int: base entry without `when`.
-        assert!(matches!(cfg.get(&K_MAX, &none), Some(Value::Int(5))));
+        assert!(matches!(cfg.config_get(&K_MAX, None), Some(Value::Int(5))));
 
         // Conditional int: peer-specific override wins for matching peer.
-        let peer = MatchAttributes {
-            peer_aet: Some("PEER"),
+        let peer = AssocDescription {
+            peer_aet: Some("PEER".into()),
             ..Default::default()
         };
-        assert!(matches!(cfg.get(&K_MAX, &peer), Some(Value::Int(50))));
+        assert!(matches!(cfg.config_get(&K_MAX, Some(&peer)), Some(Value::Int(50))));
     }
 
     #[test]
     fn loads_string_keyed_map() {
         let cfg = loader()
-            .load_str("app: testapp\ndelimiters:\n  PN: \"^\"\n  DA: \".\"\n")
+            .load_str("delimiters:\n  PN: \"^\"\n  DA: \".\"\n")
             .expect("load");
-        match cfg.get(&K_DELIM, &MatchAttributes::default()) {
+        match cfg.config_get(&K_DELIM, None) {
             Some(Value::Map(m)) => {
                 assert_eq!(m.len(), 2);
                 assert!(matches!(m.get("PN"), Some(Value::String(s)) if s == "^"));
@@ -1054,10 +1004,8 @@ dicom:
 
     #[test]
     fn scalar_coerces_to_single_element_list() {
-        let cfg = loader()
-            .load_str("app: testapp\ndicom:\n  local_aet: SOLE\n")
-            .expect("load");
-        match cfg.get(&K_LOCAL_AET, &MatchAttributes::default()) {
+        let cfg = loader().load_str("dicom:\n  local_aet: SOLE\n").expect("load");
+        match cfg.config_get(&K_LOCAL_AET, None) {
             Some(Value::Vec(v)) => {
                 assert_eq!(v.len(), 1);
                 assert!(matches!(&v[0], Value::String(s) if s == "SOLE"));
@@ -1068,36 +1016,222 @@ dicom:
 
     #[test]
     fn unknown_key_reports_location() {
-        let err = loader().load_str("app: testapp\nbogus: 1\n").unwrap_err();
+        let err = loader().load_str("bogus: 1\n").unwrap_err();
         let msg = format!("{err}");
-        assert!(msg.contains("line 2"), "missing location: {msg}");
+        assert!(msg.contains("line 1"), "missing location: {msg}");
         assert!(msg.contains("bogus"), "missing key: {msg}");
     }
 
     #[test]
     fn bad_enum_value_reports_location() {
-        let err = loader().load_str("app: testapp\nmode: nope\n").unwrap_err();
+        let err = loader().load_str("mode: nope\n").unwrap_err();
         let msg = format!("{err}");
-        assert!(msg.contains("line 2"), "missing location: {msg}");
-    }
-
-    #[test]
-    fn app_mismatch_fails() {
-        let err = loader().load_str("app: other\n").unwrap_err();
-        assert!(format!("{err}").contains("other"));
-    }
-
-    #[test]
-    fn newer_version_fails() {
-        let err = loader().load_str("app: testapp\nversion: 99\n").unwrap_err();
-        assert!(format!("{err}").contains("newer"));
+        assert!(msg.contains("line 1"), "missing location: {msg}");
     }
 
     #[test]
     fn unexpected_key_in_conditional_entry_fails() {
         let err = loader()
-            .load_str("app: testapp\ndicom:\n  association:\n    - max: 5\n      bogus: 1\n")
+            .load_str("dicom:\n  association:\n    - max: 5\n      bogus: 1\n")
             .unwrap_err();
         assert!(format!("{err}").contains("bogus"));
+    }
+
+    // A `null` element is accepted only when the item meta is itself nullable —
+    // the loader now derives nullability from the item `ValueMeta`, not a flag
+    // hard-coded to `false`.
+    #[test]
+    fn subst_expands_only_when_meta_opts_in() {
+        let _guard = super::super::subst::lock_global_for_test();
+        static SUBST_ITEM: ValueMeta = ValueMeta::String {
+            regexp: None,
+            min: None,
+            max: None,
+            subst: true,
+            nullable: false,
+        };
+        static SUBST_METAS: [KeyMeta; 2] = [
+            KeyMeta {
+                key: Key::new("greeting"),
+                edit: None,
+                conditional: false,
+                runtime: false,
+                default: ValueDefault::Default,
+                value_meta: ValueMeta::String {
+                    regexp: None,
+                    min: None,
+                    max: None,
+                    subst: true,
+                    nullable: false,
+                },
+            },
+            // List whose items opt into substitution; coercion of a bare scalar
+            // must still expand via the item meta.
+            KeyMeta {
+                key: Key::new("names"),
+                edit: None,
+                conditional: false,
+                runtime: false,
+                default: ValueDefault::Default,
+                value_meta: ValueMeta::Vec {
+                    items: &SUBST_ITEM,
+                    min_length: None,
+                    max_length: None,
+                    stride: None,
+                    nullable: false,
+                },
+            },
+        ];
+        // A non-subst field must be left untouched.
+        static PLAIN_METAS: [KeyMeta; 1] = [KeyMeta {
+            key: Key::new("greeting"),
+            edit: None,
+            conditional: false,
+            runtime: false,
+            default: ValueDefault::Default,
+            value_meta: ValueMeta::String {
+                regexp: None,
+                min: None,
+                max: None,
+                subst: false,
+                nullable: false,
+            },
+        }];
+
+        SubstVars::install(Arc::new(SubstVars::builder().var("WHO", "world").build()));
+
+        let cfg = YamlLoader::new(Arc::new(Registry::new_from_meta(&SUBST_METAS)))
+            .load_str("greeting: hi $WHO\nnames: $WHO\n")
+            .expect("load");
+        assert!(matches!(cfg.config_get(&Key::new("greeting"), None), Some(Value::String(s)) if s == "hi world"));
+        match cfg.config_get(&Key::new("names"), None) {
+            Some(Value::Vec(v)) => assert!(matches!(&v[0], Value::String(s) if s == "world")),
+            other => panic!("names: {other:?}"),
+        }
+
+        let cfg = YamlLoader::new(Arc::new(Registry::new_from_meta(&PLAIN_METAS)))
+            .load_str("greeting: hi $WHO\n")
+            .expect("load");
+        assert!(matches!(cfg.config_get(&Key::new("greeting"), None), Some(Value::String(s)) if s == "hi $WHO"));
+    }
+
+    #[test]
+    fn network_and_host_parse_from_string_literals() {
+        let _guard = super::super::subst::lock_global_for_test();
+        static NET_HOST: [KeyMeta; 2] = [
+            KeyMeta {
+                key: Key::new("bind"),
+                edit: None,
+                conditional: false,
+                runtime: false,
+                default: ValueDefault::Default,
+                value_meta: ValueMeta::Network {
+                    domain: true,
+                    unix: true,
+                    v4: true,
+                    v6: true,
+                    subst: true,
+                    nullable: true,
+                },
+            },
+            KeyMeta {
+                key: Key::new("peer"),
+                edit: None,
+                conditional: false,
+                runtime: false,
+                default: ValueDefault::Default,
+                value_meta: ValueMeta::Host {
+                    domain: true,
+                    unix: true,
+                    v4: true,
+                    v6: true,
+                    default_port: Some(104),
+                    subst: false,
+                    nullable: true,
+                },
+            },
+        ];
+
+        SubstVars::install(Arc::new(SubstVars::builder().var("NET", "127.0.0.1/24").build()));
+
+        let cfg = YamlLoader::new(Arc::new(Registry::new_from_meta(&NET_HOST)))
+            .load_str("bind: $NET\npeer: 10.0.0.1\n")
+            .expect("load");
+
+        // Network: substituted then parsed.
+        match cfg.config_get(&Key::new("bind"), None) {
+            Some(Value::Network(n)) => assert_eq!(format!("{}", n.definition), "127.0.0.1/24"),
+            other => panic!("bind: {other:?}"),
+        }
+        // Host: default_port from the meta is applied when omitted.
+        match cfg.config_get(&Key::new("peer"), None) {
+            Some(Value::Host(h)) => {
+                assert!(matches!(
+                    h.definition,
+                    crate::network::HostDefinition::Ip { port: Some(104), .. }
+                ));
+            }
+            other => panic!("peer: {other:?}"),
+        }
+
+        // A malformed literal is rejected.
+        let err = YamlLoader::new(Arc::new(Registry::new_from_meta(&NET_HOST)))
+            .load_str("bind: not a network!!\npeer: 10.0.0.1\n")
+            .unwrap_err();
+        assert!(format!("{err}").contains("network"));
+    }
+
+    #[test]
+    fn vec_item_nullability_comes_from_item_meta() {
+        static NULLABLE_STR_ITEM: ValueMeta = ValueMeta::String {
+            regexp: None,
+            min: None,
+            max: None,
+            subst: false,
+            nullable: true,
+        };
+        static NULL_LIST: [KeyMeta; 1] = [KeyMeta {
+            key: Key::new("names"),
+            edit: None,
+            conditional: false,
+            runtime: false,
+            default: ValueDefault::Default,
+            value_meta: ValueMeta::Vec {
+                items: &NULLABLE_STR_ITEM,
+                min_length: None,
+                max_length: None,
+                stride: None,
+                nullable: false,
+            },
+        }];
+
+        let loader = YamlLoader::new(Arc::new(Registry::new_from_meta(&NULL_LIST)));
+        let cfg = loader.load_str("names:\n  - A\n  - null\n").expect("load");
+        match cfg.config_get(&Key::new("names"), None) {
+            Some(Value::Vec(v)) => {
+                assert_eq!(v.len(), 2);
+                assert!(matches!(&v[0], Value::String(s) if s == "A"));
+                assert!(matches!(&v[1], Value::Null));
+            }
+            other => panic!("names: {other:?}"),
+        }
+
+        // A non-nullable item rejects `null`.
+        static PLAIN_LIST: [KeyMeta; 1] = [KeyMeta {
+            key: Key::new("names"),
+            edit: None,
+            conditional: false,
+            runtime: false,
+            default: ValueDefault::Default,
+            value_meta: ValueMeta::Vec {
+                items: &STRING_ITEM,
+                min_length: None,
+                max_length: None,
+                stride: None,
+                nullable: false,
+            },
+        }];
+        let loader = YamlLoader::new(Arc::new(Registry::new_from_meta(&PLAIN_LIST)));
+        assert!(loader.load_str("names:\n  - A\n  - null\n").is_err());
     }
 }

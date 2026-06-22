@@ -3,7 +3,7 @@
 use core::fmt;
 
 use crate::{
-    dicom_err,
+    dicom_err, ensure_eq,
     error::{DicomError, Result},
 };
 
@@ -689,13 +689,13 @@ impl From<Vr> for String {
 impl TryFrom<&[u8]> for Vr {
     type Error = DicomError;
     fn try_from(value: &[u8]) -> Result<Self> {
-        if value.len() != 2 {
-            return Err(dicom_err!(
-                InvalidData,
-                "VR code must be exactly 2 bytes, got {}",
-                value.len()
-            ));
-        }
+        ensure_eq!(
+            value.len(),
+            2,
+            InvalidData,
+            "VR code must be exactly 2 bytes, got {}",
+            value.len()
+        );
         let all = Self::all();
         match all.binary_search_by(|v| v.code.as_ref().cmp(value)) {
             Ok(idx) => Ok(all[idx].vr),
@@ -718,13 +718,13 @@ impl TryFrom<[u8; 2]> for Vr {
 impl TryFrom<&str> for Vr {
     type Error = DicomError;
     fn try_from(value: &str) -> Result<Self> {
-        if value.len() != 2 {
-            return Err(dicom_err!(
-                InvalidData,
-                "VR code must be exactly 2 bytes, got {}",
-                value.len()
-            ));
-        }
+        ensure_eq!(
+            value.len(),
+            2,
+            InvalidData,
+            "VR code must be exactly 2 bytes, got {}",
+            value.len()
+        );
         let all = Self::all();
         match all.binary_search_by(|v| v.code.as_ref().cmp(value.as_bytes())) {
             Ok(idx) => Ok(all[idx].vr),

@@ -1,5 +1,5 @@
 use super::{Value, ValueFile, meta::FileType, meta::KeyMeta, meta::ValueMeta};
-use crate::{DicomError, ErrContext, Result, dicom_err};
+use crate::{DicomError, ErrContext, Result, dicom_err, ensure};
 
 #[derive(Debug, PartialEq, PartialOrd, Ord, Eq)]
 struct DisplayDuration(std::time::Duration);
@@ -12,8 +12,8 @@ impl std::fmt::Display for DisplayDuration {
 
 pub struct Validator<'a> {
     pub key_meta: &'a KeyMeta,
-    pub value_meta: &'a ValueMeta,
     pub vec_index: Option<usize>,
+    pub value_meta: &'a ValueMeta,
     pub map_key: Option<&'a str>,
     pub file: Option<(&'a str, usize)>,
     pub parent: Option<&'a Validator<'a>>,
@@ -37,31 +37,24 @@ impl<'a> std::fmt::Display for Validator<'a> {
 
 impl<'a> Validator<'a> {
     pub fn validate(&self, value: &Value) -> Result {
-        self.validate_nullable(value).map_err(|e| self.extend_error(e))?;
+        if matches!(value, Value::Null) {
+            ensure!(self.value_meta.is_nullable(), Configuration, "not nullable");
+            return Ok(());
+        }
         self.validate_value(value).map_err(|e| self.extend_error(e))?;
 
         Ok(())
     }
 
-    fn validate_nullable(&self, value: &Value) -> Result {
-        if let Value::Null = value
-            && !self.key_meta.nullable
-        {
-            Err(dicom_err!(Configuration, "not nullable"))
-        } else {
-            Ok(())
-        }
-    }
-
     fn validate_value(&self, value: &Value) -> Result {
         match (&self.value_meta, value) {
-            (ValueMeta::Bool, Value::Bool(_)) => Ok(()),
+            (ValueMeta::Bool { .. }, Value::Bool(_)) => Ok(()),
 
             (
                 ValueMeta::String {
                     regexp,
-                    min_length,
-                    max_length,
+                    min: min_length,
+                    max: max_length,
                     ..
                 },
                 Value::String(s),
@@ -72,19 +65,18 @@ impl<'a> Validator<'a> {
                 if let Some(pattern) = regexp {
                     let re = regex::Regex::new(pattern)
                         .map_err(|e| dicom_err!(Internal, "invalid validation regex {pattern:?}: {e}"))?;
-                    if !re.is_match(s) {
-                        return Err(dicom_err!(
-                            Configuration,
-                            "value {s:?} does not match required pattern {pattern:?}"
-                        ));
-                    }
+                    ensure!(
+                        re.is_match(s),
+                        Configuration,
+                        "value {s:?} does not match required pattern {pattern:?}"
+                    );
                 }
                 Ok(())
             }
 
-            (ValueMeta::Int { min, max }, Value::Int(n)) => Validator::check_range("integer", *n, min, max),
+            (ValueMeta::Int { min, max, .. }, Value::Int(n)) => Validator::check_range("integer", *n, min, max),
 
-            (ValueMeta::Enum { one_of }, Value::Enum(n)) => {
+            (ValueMeta::Enum { one_of, .. }, Value::Enum(n)) => {
                 if one_of.iter().any(|(code, ..)| code == *n) {
                     Ok(())
                 } else {
@@ -92,7 +84,7 @@ impl<'a> Validator<'a> {
                 }
             }
 
-            (ValueMeta::Duration { min, max }, Value::Duration(d)) => Validator::check_range(
+            (ValueMeta::Duration { min, max, .. }, Value::Duration(d)) => Validator::check_range(
                 "duration(ms)",
                 DisplayDuration(*d),
                 &min.map(DisplayDuration),
@@ -106,7 +98,7 @@ impl<'a> Validator<'a> {
                 _ => Ok(()),
             },
 
-            (ValueMeta::Vr { one_of }, Value::Vr(vr)) => match one_of {
+            (ValueMeta::Vr { one_of, .. }, Value::Vr(vr)) => match one_of {
                 Some(allowed) if !allowed.iter().any(|candidate| candidate == *vr) => {
                     Err(dicom_err!(Configuration, "VR {vr} is not among the allowed VRs"))
                 }
@@ -116,65 +108,105 @@ impl<'a> Validator<'a> {
             (
                 ValueMeta::File {
                     ty,
-                    allow_relative,
                     allow_content,
-                    allow_reload,
+                    hot_reload: meta_hot_reload,
+                    ..
                 },
                 Value::File(f),
             ) => {
                 match f {
                     ValueFile::Content(..) => {
-                        if !*allow_content {
-                            return Err(dicom_err!(Configuration, "inline file content is not allowed here"));
-                        }
+                        ensure!(*allow_content, Configuration, "inline file content is not allowed here");
                     }
-                    ValueFile::Name { path, auto_reload } => {
-                        if !*allow_relative && std::path::Path::new(path).is_relative() {
-                            return Err(dicom_err!(Configuration, "relative paths are not allowed here"));
-                        }
-                        if *auto_reload && !*allow_reload {
-                            return Err(dicom_err!(Configuration, "auto-reload is not allowed here"));
-                        }
+                    ValueFile::Name { path, hot_reload } => {
+                        ensure!(
+                            !std::path::Path::new(path).is_relative(),
+                            Configuration,
+                            "relative paths are not allowed here"
+                        );
+                        ensure!(
+                            !*hot_reload || *meta_hot_reload,
+                            Configuration,
+                            "hot-reload is not allowed here"
+                        );
                         match ty {
                             FileType::ExistingFilePath => {
                                 let p = std::path::Path::new(path);
-                                if !p.is_file() {
-                                    return Err(dicom_err!(
-                                        Configuration,
-                                        "path {path} does not point to an existing file"
-                                    ));
-                                }
+                                ensure!(p.is_file(), Configuration, "path {path} does not point to an existing file");
                             }
                             FileType::ExistingDirPath => {
                                 let p = std::path::Path::new(path);
-                                if !p.is_dir() {
-                                    return Err(dicom_err!(
-                                        Configuration,
-                                        "path {path} does not point to an existing directory"
-                                    ));
-                                }
+                                ensure!(p.is_dir(), Configuration, "path {path} does not point to an existing directory");
                             }
                             FileType::FilePath => {
                                 let p = std::path::Path::new(path);
-                                if p.exists() && !p.is_file() {
-                                    return Err(dicom_err!(Configuration, "path {path} exists but is not a file"));
-                                }
+                                ensure!(!p.exists() || p.is_file(), Configuration, "path {path} exists but is not a file");
                             }
                             FileType::DirPath => {
                                 let p = std::path::Path::new(path);
-                                if p.exists() && !p.is_dir() {
-                                    return Err(dicom_err!(Configuration, "path {path} exists but is not a directory"));
-                                }
+                                ensure!(!p.exists() || p.is_dir(), Configuration, "path {path} exists but is not a directory");
                             }
                             FileType::GlobPattern => {
                                 glob::Pattern::new(path)
                                     .map_err(|e| dicom_err!(Configuration, "invalid glob pattern {path:?}: {e}"))?;
-                                if path.is_empty() {
-                                    return Err(dicom_err!(Configuration, "glob pattern cannot be empty"));
-                                }
+                                ensure!(!path.is_empty(), Configuration, "glob pattern cannot be empty");
                             }
                         }
                     }
+                }
+                Ok(())
+            }
+
+            (
+                ValueMeta::Network {
+                    domain, unix, v4, v6, ..
+                },
+                Value::Network(network),
+            ) => {
+                match network.definition {
+                    crate::network::NetworkDefinition::HostName { .. } if !*domain && !*v4 && !*v6 => {
+                        return Err(dicom_err!(Configuration, "host addresses are not allowed here"));
+                    }
+                    crate::network::NetworkDefinition::UnixSocket(_) if !*unix => {
+                        return Err(dicom_err!(Configuration, "Unix socket addresses are not allowed here"));
+                    }
+                    crate::network::NetworkDefinition::Ip { addr, .. } => match addr {
+                        std::net::IpAddr::V4(_) if !*v4 => {
+                            return Err(dicom_err!(Configuration, "IPv4 addresses are not allowed here"));
+                        }
+                        std::net::IpAddr::V6(_) if !*v6 => {
+                            return Err(dicom_err!(Configuration, "IPv6 addresses are not allowed here"));
+                        }
+                        _ => {}
+                    },
+                    _ => {}
+                }
+                Ok(())
+            }
+
+            (
+                ValueMeta::Host {
+                    domain, unix, v4, v6, ..
+                },
+                Value::Host(host),
+            ) => {
+                match host.definition {
+                    crate::network::HostDefinition::HostName { .. } if !*domain && !*v4 && !*v6 => {
+                        return Err(dicom_err!(Configuration, "host addresses are not allowed here"));
+                    }
+                    crate::network::HostDefinition::UnixSocket { .. } if !*unix => {
+                        return Err(dicom_err!(Configuration, "Unix socket addresses are not allowed here"));
+                    }
+                    crate::network::HostDefinition::Ip { addr, .. } => match addr {
+                        std::net::IpAddr::V4(_) if !*v4 => {
+                            return Err(dicom_err!(Configuration, "IPv4 addresses are not allowed here"));
+                        }
+                        std::net::IpAddr::V6(_) if !*v6 => {
+                            return Err(dicom_err!(Configuration, "IPv6 addresses are not allowed here"));
+                        }
+                        _ => {}
+                    },
+                    _ => {}
                 }
                 Ok(())
             }
@@ -187,6 +219,7 @@ impl<'a> Validator<'a> {
                     min_length,
                     max_length,
                     stride,
+                    ..
                 },
                 Value::Vec(elements),
             ) => {
@@ -220,6 +253,7 @@ impl<'a> Validator<'a> {
                     values,
                     min_length,
                     max_length,
+                    ..
                 },
                 Value::Map(entries),
             ) => {
@@ -292,5 +326,210 @@ impl<'a> Validator<'a> {
             )),
             _ => Ok(()),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::{ComplexConfigNode, ComplexType, Key, meta::*};
+    use super::*;
+    use crate::Arc;
+    use std::any::Any;
+
+    fn validate(meta: &ValueMeta, value: &Value) -> crate::error::Result<()> {
+        let stack = Validator {
+            key_meta: &KeyMeta {
+                key: Key::new("test"),
+                edit: None,
+                conditional: false,
+                runtime: true,
+                default: ValueDefault::Static(Value::Null),
+                value_meta: meta.clone(),
+            },
+            value_meta: meta,
+            vec_index: None,
+            map_key: None,
+            file: None,
+            parent: None,
+        };
+        stack.validate(value)
+    }
+
+    #[test]
+    fn string_validation_respects_length_and_pattern() {
+        let meta = ValueMeta::String {
+            regexp: Some(r"^[A-Z]+$"),
+            min: Some(2),
+            max: Some(4),
+            subst: false,
+            nullable: false,
+        };
+        assert!(validate(&meta, &Value::String("ABC".into())).is_ok());
+        // too short
+        assert!(validate(&meta, &Value::String("A".into())).is_err());
+        // too long
+        assert!(validate(&meta, &Value::String("ABCDE".into())).is_err());
+        // pattern mismatch
+        assert!(validate(&meta, &Value::String("abc".into())).is_err());
+    }
+
+    #[test]
+    fn int_range_is_enforced() {
+        let meta = ValueMeta::Int {
+            min: Some(0),
+            max: Some(10),
+            subst: false,
+            nullable: false,
+        };
+        assert!(validate(&meta, &Value::Int(5)).is_ok());
+        assert!(validate(&meta, &Value::Int(-1)).is_err());
+        assert!(validate(&meta, &Value::Int(11)).is_err());
+    }
+
+    #[test]
+    fn enum_membership_is_checked() {
+        static CHOICES: [(u32, &str, EditName); 2] = [
+            (
+                1,
+                "a",
+                EditName {
+                    display_name: "a",
+                    brief: Some("A"),
+                    help: None,
+                },
+            ),
+            (
+                2,
+                "b",
+                EditName {
+                    display_name: "b",
+                    brief: Some("B"),
+                    help: None,
+                },
+            ),
+        ];
+        let meta = ValueMeta::Enum {
+            one_of: MaybeGenerated::Static(&CHOICES),
+            nullable: false,
+            subst: false,
+        };
+        assert!(validate(&meta, &Value::Enum(1)).is_ok());
+        assert!(validate(&meta, &Value::Enum(3)).is_err());
+    }
+
+    #[test]
+    fn type_mismatch_is_rejected() {
+        let meta = ValueMeta::Bool { nullable: false };
+        let err = validate(&meta, &Value::Int(1)).unwrap_err();
+        assert_eq!(err.kind, crate::ErrorKind::Internal);
+    }
+
+    #[test]
+    fn vec_validates_each_element() {
+        static ITEM: ValueMeta = ValueMeta::Int {
+            min: Some(0),
+            max: None,
+            subst: false,
+            nullable: false,
+        };
+        let meta = ValueMeta::Vec {
+            items: &ITEM,
+            min_length: Some(1),
+            max_length: Some(3),
+            stride: None,
+            nullable: false,
+        };
+        assert!(validate(&meta, &Value::Vec(vec![Value::Int(1), Value::Int(2)])).is_ok());
+        // element out of range
+        assert!(validate(&meta, &Value::Vec(vec![Value::Int(-1)])).is_err());
+        // too many items
+        let many4 = Value::Vec(vec![Value::Int(1), Value::Int(2), Value::Int(3), Value::Int(4)]);
+        assert!(validate(&meta, &many4).is_err());
+        // stride is one
+        let meta = ValueMeta::Vec {
+            items: &ITEM,
+            min_length: None,
+            max_length: None,
+            stride: Some(1),
+            nullable: false,
+        };
+        assert!(validate(&meta, &many4).is_ok());
+        let many3 = Value::Vec(vec![Value::Int(1), Value::Int(2), Value::Int(3)]);
+        assert!(validate(&meta, &many3).is_ok());
+        let empty = Value::Vec(Vec::new());
+        assert!(validate(&meta, &empty).is_ok());
+        // stride is even
+        let meta = ValueMeta::Vec {
+            items: &ITEM,
+            min_length: None,
+            max_length: None,
+            stride: Some(2),
+            nullable: false,
+        };
+        assert!(validate(&meta, &many4).is_ok());
+        assert!(validate(&meta, &many3).is_err());
+        assert!(validate(&meta, &empty).is_ok());
+    }
+
+    // ── Complex application-defined types ─────────────────────────────────────
+
+    #[derive(Debug, PartialEq)]
+    struct Port(u16);
+
+    struct PortType;
+    impl ComplexType for PortType {
+        fn name(&self) -> &'static str {
+            "port"
+        }
+        fn default(&self) -> crate::error::Result<Arc<dyn Any + Send + Sync>> {
+            Ok(Arc::new(Port(80)))
+        }
+        fn decode(&self, node: &ComplexConfigNode) -> crate::error::Result<Arc<dyn Any + Send + Sync>> {
+            let n = node
+                .as_int()
+                .ok_or_else(|| crate::dicom_err!(InvalidData, "port expects an integer"))?;
+            Ok(Arc::new(Port(
+                u16::try_from(n).map_err(|_| crate::dicom_err!(InvalidData, "port out of range"))?,
+            )))
+        }
+        fn encode(&self, value: &dyn Any) -> crate::error::Result<ComplexConfigNode> {
+            let p = value
+                .downcast_ref::<Port>()
+                .ok_or_else(|| crate::dicom_err!(Internal, "port got wrong value type"))?;
+            Ok(ComplexConfigNode::Int(p.0 as i64))
+        }
+        fn validate(&self, value: &dyn Any) -> crate::error::Result<()> {
+            let p = value
+                .downcast_ref::<Port>()
+                .ok_or_else(|| crate::dicom_err!(Internal, "port got wrong value type"))?;
+            if p.0 == 0 {
+                return Err(crate::dicom_err!(InvalidData, "port must not be zero"));
+            }
+            Ok(())
+        }
+    }
+
+    static PORT_TYPE: PortType = PortType;
+
+    #[test]
+    fn complex_type_round_trips_through_config_node() {
+        let ty: &'static dyn ComplexType = &PORT_TYPE;
+        let decoded = ty.decode(&ComplexConfigNode::Int(104)).unwrap();
+        assert_eq!(decoded.downcast_ref::<Port>(), Some(&Port(104)));
+        assert_eq!(ty.encode(decoded.as_ref()).unwrap(), ComplexConfigNode::Int(104));
+    }
+
+    #[test]
+    fn complex_value_meta_delegates_validation_to_type() {
+        let meta = ValueMeta::Complex {
+            ty: &PORT_TYPE,
+            limits: &[],
+            nullable: false,
+        };
+        let good: Arc<dyn Any + Send + Sync> = Arc::new(Port(104));
+        assert!(validate(&meta, &Value::Complex(good)).is_ok());
+
+        let bad: Arc<dyn Any + Send + Sync> = Arc::new(Port(0));
+        assert!(validate(&meta, &Value::Complex(bad)).is_err());
     }
 }

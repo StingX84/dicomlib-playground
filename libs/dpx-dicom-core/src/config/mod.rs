@@ -1,364 +1,216 @@
 //! Application configuration system.
 //!
-//! The configuration system separates three concerns:
+//! The configuration system separates these concerns:
 //!
 //! - **Metadata** ([`meta`]) — descriptors that let any key be validated,
 //!   edited in a GUI/TUI and documented without hard-coding it. Applications
 //!   extend the surface by submitting [`StaticRegistry`] batches via `inventory`.
 //! - **Values** ([`value`]) — the dynamically-typed [`Value`] payloads.
-//! - **Settings** ([`settings`]) — loaded data, both unconditional
-//!   ([`Settings`](settings::Settings)) and association-aware ([`ConditionalSettings`](settings::ConditionalSettings)).
-//! - **Manager** ([`manager`]) — the `Config` struct that assembles everything and
-//!   provides a unified interface for accessing configuration values.
+//! - **Values Map** ([`map`]) — loaded data with [`Value`]s mapped to keys, either
+//!   conditionally or unconditionally.
+//! - **Config** ([`Config`]) — a single configuration layer tying a [`Registry`]
+//!   to a [`Map`]. It is the unit of configuration that can be composed into a
+//!   [`GlobalConfig`] or installed into a [`Context`](crate::Context).
+//! - **GlobalConfig** ([`GlobalConfig`]) — the single source of truth for getting
+//!   and setting the global base [`Config`].
+//! - **Loader** ([`loader`]) — a [`serde`] deserializer that reads a configuration
+//!   file and produces a [`Config`] layer.
 
 pub mod complex;
+pub mod global;
 #[cfg(feature = "serde")]
 pub mod loader;
-pub mod manager;
+//#[macro_use]
+//pub mod macros;
+pub mod map;
 pub mod meta;
 pub mod registry;
-pub mod settings;
+pub mod subst;
+pub mod typed;
 pub(crate) mod validator;
 pub mod value;
 
-pub use complex::{ComplexType, ConfigNode};
+use std::borrow::Cow;
+
+pub use complex::{ComplexConfigNode, ComplexType};
+pub use global::GlobalConfig;
 #[cfg(feature = "serde")]
 pub use loader::YamlLoader;
-pub use manager::{Config, ConfigBuilder, GlobalConfig};
+pub use map::{Condition, Map};
 pub use registry::{Registry, StaticRegistry};
-pub use value::{Value, ValueFile};
+pub use subst::{AppDir, SubstVars};
+pub use value::{Value, ValueFile, ValueRef, millis, mins, secs};
+
+use crate::{Arc, network::AssocDescription};
+
+pub const GLOBAL_LAYER_ID: LayerId = LayerId::Borrowed("<global>");
+pub const OBJECT_LAYER_ID: LayerId = LayerId::Borrowed("<object>");
 
 /// Uniquely identifies a configuration key.
 ///
-/// `module` namespaces keys per crate/application; `code` is typically the
-/// source line of the key declaration, making collisions within a module
-/// impossible by construction.
+/// The wrapped string is the key's dotted store path (e.g.
+/// `"dicom.association.artim_timeout"`). For
+/// [`runtime`](meta::KeyMeta::runtime) keys it is purely an in-memory identity
+/// that never appears in a file; for a field of an
+/// [`Object`](meta::ValueMeta::Object) it is the local field name.
+/// Within one registry scope the string must be unique.
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
-pub struct Key {
-    pub module: &'static str,
-    pub code: u32,
-}
+pub struct Key(pub &'static str);
 
 impl Key {
     #[inline]
-    pub const fn new(module: &'static str, code: u32) -> Key {
-        Key { module, code }
+    pub const fn new(name: &'static str) -> Key {
+        Key(name)
+    }
+
+    /// The key's path/identity string.
+    #[inline]
+    pub const fn as_str(&self) -> &'static str {
+        self.0
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+impl From<&'static str> for Key {
+    fn from(value: &'static str) -> Self {
+        Key::new(value)
+    }
+}
 
-    fn validate(meta: &meta::ValueMeta, value: &Value) -> crate::error::Result<()> {
-        let stack = validator::Validator {
-            key_meta: &meta::KeyMeta {
-                key: Key::new("test", 0),
-                edit: None,
-                store: None,
-                default: None,
-                nullable: false,
-                value_meta: meta.clone(),
-            },
-            value_meta: meta,
-            vec_index: None,
-            map_key: None,
-            file: None,
-            parent: None,
-        };
-        stack.validate(value)
+pub type LayerId = Cow<'static, str>;
+
+/// A read-only view over the configuration values stored in a single [`Config`]
+/// or across all layers of a [`Context`](super::Context).
+pub trait ConfigValues {
+    type Iter<'a>: Iterator<Item = (&'a Key, &'a Value, Option<&'a Condition>, &'a LayerId)>
+    where
+        Self: 'a;
+
+    /// Returns a list of all values stored.
+    ///
+    /// Keys are sorted by layer and can duplicate.
+    fn config_iter(&self) -> Self::Iter<'_>;
+
+    /// Returns a default value for `key` from the registry.
+    fn config_default_of(&self, key: &Key) -> Option<&Value>;
+
+    /// Returns a configured value for `key` without applying default.
+    fn config_get_explicit(&self, key: &Key, assoc: Option<&AssocDescription>) -> Option<&Value>;
+
+    /// Returns a configured value for `key` or default.
+    fn config_get(&self, key: &Key, assoc: Option<&AssocDescription>) -> Option<&Value> {
+        self.config_get_explicit(key, assoc)
+            .or_else(|| self.config_default_of(key))
     }
 
-    #[test]
-    fn string_validation_respects_length_and_pattern() {
-        let meta = meta::ValueMeta::String {
-            regexp: Some(r"^[A-Z]+$"),
-            min_length: Some(2),
-            max_length: Some(4),
-            support_subst: false,
-        };
-        assert!(validate(&meta, &Value::String("ABC".into())).is_ok());
-        // too short
-        assert!(validate(&meta, &Value::String("A".into())).is_err());
-        // too long
-        assert!(validate(&meta, &Value::String("ABCDE".into())).is_err());
-        // pattern mismatch
-        assert!(validate(&meta, &Value::String("abc".into())).is_err());
+    /// Returns a configured value for `key` casted to native type T
+    ///
+    /// See [`ValueRef`] for supported types.
+    fn config_get_as<T: ValueRef>(
+        &self,
+        key: &Key,
+        assoc: Option<&AssocDescription>,
+    ) -> Option<<T as ValueRef>::Ref<'_>> {
+        self.config_get(key, assoc).and_then(<T as ValueRef>::project)
     }
+}
 
-    #[test]
-    fn int_range_is_enforced() {
-        let meta = meta::ValueMeta::Int {
-            min: Some(0),
-            max: Some(10),
-        };
-        assert!(validate(&meta, &Value::Int(5)).is_ok());
-        assert!(validate(&meta, &Value::Int(-1)).is_err());
-        assert!(validate(&meta, &Value::Int(11)).is_err());
-    }
+/// One configuration layer: a [`Map`] of values resolved against a [`Registry`].
+#[derive(Debug, Clone)]
+pub struct Config {
+    layer_id: LayerId,
+    registry: Arc<Registry>,
+    map: Map,
+}
 
-    #[test]
-    fn enum_membership_is_checked() {
-        static CHOICES: [(u32, &str, meta::EditName); 2] = [
-            (
-                1,
-                "a",
-                meta::EditName {
-                    display_name: "a",
-                    brief: Some("A"),
-                    help: None,
-                },
-            ),
-            (
-                2,
-                "b",
-                meta::EditName {
-                    display_name: "b",
-                    brief: Some("B"),
-                    help: None,
-                },
-            ),
-        ];
-        let meta = meta::ValueMeta::Enum {
-            one_of: meta::MaybeGenerated::Static(&CHOICES),
-        };
-        assert!(validate(&meta, &Value::Enum(1)).is_ok());
-        assert!(validate(&meta, &Value::Enum(3)).is_err());
-    }
-
-    #[test]
-    fn type_mismatch_is_rejected() {
-        let meta = meta::ValueMeta::Bool;
-        let err = validate(&meta, &Value::Int(1)).unwrap_err();
-        assert_eq!(err.kind, crate::ErrorKind::Internal);
-    }
-
-    #[test]
-    fn vec_validates_each_element() {
-        static ITEM: meta::ValueMeta = meta::ValueMeta::Int {
-            min: Some(0),
-            max: None,
-        };
-        let meta = meta::ValueMeta::Vec {
-            items: &ITEM,
-            min_length: Some(1),
-            max_length: Some(3),
-            stride: None,
-        };
-        assert!(validate(&meta, &Value::Vec(vec![Value::Int(1), Value::Int(2)])).is_ok());
-        // element out of range
-        assert!(validate(&meta, &Value::Vec(vec![Value::Int(-1)])).is_err());
-        // too many items
-        let many4 = Value::Vec(vec![Value::Int(1), Value::Int(2), Value::Int(3), Value::Int(4)]);
-        assert!(validate(&meta, &many4).is_err());
-        // stride is one
-        let meta = meta::ValueMeta::Vec {
-            items: &ITEM,
-            min_length: None,
-            max_length: None,
-            stride: Some(1),
-        };
-        assert!(validate(&meta, &many4).is_ok());
-        let many3 = Value::Vec(vec![Value::Int(1), Value::Int(2), Value::Int(3)]);
-        assert!(validate(&meta, &many3).is_ok());
-        let empty = Value::Vec(Vec::new());
-        assert!(validate(&meta, &empty).is_ok());
-        // stride is even
-        let meta = meta::ValueMeta::Vec {
-            items: &ITEM,
-            min_length: None,
-            max_length: None,
-            stride: Some(2),
-        };
-        assert!(validate(&meta, &many4).is_ok());
-        assert!(validate(&meta, &many3).is_err());
-        assert!(validate(&meta, &empty).is_ok());
-    }
-
-    #[test]
-    fn conditional_lookup_prefers_most_specific() {
-        let key = Key::new("test", 1);
-        let mut cs = settings::ConditionalSettings::new();
-
-        // Generic fallback (unconditional).
-        cs.add(settings::ConditionalKey::unconditional(key), Value::Int(0));
-        // More specific: matches a particular peer AET.
-        cs.add(
-            settings::ConditionalKey {
-                key,
-                peer_aet: Some("PEER".into()),
-                ..settings::ConditionalKey::unconditional(key)
-            },
-            Value::Int(1),
-        );
-
-        let attrs = settings::MatchAttributes {
-            peer_aet: Some("PEER"),
-            ..Default::default()
-        };
-        let got = cs.get(&key, &attrs).unwrap();
-        assert!(matches!(got, Value::Int(1)));
-
-        // A different peer falls back to the unconditional entry.
-        let other = settings::MatchAttributes {
-            peer_aet: Some("OTHER"),
-            ..Default::default()
-        };
-        assert!(matches!(cs.get(&key, &other).unwrap(), Value::Int(0)));
-    }
-
-    #[test]
-    fn conditional_scoring_respects_attribute_priority() {
-        use std::net::{IpAddr, Ipv4Addr};
-
-        const KEY: Key = Key::new("test", 9);
-        let peer_ip = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1));
-        let local_ip = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2));
-
-        // An association that matches every dimension, so candidate selection
-        // is decided purely by which attributes each candidate constrains.
-        let attrs = settings::MatchAttributes {
-            peer_aet: Some("PEER"),
-            local_aet: Some("LOCAL"),
-            peer_ip: Some(peer_ip),
-            local_ip: Some(local_ip),
-            local_port: Some(104),
-        };
-
-        // A candidate constraining only `peer_aet` (score 16) must outrank a
-        // candidate constraining every *lower* dimension at once
-        // (local_aet + peer_ip + local_ip + local_port = 8+4+2+1 = 15). This is
-        // the property that makes matching a strict priority, not additive.
-        let only_peer_aet = settings::ConditionalKey {
-            key: KEY,
-            peer_aet: Some("PEER".into()),
-            ..settings::ConditionalKey::unconditional(KEY)
-        };
-        let all_lower = settings::ConditionalKey {
-            key: KEY,
-            local_aet: Some("LOCAL".into()),
-            peer_ip: Some(peer_ip),
-            local_ip: Some(local_ip),
-            local_port: Some(104),
-            ..settings::ConditionalKey::unconditional(KEY)
-        };
-
-        let mut cs = settings::ConditionalSettings::new();
-        cs.add(all_lower.clone(), Value::Int(15));
-        cs.add(only_peer_aet.clone(), Value::Int(16));
-        assert!(
-            matches!(cs.get(&KEY, &attrs), Some(Value::Int(16))),
-            "peer_aet must outrank all lower dimensions combined"
-        );
-
-        // Adding more matching dimensions on top of the same highest one raises
-        // the score: peer_aet + local_aet (24) beats peer_aet alone (16).
-        let peer_and_local_aet = settings::ConditionalKey {
-            key: KEY,
-            peer_aet: Some("PEER".into()),
-            local_aet: Some("LOCAL".into()),
-            ..settings::ConditionalKey::unconditional(KEY)
-        };
-        let mut cs = settings::ConditionalSettings::new();
-        cs.add(only_peer_aet.clone(), Value::Int(16));
-        cs.add(peer_and_local_aet, Value::Int(24));
-        assert!(
-            matches!(cs.get(&KEY, &attrs), Some(Value::Int(24))),
-            "more matching dimensions must win within the same top priority"
-        );
-    }
-
-    #[test]
-    fn conditional_excludes_absent_or_mismatched_attributes() {
-        const KEY: Key = Key::new("test", 10);
-
-        let specific = settings::ConditionalKey {
-            key: KEY,
-            peer_aet: Some("PEER".into()),
-            ..settings::ConditionalKey::unconditional(KEY)
-        };
-        let mut cs = settings::ConditionalSettings::new();
-        cs.add(settings::ConditionalKey::unconditional(KEY), Value::Int(0));
-        cs.add(specific, Value::Int(1));
-
-        // Attribute the candidate constrains is absent from the association:
-        // the candidate is excluded, the unconditional entry remains.
-        let absent = settings::MatchAttributes::default();
-        assert!(matches!(cs.get(&KEY, &absent), Some(Value::Int(0))));
-
-        // Attribute present but unequal: also excluded.
-        let mismatch = settings::MatchAttributes {
-            peer_aet: Some("OTHER"),
-            ..Default::default()
-        };
-        assert!(matches!(cs.get(&KEY, &mismatch), Some(Value::Int(0))));
-
-        // Attribute present and equal: the specific candidate wins.
-        let matching = settings::MatchAttributes {
-            peer_aet: Some("PEER"),
-            ..Default::default()
-        };
-        assert!(matches!(cs.get(&KEY, &matching), Some(Value::Int(1))));
-    }
-
-    // ── Complex application-defined types ─────────────────────────────────────
-
-    use crate::Arc;
-    use std::any::Any;
-
-    #[derive(Debug, PartialEq)]
-    struct Port(u16);
-
-    struct PortType;
-    impl ComplexType for PortType {
-        fn name(&self) -> &'static str {
-            "port"
+impl Config {
+    pub fn new(layer_id: LayerId, registry: Arc<Registry>, map: Map) -> Self {
+        Config {
+            layer_id,
+            registry,
+            map,
         }
-        fn decode(&self, node: &ConfigNode) -> crate::error::Result<Arc<dyn Any + Send + Sync>> {
-            let n = node
-                .as_int()
-                .ok_or_else(|| crate::dicom_err!(InvalidData, "port expects an integer"))?;
-            Ok(Arc::new(Port(
-                u16::try_from(n).map_err(|_| crate::dicom_err!(InvalidData, "port out of range"))?,
-            )))
+    }
+
+    pub fn new_empty(layer_id: LayerId, registry: Arc<Registry>) -> Self {
+        Config {
+            layer_id,
+            registry,
+            map: Map::new(),
         }
-        fn encode(&self, value: &dyn Any) -> crate::error::Result<ConfigNode> {
-            let p = value
-                .downcast_ref::<Port>()
-                .ok_or_else(|| crate::dicom_err!(Internal, "port got wrong value type"))?;
-            Ok(ConfigNode::Int(p.0 as i64))
-        }
-        fn validate(&self, value: &dyn Any) -> crate::error::Result<()> {
-            let p = value
-                .downcast_ref::<Port>()
-                .ok_or_else(|| crate::dicom_err!(Internal, "port got wrong value type"))?;
-            if p.0 == 0 {
-                return Err(crate::dicom_err!(InvalidData, "port must not be zero"));
+    }
+
+    pub fn layer_id(&self) -> &LayerId {
+        &self.layer_id
+    }
+
+    /// The metadata registry this layer resolves keys and defaults against.
+    pub fn registry(&self) -> &Arc<Registry> {
+        &self.registry
+    }
+
+    /// Returns a map of values
+    pub fn values(&self) -> &Map {
+        &self.map
+    }
+
+    /// Returns a mutable map of values
+    pub fn values_mut(&mut self) -> &mut Map {
+        &mut self.map
+    }
+
+    /// Returns the default value for `key`.
+    ///
+    /// Note: every registered key must have a default value.
+    pub fn default_of(&self, key: &Key) -> Option<&Value> {
+        self.registry.default_value_of(key)
+    }
+}
+
+pub struct ConfigIter<'a> {
+    config: &'a Config,
+    map_iter: std::collections::hash_map::Iter<'a, Key, map::Conditionals>,
+    cond_iter: Option<(&'a Key, std::slice::Iter<'a, (Value, Condition)>)>,
+}
+impl<'a> Iterator for ConfigIter<'a> {
+    type Item = (&'a Key, &'a Value, Option<&'a Condition>, &'a LayerId);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some((key, cond_iter)) = &mut self.cond_iter {
+            if let Some((val, cond)) = cond_iter.next() {
+                return Some((key, val, Some(cond), &self.config.layer_id));
+            } else {
+                self.cond_iter = None;
             }
-            Ok(())
+        }
+
+        if let Some((key, map_value)) = self.map_iter.next() {
+            self.cond_iter = Some((key, map_value.0.iter()));
+            self.next()
+        } else {
+            None
+        }
+    }
+}
+
+impl ConfigValues for Config {
+    type Iter<'a>
+        = ConfigIter<'a>
+    where
+        Self: 'a;
+
+    fn config_iter(&self) -> Self::Iter<'_> {
+        ConfigIter {
+            config: self,
+            map_iter: self.map.0.iter(),
+            cond_iter: None,
         }
     }
 
-    static PORT_TYPE: PortType = PortType;
-
-    #[test]
-    fn complex_type_round_trips_through_config_node() {
-        let ty: &'static dyn ComplexType = &PORT_TYPE;
-        let decoded = ty.decode(&ConfigNode::Int(104)).unwrap();
-        assert_eq!(decoded.downcast_ref::<Port>(), Some(&Port(104)));
-        assert_eq!(ty.encode(decoded.as_ref()).unwrap(), ConfigNode::Int(104));
+    fn config_default_of(&self, key: &Key) -> Option<&Value> {
+        self.default_of(key)
     }
 
-    #[test]
-    fn complex_value_meta_delegates_validation_to_type() {
-        let meta = meta::ValueMeta::Complex {
-            ty: &PORT_TYPE,
-            limits: &[],
-        };
-        let good: Arc<dyn Any + Send + Sync> = Arc::new(Port(104));
-        assert!(validate(&meta, &Value::Complex(good)).is_ok());
-
-        let bad: Arc<dyn Any + Send + Sync> = Arc::new(Port(0));
-        assert!(validate(&meta, &Value::Complex(bad)).is_err());
+    fn config_get_explicit(&self, key: &Key, assoc: Option<&AssocDescription>) -> Option<&Value> {
+        self.map.get_ranked(key, assoc).map(|(v, _)| v)
     }
 }

@@ -1,12 +1,11 @@
-use crate::*;
+use crate::network::AssocDescription;
+use crate::{config::ConfigIter, config::ConfigValues, *};
 use arc_swap::ArcSwap;
-use std::{cell::Cell, fmt, future::Future, net::SocketAddr, pin::Pin, ptr::NonNull, sync::LazyLock, task};
+use std::{cell::Cell, fmt, future::Future, pin::Pin, ptr::NonNull, sync::LazyLock, task};
 
 thread_local! {
     static LOCAL_CTX: Cell<Option<NonNull<Context>>> = const { Cell::new(None) };
 }
-
-// cSpell:ignore METAS
 
 // The global root: always carries default dictionaries and a base configuration.
 // ArcSwap allows lock-free reads and atomic full-Arc replacement.
@@ -16,25 +15,23 @@ static GLOBAL_CTX: LazyLock<ArcSwap<Context>> = LazyLock::new(|| {
         action: None,
         tag_dict: Some(Arc::new(tag::Dictionary::default())),
         uid_dict: Some(Arc::new(uid::Dictionary::default())),
-        config: Some(Arc::new(
-            config::Config::builder(Arc::new(config::Registry::new())).build(),
-        )),
+        config: Some(Arc::new(config::Config::new_empty(
+            config::GLOBAL_LAYER_ID,
+            Arc::new(config::Registry::new_from_static()),
+        ))),
         prev: None,
     })
 });
 
-// ── AssocDescription ──────────────────────────────────────────────────────────
+// Restores the previous thread-local context pointer on drop, so a panic
+// unwinding through `provide`/`with_current`/`poll` cannot leave a dangling
+// pointer (to a freed `Arc<Context>`) installed in `LOCAL_CTX`.
+struct CtxGuard(Option<NonNull<Context>>);
 
-/// Description of a DICOM association carried by [`Context`].
-#[derive(Debug, Clone)]
-pub struct AssocDescription {
-    pub id: u64,
-    pub peer_aet: String,
-    pub local_aet: String,
-    pub peer_addr: Option<SocketAddr>,
-    pub local_addr: Option<SocketAddr>,
-    pub is_incoming: bool,
-    pub is_tls_secured: bool,
+impl Drop for CtxGuard {
+    fn drop(&mut self) {
+        LOCAL_CTX.with(|cell| cell.set(self.0));
+    }
 }
 
 // ── ActionEntry (private) ─────────────────────────────────────────────────────
@@ -56,12 +53,12 @@ struct ActionEntry {
 ///
 /// ```
 /// use std::sync::Arc;
-/// use dpx_dicom_core::context::{Context, AssocDescription};
+/// use dpx_dicom_core::{context::Context, network::AssocDescription};
 ///
 /// let assoc = Arc::new(AssocDescription {
-///     id: 1, peer_aet: "PEER".into(), local_aet: "LOCAL".into(),
+///     id: 1, is_tls_used: false, is_incoming: false, is_virtual: true,
+///     peer_aet: Some("PEER".into()), local_aet: Some("LOCAL".into()),
 ///     peer_addr: None, local_addr: None,
-///     is_incoming: true, is_tls_secured: false,
 /// });
 ///
 /// Context::extend().assoc(assoc).provide(|| {
@@ -170,19 +167,16 @@ impl Context {
         // Load the global Arc (lock-free), then install it temporarily so
         // nested extend() calls chain from the global correctly.
         let global = Arc::clone(&GLOBAL_CTX.load());
-        LOCAL_CTX.with(|cell| {
-            // SAFETY: `Arc::as_ptr` is non-null and carries provenance over the
-            // whole `ArcInner` allocation (refcounts included), so a nested
-            // `extend()` can reconstruct an `Arc` from this pointer. Deriving it
-            // through `&Context` would narrow provenance to the data range and
-            // make that reconstruction UB.
-            let ptr = unsafe { NonNull::new_unchecked(Arc::as_ptr(&global) as *mut Context) };
-            let old = cell.replace(Some(ptr));
-            let rv = f(unsafe { ptr.as_ref() });
-            cell.set(old);
-            rv
-        })
-        // global Arc drops here, after thread-local is restored
+        // SAFETY: `Arc::as_ptr` is non-null and carries provenance over the
+        // whole `ArcInner` allocation (refcounts included), so a nested
+        // `extend()` can reconstruct an `Arc` from this pointer. Deriving it
+        // through `&Context` would narrow provenance to the data range and
+        // make that reconstruction UB.
+        let ptr = unsafe { NonNull::new_unchecked(Arc::as_ptr(&global) as *mut Context) };
+        // `_guard` is dropped before `global`, restoring the thread-local even
+        // if `f` panics, while the allocation is still alive.
+        let _guard = LOCAL_CTX.with(|cell| CtxGuard(cell.replace(Some(ptr))));
+        f(unsafe { ptr.as_ref() })
     }
 
     // ── Chain accessors ───────────────────────────────────────────────────────
@@ -206,55 +200,6 @@ impl Context {
             .expect("Context chain missing UID dictionary — global root must have one")
     }
 
-    /// Returns the effective configuration, walking the chain toward the global
-    /// root which always carries a base configuration.
-    pub fn config(&self) -> &Arc<config::Config> {
-        self.find(|n| n.config.as_ref())
-            .expect("Context chain missing configuration — global root must have one")
-    }
-
-    /// Resolves a configuration value for `key`, honouring the layered context.
-    ///
-    /// Layers are searched from innermost to outermost: the first layer that
-    /// carries an *explicit* value for `key` (a matching conditional value, then
-    /// the unconditional one) wins. Conditional matching uses the association of
-    /// the active context (see [`Context::assoc`]). If no layer has an explicit
-    /// value, the registry default of the innermost layer is returned.
-    pub fn config_value(&self, key: &config::Key) -> Option<&config::Value> {
-        let attrs = self.match_attributes();
-
-        let mut innermost: Option<&config::Config> = None;
-        let mut node = Some(self);
-        while let Some(n) = node {
-            if let Some(cfg) = n.config.as_deref() {
-                if innermost.is_none() {
-                    innermost = Some(cfg);
-                }
-                if let Some(value) = cfg.get_explicit(key, &attrs) {
-                    return Some(value);
-                }
-            }
-            node = n.prev.as_deref();
-        }
-
-        innermost?.default_of(key)
-    }
-
-    /// Derives [`MatchAttributes`] from the active association, used to select
-    /// conditional configuration values.
-    fn match_attributes<'a>(&'a self) -> config::settings::MatchAttributes<'a> {
-        match self.assoc() {
-            Some(a) => config::settings::MatchAttributes {
-                peer_aet: Some(a.peer_aet.as_ref()),
-                local_aet: Some(a.local_aet.as_ref()),
-                peer_ip: a.peer_addr.map(|s| s.ip()),
-                local_ip: a.local_addr.map(|s| s.ip()),
-                local_port: a.local_addr.map(|s| s.port()),
-            },
-            None => config::settings::MatchAttributes::default(),
-        }
-    }
-
     /// Iterates over all active actions from innermost to outermost.
     pub fn actions(&self) -> impl Iterator<Item = (&'static str, u64)> + '_ {
         ContextActionsIter { node: Some(self) }
@@ -270,6 +215,23 @@ impl Context {
         self.actions().any(|(k, i)| k == kind && i == id)
     }
 
+    /// Returns the nearest [`config::Config`] in the context chain.
+    pub fn config(&self) -> &config::Config {
+        self.find(|n| n.config.as_deref())
+            .expect("Context chain missing config — global root must have one")
+    }
+
+    pub fn config_get_current(&self, key: &config::Key) -> Option<&config::Value> {
+        self.config_get(key, self.assoc().map(|a| a.as_ref()))
+    }
+
+    pub fn config_get_current_as<'a, T: config::ValueRef>(
+        &'a self,
+        key: &config::Key,
+    ) -> Option<<T as config::ValueRef>::Ref<'a>> {
+        self.config_get_as::<T>(key, self.assoc().map(|a| a.as_ref()))
+    }
+
     // ── Internal ──────────────────────────────────────────────────────────────
 
     fn find<'a, T>(&'a self, f: impl Fn(&'a Context) -> Option<T>) -> Option<T> {
@@ -283,6 +245,78 @@ impl Context {
                 None => return None,
             }
         }
+    }
+}
+
+pub struct ContextConfigIter<'a> {
+    node: Option<&'a Context>,
+    cfg_iter: Option<ConfigIter<'a>>,
+}
+
+impl<'a> Iterator for ContextConfigIter<'a> {
+    type Item = (
+        &'a config::Key,
+        &'a config::Value,
+        Option<&'a config::Condition>,
+        &'a config::LayerId,
+    );
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            if let Some(cfg_iter) = &mut self.cfg_iter {
+                if let Some(item) = cfg_iter.next() {
+                    return Some(item);
+                }
+                self.cfg_iter = None;
+            }
+
+            let node = self.node?;
+            self.node = node.prev.as_deref();
+            if let Some(cfg) = node.config.as_deref() {
+                self.cfg_iter = Some(cfg.config_iter());
+            }
+        }
+    }
+}
+
+impl ConfigValues for Context {
+    type Iter<'a>
+        = ContextConfigIter<'a>
+    where
+        Self: 'a;
+
+    fn config_iter(&self) -> Self::Iter<'_> {
+        ContextConfigIter {
+            node: Some(self),
+            cfg_iter: self.config.as_deref().map(|cfg| cfg.config_iter()),
+        }
+    }
+
+    fn config_default_of(&self, key: &config::Key) -> Option<&config::Value> {
+        let mut node = Some(self);
+        while let Some(n) = node {
+            if let Some(cfg) = n.config.as_deref()
+                && let Some(value) = cfg.default_of(key)
+            {
+                return Some(value);
+            }
+            node = n.prev.as_deref();
+        }
+        None
+    }
+
+    fn config_get_explicit(&self, key: &config::Key, assoc: Option<&AssocDescription>) -> Option<&config::Value> {
+        let mut node = Some(self);
+        while let Some(n) = node {
+            if let Some(cfg) = n.config.as_deref()
+                && let Some(value) = cfg.values().get_ranked(key, assoc)
+            {
+                return Some(value.0);
+            }
+
+            node = n.prev.as_deref();
+        }
+        None
     }
 }
 
@@ -358,7 +392,7 @@ impl ContextBuilder {
     /// Installs a configuration layer for this context layer and descendants.
     ///
     /// Values not found here fall through to lower layers (see
-    /// [`Context::config_value`]).
+    /// [`Context::config_get`]).
     pub fn config(mut self, c: Arc<config::Config>) -> Self {
         self.ctx_mut().config = Some(c);
         self
@@ -398,13 +432,10 @@ impl ContextBuilder {
         // `Arc` from this pointer (see `extend`). Going through `&Context` would
         // narrow provenance to the data range and make that reconstruction UB.
         let ptr = unsafe { NonNull::new_unchecked(Arc::as_ptr(&self.ctx) as *mut Context) };
-        LOCAL_CTX.with(|cell| {
-            let old = cell.replace(Some(ptr));
-            let rv = f();
-            cell.set(old);
-            rv
-        })
-        // self.ctx (Arc) drops here, after the thread-local is restored
+        // `_guard` is dropped before `self.ctx`, restoring the thread-local even
+        // if `f` panics, while the allocation is still alive.
+        let _guard = LOCAL_CTX.with(|cell| CtxGuard(cell.replace(Some(ptr))));
+        f()
     }
 
     /// Wraps `future` so that this context layer is installed before every
@@ -443,12 +474,10 @@ impl<F: Future> Future for ContextScope<F> {
         let ptr = unsafe { NonNull::new_unchecked(Arc::as_ptr(&this.ctx) as *mut Context) };
         let inner = unsafe { Pin::new_unchecked(&mut this.inner) };
 
-        LOCAL_CTX.with(|cell| {
-            let old = cell.replace(Some(ptr));
-            let result = inner.poll(cx);
-            cell.set(old);
-            result
-        })
+        // Restores the thread-local even if `inner.poll` panics; `this.ctx`
+        // outlives this frame, so the pointer stays valid for the poll.
+        let _guard = LOCAL_CTX.with(|cell| CtxGuard(cell.replace(Some(ptr))));
+        inner.poll(cx)
     }
 }
 
@@ -457,16 +486,19 @@ impl<F: Future> Future for ContextScope<F> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::assert_matches;
+    use std::borrow::Cow;
 
-    fn make_assoc(id: u64, peer: &str, local: &str) -> Arc<AssocDescription> {
+    fn make_assoc(id: u64, peer: &'static str, local: &'static str) -> Arc<AssocDescription> {
         Arc::new(AssocDescription {
             id,
-            peer_aet: peer.into(),
-            local_aet: local.into(),
+            is_tls_used: false,
+            is_incoming: false,
+            is_virtual: true,
+            peer_aet: Some(Cow::Borrowed(peer)),
+            local_aet: Some(Cow::Borrowed(local)),
             peer_addr: None,
             local_addr: None,
-            is_incoming: true,
-            is_tls_secured: false,
         })
     }
 
@@ -551,99 +583,102 @@ mod tests {
     // ── Configuration layering ────────────────────────────────────────────────
 
     use crate::config::{
-        Config, Key, Registry, Value, settings::ConditionalKey, settings::ConditionalSettings, settings::Settings,
+        Condition, Config, GLOBAL_LAYER_ID, GlobalConfig, Key, Registry, Value,
+        map::{Conditionals, Map},
     };
 
-    const KEY: Key = Key::new("test", 1);
+    const KEY: Key = Key::new("test");
 
-    fn config_with(settings: Settings, conditional: ConditionalSettings) -> Arc<config::Config> {
-        Arc::new(
-            Config::builder(Arc::new(Registry::new_empty()))
-                .settings(settings)
-                .conditional(conditional)
-                .build(),
-        )
+    fn config_with<const N: usize>(values: [(Key, Conditionals); N]) -> Arc<config::Config> {
+        Arc::new(Config::new(
+            GLOBAL_LAYER_ID,
+            Arc::new(Registry::new_empty()),
+            Map::from_iter(values),
+        ))
     }
 
     #[test]
-    fn config_value_reads_unconditional_layer() {
-        let mut s = Settings::new();
-        s.set(KEY, Value::Int(7));
-        let cfg = config_with(s, ConditionalSettings::new());
+    fn config_get_any_reads_unconditional_layer() {
+        let cfg = config_with([(KEY, Value::Int(7).into())]);
 
         Context::extend().config(cfg).provide(|| {
             Context::with_current(|ctx| {
-                assert!(matches!(ctx.config_value(&KEY), Some(Value::Int(7))));
+                assert_matches!(ctx.config_get_current(&KEY), Some(Value::Int(7)));
             });
         });
     }
 
     #[test]
-    fn config_value_missing_key_is_none() {
-        let cfg = config_with(Settings::new(), ConditionalSettings::new());
+    fn config_get_any_missing_key_is_none() {
+        let cfg = config_with([]);
         Context::extend().config(cfg).provide(|| {
-            Context::with_current(|ctx| assert!(ctx.config_value(&KEY).is_none()));
+            Context::with_current(|ctx| assert!(ctx.config_get_current(&KEY).is_none()));
         });
     }
 
     #[test]
-    fn config_value_selects_conditional_by_association() {
-        let mut cs = ConditionalSettings::new();
-        cs.add(ConditionalKey::unconditional(KEY), Value::Int(0));
-        cs.add(
-            ConditionalKey {
-                key: KEY,
-                peer_aet: Some("PEER".into()),
-                ..ConditionalKey::unconditional(KEY)
-            },
-            Value::Int(1),
-        );
-        let cfg = config_with(Settings::new(), cs);
+    fn config_get_any_selects_conditional_by_association() {
+        let cfg = config_with([
+            (KEY, Value::Int(0).into()),
+            (
+                KEY,
+                (
+                    Value::Int(1),
+                    Condition {
+                        peer_aet: Some("PEER".into()),
+                        ..Default::default()
+                    },
+                )
+                    .into(),
+            ),
+        ]);
         let assoc = make_assoc(1, "PEER", "LOCAL");
 
         Context::extend().assoc(assoc).config(cfg).provide(|| {
             Context::with_current(|ctx| {
-                assert!(matches!(ctx.config_value(&KEY), Some(Value::Int(1))));
+                assert!(matches!(ctx.config_get_current(&KEY), Some(Value::Int(1))));
             });
         });
     }
 
     #[test]
     fn inner_layer_overrides_outer_else_falls_through() {
-        let mut outer_s = Settings::new();
-        outer_s.set(KEY, Value::Int(1));
-        let outer = config_with(outer_s, ConditionalSettings::new());
-
+        let outer = config_with([(KEY, Value::Int(1).into())]);
         // Inner layer has no value for KEY: lookup must fall through to outer.
-        let inner = config_with(Settings::new(), ConditionalSettings::new());
+        let inner = config_with([]);
 
         Context::extend().config(outer).provide(|| {
             Context::extend().config(inner).provide(|| {
                 Context::with_current(|ctx| {
-                    assert!(matches!(ctx.config_value(&KEY), Some(Value::Int(1))));
+                    assert!(matches!(ctx.config_get_current(&KEY), Some(Value::Int(1))));
                 });
             });
         });
     }
 
     #[test]
-    fn config_value_falls_back_to_registry_default() {
+    fn config_get_any_falls_back_to_registry_default() {
         static METAS: [config::meta::KeyMeta; 1] = [config::meta::KeyMeta {
             key: KEY,
             edit: None,
-            store: None,
-            nullable: false,
-            default: Some(|| Value::Int(42)),
-            value_meta: config::meta::ValueMeta::Int { min: None, max: None },
+            conditional: false,
+            runtime: true,
+            default: crate::config::meta::ValueDefault::Static(Value::Int(42)),
+            value_meta: config::meta::ValueMeta::Int {
+                min: None,
+                max: None,
+                subst: false,
+                nullable: false,
+            },
         }];
 
         let mut registry = Registry::new_empty();
         registry.insert(&METAS[0]);
-        let cfg = Arc::new(Config::builder(Arc::new(registry)).build());
+        let cfg = Arc::new(Config::new_empty(GLOBAL_LAYER_ID, Arc::new(registry)));
 
         Context::extend().config(cfg).provide(|| {
             Context::with_current(|ctx| {
-                assert!(matches!(ctx.config_value(&KEY), Some(Value::Int(42))));
+                assert!(matches!(ctx.config_get_current(&KEY), Some(Value::Int(42))));
             });
         });
     }
@@ -653,7 +688,7 @@ mod tests {
         // Installing a root that only sets a configuration must not drop the
         // dictionaries: the new self-contained root inherits them from the
         // previous root, so the required-field accessors can never panic.
-        let cfg = config_with(Settings::new(), ConditionalSettings::new());
+        let cfg = config_with([]);
         let prev = Context::extend().config(Arc::clone(&cfg)).install_global();
 
         Context::with_current(|ctx| {
@@ -661,7 +696,7 @@ mod tests {
             let _ = ctx.tag_dict();
             let _ = ctx.uid_dict();
             // The field we explicitly installed.
-            assert!(Arc::ptr_eq(ctx.config(), &cfg));
+            assert!(Arc::ptr_eq(&GlobalConfig::current(), &cfg));
         });
 
         Context::global().store(prev);

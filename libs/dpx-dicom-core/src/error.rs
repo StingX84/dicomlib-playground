@@ -47,16 +47,15 @@ impl fmt::Display for ErrorKind {
 ///
 /// Captured automatically by [`dicom_err!`](crate::dicom_err) — equivalent to `__FILE__` /
 /// `__LINE__` in C++. Not updated when context is added via [`dicom_ctx!`](crate::dicom_ctx).
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Location {
     pub file: &'static str,
     pub line: u32,
-    pub column: u32,
 }
 
 impl fmt::Display for Location {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}:{}:{}", self.file, self.line, self.column)
+        write!(f, "{}:{}", self.file, self.line)
     }
 }
 
@@ -131,6 +130,15 @@ impl fmt::Debug for DicomError {
 impl std::error::Error for DicomError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         self.source.as_deref().map(|s| s as &(dyn std::error::Error + 'static))
+    }
+}
+
+impl PartialEq for DicomError {
+    fn eq(&self, other: &Self) -> bool {
+        self.kind == other.kind
+            && self.kb.map(|k| k.id) == other.kb.map(|k| k.id)
+            && self.message == other.message
+            && self.location == other.location
     }
 }
 
@@ -287,7 +295,6 @@ where
             location: Location {
                 file: loc.file(),
                 line: loc.line(),
-                column: loc.column(),
             },
             source: Some(Box::new(e)),
         })
@@ -303,7 +310,6 @@ where
             location: Location {
                 file: loc.file(),
                 line: loc.line(),
-                column: loc.column(),
             },
             source: Some(Box::new(e)),
         })
@@ -348,7 +354,7 @@ macro_rules! dicom_err {
             kind:     $crate::error::ErrorKind::$kind,
             kb:       Some($kb),
             message:  None,
-            location: $crate::error::Location { file: file!(), line: line!(), column: column!() },
+            location: $crate::error::Location { file: file!(), line: line!() },
             source:   None,
         }
     };
@@ -358,7 +364,7 @@ macro_rules! dicom_err {
             kind:     $crate::error::ErrorKind::$kind,
             kb:       None,
             message:  None,
-            location: $crate::error::Location { file: file!(), line: line!(), column: column!() },
+            location: $crate::error::Location { file: file!(), line: line!() },
             source:   None,
         }
     };
@@ -368,7 +374,7 @@ macro_rules! dicom_err {
             kind:     $crate::error::ErrorKind::$kind,
             kb:       Some($kb),
             message:  Some(format!($fmt $(, $arg)*)),
-            location: $crate::error::Location { file: file!(), line: line!(), column: column!() },
+            location: $crate::error::Location { file: file!(), line: line!() },
             source:   None,
         }
     };
@@ -378,7 +384,7 @@ macro_rules! dicom_err {
             kind:     $crate::error::ErrorKind::$kind,
             kb:       None,
             message:  Some(format!($fmt $(, $arg)*)),
-            location: $crate::error::Location { file: file!(), line: line!(), column: column!() },
+            location: $crate::error::Location { file: file!(), line: line!() },
             source:   None,
         }
     };
@@ -434,4 +440,101 @@ macro_rules! dicom_ctx {
         e.message = Some(format!($fmt $(, $arg)*));
         e
     }};
+}
+
+/// Return early with a [`DicomError`] if `cond` is false (à la `anyhow::ensure!`).
+///
+/// Everything after the condition is forwarded verbatim to [`dicom_err!`](crate::dicom_err),
+/// so all of its forms are available. Usable only in functions returning [`Result`].
+///
+/// ```
+/// use dpx_dicom_core::{Result, ensure};
+/// fn check(len: usize) -> Result<()> {
+///     ensure!(len > 0, InvalidData, "empty value, len = {len}");
+///     Ok(())
+/// }
+/// assert!(check(0).is_err());
+/// assert!(check(1).is_ok());
+/// ```
+#[macro_export]
+macro_rules! ensure {
+    ($cond:expr, $($err:tt)+) => {
+        if !($cond) {
+            return ::core::result::Result::Err($crate::dicom_err!($($err)+));
+        }
+    };
+}
+
+/// Return early with a [`DicomError`] if `left != right` (à la `anyhow::ensure!`).
+///
+/// The error arguments are forwarded to [`dicom_err!`](crate::dicom_err). When no message is
+/// given, the default message reports both operands; pass an explicit message to
+/// override. Usable only in functions returning [`Result`].
+///
+/// ```
+/// use dpx_dicom_core::{Result, ensure_eq};
+/// fn check(magic: &[u8]) -> Result<()> {
+///     ensure_eq!(magic, b"DICM", InvalidData);
+///     Ok(())
+/// }
+/// assert!(check(b"JUNK").is_err());
+/// assert!(check(b"DICM").is_ok());
+/// ```
+#[macro_export]
+macro_rules! ensure_eq {
+    // Kind only — default message reports both operands.
+    ($left:expr, $right:expr, $kind:ident $(, kb: $kb:expr)? $(,)?) => {{
+        let left = &$left;
+        let right = &$right;
+        if left != right {
+            return ::core::result::Result::Err($crate::dicom_err!(
+                $kind $(, kb: $kb)?,
+                "{left:?} != {right:?}"
+            ));
+        }
+    }};
+    // Explicit message — forwarded to dicom_err!.
+    ($left:expr, $right:expr, $($err:tt)+) => {
+        if $left != $right {
+            return ::core::result::Result::Err($crate::dicom_err!($($err)+));
+        }
+    };
+}
+
+#[cfg(test)]
+mod ensure_tests {
+    use crate::error::{ErrorKind, Result};
+
+    #[test]
+    fn ensure_returns_on_false() {
+        fn f(ok: bool) -> Result<()> {
+            ensure!(ok, InvalidData, "bad: {ok}");
+            Ok(())
+        }
+        assert!(f(true).is_ok());
+        let e = f(false).unwrap_err();
+        assert_eq!(e.kind, ErrorKind::InvalidData);
+        assert_eq!(e.message.as_deref(), Some("bad: false"));
+    }
+
+    #[test]
+    fn ensure_eq_default_message_reports_operands() {
+        fn f(a: u32, b: u32) -> Result<()> {
+            ensure_eq!(a, b, Protocol);
+            Ok(())
+        }
+        assert!(f(1, 1).is_ok());
+        let e = f(1, 2).unwrap_err();
+        assert_eq!(e.kind, ErrorKind::Protocol);
+        assert_eq!(e.message.as_deref(), Some("1 != 2"));
+    }
+
+    #[test]
+    fn ensure_eq_explicit_message() {
+        fn f() -> Result<()> {
+            ensure_eq!(1, 2, Internal, "mismatch");
+            Ok(())
+        }
+        assert_eq!(f().unwrap_err().message.as_deref(), Some("mismatch"));
+    }
 }

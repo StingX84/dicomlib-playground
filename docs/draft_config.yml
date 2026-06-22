@@ -1,6 +1,4 @@
 # Example configuration file this configuration system should be able to read
-app: "my_application" # Application name. If not equals to our application name, then fail to load.
-version: 1 # Configuration version. If greater, than current -> fail. If less than current -> "upgrade" procedure. If equal to current -> ok, continue.
 dicom: # Configuration section
   local_aet: # Accepts "single" or list of local AE titles for this application
     - SERVER_AE_NOAUTH

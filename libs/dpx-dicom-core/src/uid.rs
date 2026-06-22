@@ -1,7 +1,7 @@
 //! Unique Object Identifier [Uid] and associated structures
 
 use crate::*;
-use crate::{dicom_err, error::Result};
+use crate::{ensure, error::Result};
 use std::{borrow::Cow, fmt::Debug, fmt::Display};
 
 #[rustfmt::skip]
@@ -293,13 +293,13 @@ impl<'a> Uid<'a> {
                 }).unwrap_or(value.len())
         };
 
-        if value.is_empty() { return Err(dicom_err!(InvalidData, "UID is empty")); }
-        if value.len() > 64 { return Err(dicom_err!(InvalidData, "UID is too long ({} chars), allowed 64", value.len())); }
+        ensure!(!value.is_empty(), InvalidData, "UID is empty");
+        ensure!(value.len() <= 64, InvalidData, "UID is too long ({} chars), allowed 64", value.len());
         for component in value.split('.') {
-            if component.is_empty() { return Err(dicom_err!(InvalidData, "empty UID component at pos {}", to_pos(component, 0))); }
-            if component.len() != 1 && component.starts_with('0') { return Err(dicom_err!(InvalidData, "UID component starts with zero at pos {}", to_pos(component, 0))); }
+            ensure!(!component.is_empty(), InvalidData, "empty UID component at pos {}", to_pos(component, 0));
+            ensure!(component.len() == 1 || !component.starts_with('0'), InvalidData, "UID component starts with zero at pos {}", to_pos(component, 0));
             for (idx, c) in component.chars().enumerate() {
-                if !c.is_numeric() { return Err(dicom_err!(InvalidData, "invalid character '{}' in UID at pos {}", c, to_pos(component, idx))); }
+                ensure!(c.is_numeric(), InvalidData, "invalid character '{}' in UID at pos {}", c, to_pos(component, idx));
             }
         }
         Ok(())
@@ -655,6 +655,7 @@ impl StaticMetaList {
 }
 
 #[cfg(test)]
+#[allow(dead_code)]
 mod tests {
     use super::*;
 

@@ -636,7 +636,7 @@ impl Dictionary {
     /// positioned to "lower_bound" of a searched string peeks one element ahead
     /// and one element behind for the match.
     fn cache_search_sorted(c: &DictCache, key: TagKey) -> Option<&Meta> {
-        match c.vec.binary_search_by(|v| Self::cmp_cache_key_creator(v, key, &None)) {
+        match c.vec.binary_search_by(|v| Self::cmp_cache_key(v, key)) {
             Ok(index) => {
                 // Exact match found
 
@@ -806,6 +806,7 @@ impl Dictionary {
 }
 
 #[cfg(test)]
+#[allow(dead_code)]
 mod tests {
     use super::*;
     #[cfg(not(miri))]

@@ -1,5 +1,5 @@
 use super::*;
-use crate::dicom_err;
+use crate::{dicom_err, ensure};
 use std::borrow::Cow;
 
 // cSpell:ignore xxee XXXO XXXN
@@ -406,18 +406,16 @@ impl ::core::str::FromStr for TagKey {
     /// # }
     /// ```
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if !s.starts_with('(') {
-            return Err(dicom_err!(
-                InvalidData,
-                "missing opening brace for TagKey (expecting: `(gggg,eeee)`)"
-            ));
-        }
-        if !s.ends_with(')') {
-            return Err(dicom_err!(
-                InvalidData,
-                "missing closing brace for TagKey (expecting: `(gggg,eeee)`)"
-            ));
-        }
+        ensure!(
+            s.starts_with('('),
+            InvalidData,
+            "missing opening brace for TagKey (expecting: `(gggg,eeee)`)"
+        );
+        ensure!(
+            s.ends_with(')'),
+            InvalidData,
+            "missing closing brace for TagKey (expecting: `(gggg,eeee)`)"
+        );
 
         let mut components = s[1..s.len() - 1].splitn(3, ',');
 

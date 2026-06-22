@@ -1,5 +1,5 @@
 use super::*;
-use crate::{Context, dicom_err, tag, utils::unescape::unescape};
+use crate::{Context, dicom_err, ensure, tag, utils::unescape::unescape};
 use std::borrow::Cow;
 
 // cSpell:ignore xxee Тест
@@ -300,18 +300,16 @@ impl TryFrom<&str> for Tag {
     type Error = DicomError;
     /// See trait `FromStr::from_str` implementation for this struct
     fn try_from(s: &str) -> Result<Self, Self::Error> {
-        if !s.starts_with('(') {
-            return Err(dicom_err!(
-                InvalidData,
-                "missing opening brace for Tag (expecting: `(gggg,eeee[,\"creator\"])`)"
-            ));
-        }
-        if !s.ends_with(')') {
-            return Err(dicom_err!(
-                InvalidData,
-                "missing closing brace for Tag (expecting: `(gggg,eeee[,\"creator\"])`)"
-            ));
-        }
+        ensure!(
+            s.starts_with('('),
+            InvalidData,
+            "missing opening brace for Tag (expecting: `(gggg,eeee[,\"creator\"])`)"
+        );
+        ensure!(
+            s.ends_with(')'),
+            InvalidData,
+            "missing closing brace for Tag (expecting: `(gggg,eeee[,\"creator\"])`)"
+        );
 
         let mut components = s[1..s.len() - 1].splitn(3, ',');
 
@@ -337,18 +335,16 @@ impl TryFrom<&str> for Tag {
         let creator: Option<Cow<'static, str>> = match components.next() {
             None => None,
             Some(creator) => {
-                if !creator.starts_with('"') {
-                    return Err(dicom_err!(
-                        InvalidData,
-                        "missing opening quote in Tag creator (expecting: `(gggg,eeee[,\"creator\"])`)"
-                    ));
-                }
-                if !creator[1..].ends_with('"') {
-                    return Err(dicom_err!(
-                        InvalidData,
-                        "missing closing quote in Tag creator (expecting: `(gggg,eeee[,\"creator\"])`)"
-                    ));
-                }
+                ensure!(
+                    creator.starts_with('"'),
+                    InvalidData,
+                    "missing opening quote in Tag creator (expecting: `(gggg,eeee[,\"creator\"])`)"
+                );
+                ensure!(
+                    creator[1..].ends_with('"'),
+                    InvalidData,
+                    "missing closing quote in Tag creator (expecting: `(gggg,eeee[,\"creator\"])`)"
+                );
                 let creator = &creator[1..creator.len() - 1];
 
                 match creator.len() {
