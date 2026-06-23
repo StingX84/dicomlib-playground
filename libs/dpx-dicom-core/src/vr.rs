@@ -23,7 +23,7 @@ use crate::{
 ///
 /// [DICOM PS 3.5 "6.2 Value Representation (VR)"]: https://dicom.nema.org/medical/dicom/current/output/chtml/part05/sect_6.2.html
 /// [DICOM PS 3.4 "C.2.2.2 Attribute Matching"]: https://dicom.nema.org/medical/dicom/current/output/chtml/part04/sect_C.2.2.2.html
-#[derive(Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Default, Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(
     feature = "serde",
     derive(serde::Serialize, serde::Deserialize),
@@ -36,6 +36,7 @@ pub enum Vr {
     ///
     /// This constant used for the special DICOM attributes, that has no value representation.
     /// For example, Sequence Delimitation Item (FFFE,E0DD)
+    #[default]
     Undefined,
 
     /// Application Entity

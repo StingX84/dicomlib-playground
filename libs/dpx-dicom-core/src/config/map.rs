@@ -1,6 +1,4 @@
 //! Configuration values map.
-//!
-//! Metadata and defaults live separately in the [`Registry`](super::Registry).
 
 use super::{Key, Value};
 use crate::network::{AssocDescription, Network};
@@ -49,9 +47,8 @@ impl Map {
         Map(crate::HashMap::new())
     }
 
-    /// Adds a conditional value for `key`. A previously unconditional entry is
-    /// promoted to a conditional list (its old value kept under the default
-    /// condition).
+    /// Adds a new possibly value for `key` possibly with condition attached.
+    /// Newer values with a same rank will win over previous values.
     pub fn add(&mut self, key: Key, value: Value, cond: Option<Condition>) {
         let entry = self.0.entry(key);
         match entry {

@@ -2,9 +2,9 @@
 //!
 //! A [`Value`] is the dynamically-typed payload stored against a configuration
 //! [`Key`](super::Key). Its concrete shape is described and constrained by the
-//! corresponding [`ValueMeta`](super::meta::ValueMeta) in the [`Registry`](super::registry::Registry).
+//! corresponding [`ValueMeta`](super::meta::ValueMeta) in the [`ObjectMeta`](super::meta::ObjectMeta).
 
-use super::Config;
+use super::{Object};
 use crate::{Arc, Map};
 
 /// Compile-time `Duration` of `n` seconds, for use as a `config!` default.
@@ -27,7 +27,7 @@ pub const fn mins(n: u64) -> std::time::Duration {
 /// Some settings reference an external file either by path (optionally watched
 /// for changes) or by inline content captured at load time.
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
-pub enum ValueFile {
+pub enum ConfiguredFile {
     Name { path: String, hot_reload: bool },
     Content(Vec<u8>),
 }
@@ -43,10 +43,12 @@ pub enum Value {
     Duration(std::time::Duration),
     Tag(crate::tag::Tag),
     Vr(crate::vr::Vr),
-    File(ValueFile),
+    #[cfg(feature = "uuid")]
+    Uuid(uuid::Uuid),
+    File(ConfiguredFile),
     Network(crate::network::Network),
     Host(crate::network::Host),
-    Object(Config),
+    Object(Object),
     Vec(Vec<Value>),
     Map(Map<String, Value>),
     Complex(Arc<dyn std::any::Any + Send + Sync>),
@@ -64,6 +66,8 @@ impl Value {
             Value::Duration(_) => "Duration",
             Value::Tag(_) => "Tag",
             Value::Vr(_) => "Vr",
+            #[cfg(feature = "uuid")]
+            Value::Uuid(_) => "Uuid",
             Value::File(_) => "File",
             Value::Network(_) => "Network",
             Value::Host(_) => "Host",
@@ -86,8 +90,10 @@ impl std::fmt::Display for Value {
             Value::Duration(d) => write!(f, "{} ms", d.as_millis()),
             Value::Tag(t) => write!(f, "{}", t),
             Value::Vr(v) => write!(f, "{}", v),
-            Value::File(ValueFile::Name { path, .. }) => write!(f, "{}", path),
-            Value::File(ValueFile::Content { 0: content }) => write!(f, "{} bytes", content.len()),
+            #[cfg(feature = "uuid")]
+            Value::Uuid(v) => write!(f, "{}", v),
+            Value::File(ConfiguredFile::Name { path, .. }) => write!(f, "{}", path),
+            Value::File(ConfiguredFile::Content { 0: content }) => write!(f, "{} bytes", content.len()),
             Value::Network(network) => write!(f, "{}", network.definition),
             Value::Host(host) => write!(f, "{}", host.definition),
             Value::Object(_) => write!(f, "Object"),
@@ -132,8 +138,8 @@ impl PartialOrd for Value {
             (Value::Duration(a), Value::Duration(b)) => a.partial_cmp(b),
             (Value::Tag(a), Value::Tag(b)) => a.partial_cmp(b),
             (Value::Vr(a), Value::Vr(b)) => a.partial_cmp(b),
-            (Value::File(ValueFile::Content { 0: a }), Value::File(ValueFile::Content { 0: b })) => a.partial_cmp(b),
-            (Value::File(ValueFile::Name { path: a, .. }), Value::File(ValueFile::Name { path: b, .. })) => {
+            (Value::File(ConfiguredFile::Content { 0: a }), Value::File(ConfiguredFile::Content { 0: b })) => a.partial_cmp(b),
+            (Value::File(ConfiguredFile::Name { path: a, .. }), Value::File(ConfiguredFile::Name { path: b, .. })) => {
                 a.partial_cmp(b)
             }
             (Value::Network(a), Value::Network(b)) => a.partial_cmp(b),
@@ -267,6 +273,23 @@ impl ValueRef for crate::Vr {
     }
 }
 
+// ── Value::Uuid ──────────────────────────────────────────
+
+#[cfg(feature = "uuid")]
+impl From<uuid::Uuid> for Value {
+    fn from(value: uuid::Uuid) -> Self {
+        Value::Uuid(value)
+    }
+}
+
+#[cfg(feature = "uuid")]
+impl ValueRef for uuid::Uuid {
+    type Ref<'a> = uuid::Uuid;
+    fn project(v: &Value) -> Option<uuid::Uuid> {
+        if let Value::Uuid(d) = v { Some(*d) } else { None }
+    }
+}
+
 // ── Value::Network ──────────────────────────────────────────
 
 impl From<crate::network::Network> for Value {
@@ -299,15 +322,15 @@ impl ValueRef for crate::network::Host {
 
 // ── Value::Object ──────────────────────────────────────────
 
-impl From<Config> for Value {
-    fn from(value: Config) -> Self {
+impl From<Object> for Value {
+    fn from(value: Object) -> Self {
         Value::Object(value)
     }
 }
 
-impl ValueRef for Config {
-    type Ref<'a> = &'a Config;
-    fn project(v: &Value) -> Option<&Config> {
+impl ValueRef for Object {
+    type Ref<'a> = &'a Object;
+    fn project(v: &Value) -> Option<&Object> {
         if let Value::Object(c) = v { Some(c) } else { None }
     }
 }
@@ -325,12 +348,6 @@ impl<const N: usize, T: Into<Value>> From<[T; N]> for Value {
         Value::Vec(value.into_iter().map(|e| e.into()).collect())
     }
 }
-
-// impl<'a, T> From<&'a [T]> for Value where &'a T: Into<Value> {
-//     fn from(value: &'a [T]) -> Self {
-//         Value::Vec(value.iter().map(|e| e.into()).collect())
-//     }
-// }
 
 impl<X: 'static> ValueRef for Vec<X> {
     type Ref<'a> = &'a [Value];

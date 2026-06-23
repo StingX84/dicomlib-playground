@@ -1,5 +1,5 @@
-use super::{Value, ValueFile, meta::FileType, meta::KeyMeta, meta::ValueMeta};
-use crate::{DicomError, ErrContext, Result, dicom_err, ensure};
+use super::{Value, ConfiguredFile, meta::KeyMeta, meta::ValueMeta};
+use crate::{DicomError, ErrContext, Result, config::map::DEFAULT_CONDITION, dicom_err, ensure};
 
 #[derive(Debug, PartialEq, PartialOrd, Ord, Eq)]
 struct DisplayDuration(std::time::Duration);
@@ -107,49 +107,88 @@ impl<'a> Validator<'a> {
 
             (
                 ValueMeta::File {
-                    ty,
                     allow_content,
+                    allow_dir,
+                    allow_file,
+                    allow_glob,
                     hot_reload: meta_hot_reload,
+                    should_exist,
+                    should_not_exist,
                     ..
                 },
                 Value::File(f),
             ) => {
                 match f {
-                    ValueFile::Content(..) => {
+                    ConfiguredFile::Content(..) => {
                         ensure!(*allow_content, Configuration, "inline file content is not allowed here");
                     }
-                    ValueFile::Name { path, hot_reload } => {
-                        ensure!(
-                            !std::path::Path::new(path).is_relative(),
-                            Configuration,
-                            "relative paths are not allowed here"
-                        );
+                    ConfiguredFile::Name { path, hot_reload } => {
+                        ensure!(!path.is_empty(), Configuration, "file path cannot be empty");
                         ensure!(
                             !*hot_reload || *meta_hot_reload,
                             Configuration,
                             "hot-reload is not allowed here"
                         );
-                        match ty {
-                            FileType::ExistingFilePath => {
-                                let p = std::path::Path::new(path);
-                                ensure!(p.is_file(), Configuration, "path {path} does not point to an existing file");
+                        if *allow_glob {
+                            let paths = glob::glob(path)
+                                .map_err(|e| dicom_err!(Configuration, "invalid glob pattern {path:?}: {e}"))?;
+                            for f in paths.into_iter() {
+                                let path = f.map_err(|e| dicom_err!(Io, "failed to read glob path: {e}"))?;
+                                ensure!(
+                                    path.is_absolute(),
+                                    Configuration,
+                                    "glob pattern {path:?} matches relative path {path:?}"
+                                );
+                                if !*allow_dir {
+                                    ensure!(
+                                        !path.is_dir(),
+                                        Configuration,
+                                        "glob pattern {path:?} matches a directory, which is not allowed here"
+                                    );
+                                }
+                                if !*allow_file {
+                                    ensure!(
+                                        !path.is_file(),
+                                        Configuration,
+                                        "glob pattern {path:?} matches a file, which is not allowed here"
+                                    );
+                                }
                             }
-                            FileType::ExistingDirPath => {
-                                let p = std::path::Path::new(path);
-                                ensure!(p.is_dir(), Configuration, "path {path} does not point to an existing directory");
+                        }
+                        else 
+                        {
+                            let path = std::path::Path::new(path);
+                            ensure!(
+                                path.is_absolute(),
+                                Configuration,
+                                "file path {path:?} must be absolute"
+                            );
+                            if path.exists() {
+                                ensure!(
+                                    !*should_not_exist,
+                                    Configuration,
+                                    "file path {path:?} must not exist"
+                                );
+                            } else {
+                                ensure!(
+                                    !*should_exist,
+                                    Configuration,
+                                    "file path {path:?} must exist"
+                                );
                             }
-                            FileType::FilePath => {
-                                let p = std::path::Path::new(path);
-                                ensure!(!p.exists() || p.is_file(), Configuration, "path {path} exists but is not a file");
+                            if !*allow_dir {
+                                ensure!(
+                                    !path.is_dir(),
+                                    Configuration,
+                                    "path {path:?} points to a directory, which is not allowed here"
+                                );
                             }
-                            FileType::DirPath => {
-                                let p = std::path::Path::new(path);
-                                ensure!(!p.exists() || p.is_dir(), Configuration, "path {path} exists but is not a directory");
-                            }
-                            FileType::GlobPattern => {
-                                glob::Pattern::new(path)
-                                    .map_err(|e| dicom_err!(Configuration, "invalid glob pattern {path:?}: {e}"))?;
-                                ensure!(!path.is_empty(), Configuration, "glob pattern cannot be empty");
+                            if !*allow_file {
+                                ensure!(
+                                    !path.is_file(),
+                                    Configuration,
+                                    "path {path:?} points to a file, which is not allowed here"
+                                );
                             }
                         }
                     }
@@ -159,22 +198,22 @@ impl<'a> Validator<'a> {
 
             (
                 ValueMeta::Network {
-                    domain, unix, v4, v6, ..
+                    domain, unix, ipv4, ipv6, ..
                 },
                 Value::Network(network),
             ) => {
                 match network.definition {
-                    crate::network::NetworkDefinition::HostName { .. } if !*domain && !*v4 && !*v6 => {
+                    crate::network::NetworkDefinition::HostName { .. } if !*domain && !*ipv4 && !*ipv6 => {
                         return Err(dicom_err!(Configuration, "host addresses are not allowed here"));
                     }
                     crate::network::NetworkDefinition::UnixSocket(_) if !*unix => {
                         return Err(dicom_err!(Configuration, "Unix socket addresses are not allowed here"));
                     }
                     crate::network::NetworkDefinition::Ip { addr, .. } => match addr {
-                        std::net::IpAddr::V4(_) if !*v4 => {
+                        std::net::IpAddr::V4(_) if !*ipv4 => {
                             return Err(dicom_err!(Configuration, "IPv4 addresses are not allowed here"));
                         }
-                        std::net::IpAddr::V6(_) if !*v6 => {
+                        std::net::IpAddr::V6(_) if !*ipv6 => {
                             return Err(dicom_err!(Configuration, "IPv6 addresses are not allowed here"));
                         }
                         _ => {}
@@ -186,22 +225,22 @@ impl<'a> Validator<'a> {
 
             (
                 ValueMeta::Host {
-                    domain, unix, v4, v6, ..
+                    domain, unix, ipv4, ipv6, ..
                 },
                 Value::Host(host),
             ) => {
                 match host.definition {
-                    crate::network::HostDefinition::HostName { .. } if !*domain && !*v4 && !*v6 => {
+                    crate::network::HostDefinition::HostName { .. } if !*domain && !*ipv4 && !*ipv6 => {
                         return Err(dicom_err!(Configuration, "host addresses are not allowed here"));
                     }
                     crate::network::HostDefinition::UnixSocket { .. } if !*unix => {
                         return Err(dicom_err!(Configuration, "Unix socket addresses are not allowed here"));
                     }
                     crate::network::HostDefinition::Ip { addr, .. } => match addr {
-                        std::net::IpAddr::V4(_) if !*v4 => {
+                        std::net::IpAddr::V4(_) if !*ipv4 => {
                             return Err(dicom_err!(Configuration, "IPv4 addresses are not allowed here"));
                         }
-                        std::net::IpAddr::V6(_) if !*v6 => {
+                        std::net::IpAddr::V6(_) if !*ipv6 => {
                             return Err(dicom_err!(Configuration, "IPv6 addresses are not allowed here"));
                         }
                         _ => {}
@@ -211,20 +250,41 @@ impl<'a> Validator<'a> {
                 Ok(())
             }
 
-            (ValueMeta::Object { validate, .. }, Value::Object(conf)) => validate(conf),
+            (ValueMeta::Object { meta, .. }, Value::Object(obj)) => {
+                for (key, conditionals) in obj.values().iter() {
+                    ensure!(std::ptr::eq(meta(), obj.object_meta()), Configuration, "object has unexpected field {key:?}");
+                    let Some(key_meta) = obj.object_meta.key_meta(key) else {
+                        return Err(dicom_err!(Configuration, "object has unexpected field {key:?}"));
+                    };
+
+                    let sub_stack = Validator {
+                        key_meta,
+                        value_meta: &key_meta.value_meta,
+                        vec_index: None,
+                        map_key: None,
+                        file: self.file,
+                        parent: Some(self),
+                    };
+                    for (value, cond) in conditionals.0.iter() {
+                        ensure!(key_meta.conditional || cond == &DEFAULT_CONDITION, Configuration, "object field {key:?} is not conditional but has a condition");
+                        sub_stack.validate(value).err_context("invalid object field")?;
+                    }
+                }
+                Ok(())
+            },
 
             (
                 ValueMeta::Vec {
-                    items,
-                    min_length,
-                    max_length,
+                    meta,
+                    min,
+                    max,
                     stride,
                     ..
                 },
                 Value::Vec(elements),
             ) => {
                 let len = elements.len();
-                Validator::check_range("vector", len, min_length, max_length)?;
+                Validator::check_range("vector", len, min, max)?;
                 if let Some(stride_v) = *stride
                     && stride_v > 0
                     && len % stride_v != 0
@@ -238,7 +298,7 @@ impl<'a> Validator<'a> {
                 }
                 for (idx, element) in elements.iter().enumerate() {
                     let sub_stack = Validator {
-                        value_meta: items,
+                        value_meta: meta,
                         vec_index: Some(idx),
                         parent: Some(self),
                         ..*self
@@ -250,19 +310,19 @@ impl<'a> Validator<'a> {
 
             (
                 ValueMeta::Map {
-                    values,
-                    min_length,
-                    max_length,
+                    meta,
+                    min,
+                    max,
                     ..
                 },
                 Value::Map(entries),
             ) => {
-                Validator::check_range("map", entries.len(), min_length, max_length)?;
+                Validator::check_range("map", entries.len(), min, max)?;
                 for (k, v) in entries.iter() {
                     let sub_stack = Validator {
                         map_key: Some(k),
                         parent: Some(self),
-                        value_meta: values,
+                        value_meta: meta,
                         ..*self
                     };
                     sub_stack.validate(v).err_context("invalid map value")?;
@@ -343,7 +403,7 @@ mod tests {
                 edit: None,
                 conditional: false,
                 runtime: true,
-                default: ValueDefault::Static(Value::Null),
+                default: None,
                 value_meta: meta.clone(),
             },
             value_meta: meta,
@@ -388,28 +448,28 @@ mod tests {
 
     #[test]
     fn enum_membership_is_checked() {
-        static CHOICES: [(u32, &str, EditName); 2] = [
+        static CHOICES: [(u32, &str, Option<EditName>); 2] = [
             (
                 1,
                 "a",
-                EditName {
+                Some(EditName {
                     display_name: "a",
                     brief: Some("A"),
                     help: None,
-                },
+                }),
             ),
             (
                 2,
                 "b",
-                EditName {
+                Some(EditName {
                     display_name: "b",
                     brief: Some("B"),
                     help: None,
-                },
+                }),
             ),
         ];
         let meta = ValueMeta::Enum {
-            one_of: MaybeGenerated::Static(&CHOICES),
+            one_of: Choices::Static(&CHOICES),
             nullable: false,
             subst: false,
         };
@@ -433,9 +493,9 @@ mod tests {
             nullable: false,
         };
         let meta = ValueMeta::Vec {
-            items: &ITEM,
-            min_length: Some(1),
-            max_length: Some(3),
+            meta: &ITEM,
+            min: Some(1),
+            max: Some(3),
             stride: None,
             nullable: false,
         };
@@ -447,9 +507,9 @@ mod tests {
         assert!(validate(&meta, &many4).is_err());
         // stride is one
         let meta = ValueMeta::Vec {
-            items: &ITEM,
-            min_length: None,
-            max_length: None,
+            meta: &ITEM,
+            min: None,
+            max: None,
             stride: Some(1),
             nullable: false,
         };
@@ -460,9 +520,9 @@ mod tests {
         assert!(validate(&meta, &empty).is_ok());
         // stride is even
         let meta = ValueMeta::Vec {
-            items: &ITEM,
-            min_length: None,
-            max_length: None,
+            meta: &ITEM,
+            min: None,
+            max: None,
             stride: Some(2),
             nullable: false,
         };
@@ -481,7 +541,7 @@ mod tests {
         fn name(&self) -> &'static str {
             "port"
         }
-        fn default(&self) -> crate::error::Result<Arc<dyn Any + Send + Sync>> {
+        fn make_default_value(&self) -> crate::error::Result<Arc<dyn Any + Send + Sync>> {
             Ok(Arc::new(Port(80)))
         }
         fn decode(&self, node: &ComplexConfigNode) -> crate::error::Result<Arc<dyn Any + Send + Sync>> {
@@ -523,7 +583,6 @@ mod tests {
     fn complex_value_meta_delegates_validation_to_type() {
         let meta = ValueMeta::Complex {
             ty: &PORT_TYPE,
-            limits: &[],
             nullable: false,
         };
         let good: Arc<dyn Any + Send + Sync> = Arc::new(Port(104));

@@ -165,6 +165,21 @@ pub struct Network {
     pub resolved: NetworkResolved,
 }
 
+impl Default for Network {
+    fn default() -> Self {
+        Network {
+            definition: NetworkDefinition::Ip {
+                addr: IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED),
+                bits: Some(0),
+            },
+            resolved: NetworkResolved::Ip {
+                addr: vec![IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED)],
+                bits: Some(0),
+            },
+        }
+    }
+}
+
 impl PartialEq for Network {
     fn eq(&self, other: &Self) -> bool {
         self.definition == other.definition

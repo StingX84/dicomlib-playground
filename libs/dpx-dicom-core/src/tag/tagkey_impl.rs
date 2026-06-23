@@ -267,6 +267,12 @@ impl TagKey {
     }
 }
 
+impl Default for TagKey {
+    fn default() -> Self {
+        Self(0xFFFF_FFFFu32)
+    }
+}
+
 impl std::fmt::Display for TagKey {
     /// Outputs this key in format `(gggg,eeee)`, where `gggg` and `eeee`
     /// are group and element numbers in upper hexadecimal digits.

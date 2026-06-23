@@ -72,7 +72,7 @@ use std::borrow::Cow;
 ///     https://dicom.nema.org/medical/dicom/current/output/chtml/part07/sect_E.2.html
 /// [PS3.5 "7.8.1 Private Data Element Tags"]:
 ///     https://dicom.nema.org/medical/dicom/current/output/chtml/part05/sect_7.8.html
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Default, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Tag {
     pub key: TagKey,

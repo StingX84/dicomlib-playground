@@ -15,9 +15,9 @@ static GLOBAL_CTX: LazyLock<ArcSwap<Context>> = LazyLock::new(|| {
         action: None,
         tag_dict: Some(Arc::new(tag::Dictionary::default())),
         uid_dict: Some(Arc::new(uid::Dictionary::default())),
-        config: Some(Arc::new(config::Config::new_empty(
+        config: Some(Arc::new(config::Object::new_empty(
             config::GLOBAL_LAYER_ID,
-            Arc::new(config::Registry::new_from_static()),
+            config::meta::collected_global_meta(),
         ))),
         prev: None,
     })
@@ -72,7 +72,7 @@ pub struct Context {
     action: Option<ActionEntry>,
     tag_dict: Option<Arc<tag::Dictionary>>,
     uid_dict: Option<Arc<uid::Dictionary>>,
-    config: Option<Arc<config::Config>>,
+    config: Option<Arc<config::Object>>,
     prev: Option<Arc<Context>>,
 }
 
@@ -99,7 +99,7 @@ impl Context {
     /// This is a crate-internal accessor; the public single source of truth for
     /// the application-wide configuration is
     /// [`GlobalConfig`](crate::config::GlobalConfig).
-    pub(crate) fn global_config() -> Arc<config::Config> {
+    pub(crate) fn global_config() -> Arc<config::Object> {
         GLOBAL_CTX
             .load()
             .config
@@ -112,7 +112,7 @@ impl Context {
     /// Only the root node's `config` field is replaced; the default dictionaries
     /// and any other root state are preserved, and no context layer is added, so
     /// repeated hot-reloads do not grow the chain. Lock-free for readers.
-    pub(crate) fn publish_global_config(config: Arc<config::Config>) {
+    pub(crate) fn publish_global_config(config: Arc<config::Object>) {
         GLOBAL_CTX.rcu(|old| {
             Arc::new(Context {
                 assoc: old.assoc.clone(),
@@ -215,8 +215,8 @@ impl Context {
         self.actions().any(|(k, i)| k == kind && i == id)
     }
 
-    /// Returns the nearest [`config::Config`] in the context chain.
-    pub fn config(&self) -> &config::Config {
+    /// Returns the nearest [`config::Object`] in the context chain.
+    pub fn config(&self) -> &config::Object {
         self.find(|n| n.config.as_deref())
             .expect("Context chain missing config — global root must have one")
     }
@@ -393,7 +393,7 @@ impl ContextBuilder {
     ///
     /// Values not found here fall through to lower layers (see
     /// [`Context::config_get`]).
-    pub fn config(mut self, c: Arc<config::Config>) -> Self {
+    pub fn config(mut self, c: Arc<config::Object>) -> Self {
         self.ctx_mut().config = Some(c);
         self
     }
@@ -486,7 +486,7 @@ impl<F: Future> Future for ContextScope<F> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::assert_matches;
+    use std::{assert_matches};
     use std::borrow::Cow;
 
     fn make_assoc(id: u64, peer: &'static str, local: &'static str) -> Arc<AssocDescription> {
@@ -583,16 +583,20 @@ mod tests {
     // ── Configuration layering ────────────────────────────────────────────────
 
     use crate::config::{
-        Condition, Config, GLOBAL_LAYER_ID, GlobalConfig, Key, Registry, Value,
+        Condition, Object, GLOBAL_LAYER_ID, GlobalConfig, Key, Value, 
+        meta,
         map::{Conditionals, Map},
     };
 
     const KEY: Key = Key::new("test");
+    const TEST_KEYS: &[meta::KeyMeta] = &[];
+    
+    config_object_meta!( fn test_object_meta() = &TEST_KEYS );
 
-    fn config_with<const N: usize>(values: [(Key, Conditionals); N]) -> Arc<config::Config> {
-        Arc::new(Config::new(
+    fn config_with<const N: usize>(values: [(Key, Conditionals); N]) -> Arc<config::Object> {
+        Arc::new(Object::new(
             GLOBAL_LAYER_ID,
-            Arc::new(Registry::new_empty()),
+            test_object_meta(),
             Map::from_iter(values),
         ))
     }
@@ -652,33 +656,6 @@ mod tests {
                 Context::with_current(|ctx| {
                     assert!(matches!(ctx.config_get_current(&KEY), Some(Value::Int(1))));
                 });
-            });
-        });
-    }
-
-    #[test]
-    fn config_get_any_falls_back_to_registry_default() {
-        static METAS: [config::meta::KeyMeta; 1] = [config::meta::KeyMeta {
-            key: KEY,
-            edit: None,
-            conditional: false,
-            runtime: true,
-            default: crate::config::meta::ValueDefault::Static(Value::Int(42)),
-            value_meta: config::meta::ValueMeta::Int {
-                min: None,
-                max: None,
-                subst: false,
-                nullable: false,
-            },
-        }];
-
-        let mut registry = Registry::new_empty();
-        registry.insert(&METAS[0]);
-        let cfg = Arc::new(Config::new_empty(GLOBAL_LAYER_ID, Arc::new(registry)));
-
-        Context::extend().config(cfg).provide(|| {
-            Context::with_current(|ctx| {
-                assert!(matches!(ctx.config_get_current(&KEY), Some(Value::Int(42))));
             });
         });
     }

@@ -4,27 +4,25 @@
 //!
 //! - **Metadata** ([`meta`]) — descriptors that let any key be validated,
 //!   edited in a GUI/TUI and documented without hard-coding it. Applications
-//!   extend the surface by submitting [`StaticRegistry`] batches via `inventory`.
+//!   extend the surface by submitting [`ObjectMetaProvider`](meta::ObjectMetaProvider) batches via `inventory`.
 //! - **Values** ([`value`]) — the dynamically-typed [`Value`] payloads.
 //! - **Values Map** ([`map`]) — loaded data with [`Value`]s mapped to keys, either
 //!   conditionally or unconditionally.
-//! - **Config** ([`Config`]) — a single configuration layer tying a [`Registry`]
-//!   to a [`Map`]. It is the unit of configuration that can be composed into a
-//!   [`GlobalConfig`] or installed into a [`Context`](crate::Context).
+//! - **Object** ([`Object`]) — a single object storing [`ObjectMeta`](meta::ObjectMeta)
+//!   and a [`Map`]. It is the unit of configuration that can be composed into a
+//!   [`GlobalConfig`], installed into a [`Context`](crate::Context) or be a part of [`Value::Object`].
 //! - **GlobalConfig** ([`GlobalConfig`]) — the single source of truth for getting
-//!   and setting the global base [`Config`].
+//!   and setting the global base [`Object`].
 //! - **Loader** ([`loader`]) — a [`serde`] deserializer that reads a configuration
-//!   file and produces a [`Config`] layer.
+//!   file and produces a [`Object`].
 
 pub mod complex;
 pub mod global;
 #[cfg(feature = "serde")]
 pub mod loader;
-//#[macro_use]
-//pub mod macros;
+pub mod macros;
 pub mod map;
 pub mod meta;
-pub mod registry;
 pub mod subst;
 pub mod typed;
 pub(crate) mod validator;
@@ -37,11 +35,10 @@ pub use global::GlobalConfig;
 #[cfg(feature = "serde")]
 pub use loader::YamlLoader;
 pub use map::{Condition, Map};
-pub use registry::{Registry, StaticRegistry};
 pub use subst::{AppDir, SubstVars};
-pub use value::{Value, ValueFile, ValueRef, millis, mins, secs};
+pub use value::{Value, ConfiguredFile, ValueRef, millis, mins, secs};
 
-use crate::{Arc, network::AssocDescription};
+use crate::{network::AssocDescription};
 
 pub const GLOBAL_LAYER_ID: LayerId = LayerId::Borrowed("<global>");
 pub const OBJECT_LAYER_ID: LayerId = LayerId::Borrowed("<object>");
@@ -78,7 +75,7 @@ impl From<&'static str> for Key {
 
 pub type LayerId = Cow<'static, str>;
 
-/// A read-only view over the configuration values stored in a single [`Config`]
+/// A read-only view over the configuration values stored in a single [`Object`]
 /// or across all layers of a [`Context`](super::Context).
 pub trait ConfigValues {
     type Iter<'a>: Iterator<Item = (&'a Key, &'a Value, Option<&'a Condition>, &'a LayerId)>
@@ -114,28 +111,27 @@ pub trait ConfigValues {
     }
 }
 
-/// One configuration layer: a [`Map`] of values resolved against a [`Registry`].
 #[derive(Debug, Clone)]
-pub struct Config {
+pub struct Object {
     layer_id: LayerId,
-    registry: Arc<Registry>,
-    map: Map,
+    object_meta: &'static meta::ObjectMeta,
+    values: Map,
 }
 
-impl Config {
-    pub fn new(layer_id: LayerId, registry: Arc<Registry>, map: Map) -> Self {
-        Config {
+impl Object {
+    pub fn new(layer_id: LayerId, object_meta: &'static meta::ObjectMeta, values: Map) -> Self {
+        Object {
             layer_id,
-            registry,
-            map,
+            object_meta,
+            values,
         }
     }
 
-    pub fn new_empty(layer_id: LayerId, registry: Arc<Registry>) -> Self {
-        Config {
+    pub fn new_empty(layer_id: LayerId, object_meta: &'static meta::ObjectMeta) -> Self {
+        Object {
             layer_id,
-            registry,
-            map: Map::new(),
+            object_meta,
+            values: Map::new(),
         }
     }
 
@@ -144,30 +140,30 @@ impl Config {
     }
 
     /// The metadata registry this layer resolves keys and defaults against.
-    pub fn registry(&self) -> &Arc<Registry> {
-        &self.registry
+    pub fn object_meta(&self) -> &'static meta::ObjectMeta {
+        self.object_meta
     }
 
     /// Returns a map of values
     pub fn values(&self) -> &Map {
-        &self.map
+        &self.values
     }
 
     /// Returns a mutable map of values
     pub fn values_mut(&mut self) -> &mut Map {
-        &mut self.map
+        &mut self.values
     }
 
     /// Returns the default value for `key`.
     ///
     /// Note: every registered key must have a default value.
     pub fn default_of(&self, key: &Key) -> Option<&Value> {
-        self.registry.default_value_of(key)
+        self.object_meta.default_of(key)
     }
 }
 
 pub struct ConfigIter<'a> {
-    config: &'a Config,
+    config: &'a Object,
     map_iter: std::collections::hash_map::Iter<'a, Key, map::Conditionals>,
     cond_iter: Option<(&'a Key, std::slice::Iter<'a, (Value, Condition)>)>,
 }
@@ -192,7 +188,7 @@ impl<'a> Iterator for ConfigIter<'a> {
     }
 }
 
-impl ConfigValues for Config {
+impl ConfigValues for Object {
     type Iter<'a>
         = ConfigIter<'a>
     where
@@ -201,7 +197,7 @@ impl ConfigValues for Config {
     fn config_iter(&self) -> Self::Iter<'_> {
         ConfigIter {
             config: self,
-            map_iter: self.map.0.iter(),
+            map_iter: self.values.0.iter(),
             cond_iter: None,
         }
     }
@@ -211,6 +207,6 @@ impl ConfigValues for Config {
     }
 
     fn config_get_explicit(&self, key: &Key, assoc: Option<&AssocDescription>) -> Option<&Value> {
-        self.map.get_ranked(key, assoc).map(|(v, _)| v)
+        self.values.get_ranked(key, assoc).map(|(v, _)| v)
     }
 }

@@ -2,7 +2,7 @@
 //!
 //! The loader does not build a whole-document DOM. Instead it drives
 //! `serde-saphyr` with [`serde::de::DeserializeSeed`]s guided by the
-//! [`Registry`]: as the parser walks the document, each key is routed against a
+//! [`ObjectMeta`]: as the parser walks the document, each key is routed against a
 //! path index built from the registered keys' [`Key`](super::Key) paths and their
 //! [`conditional`](super::meta::KeyMeta::conditional)/[`runtime`](super::meta::KeyMeta::runtime)
 //! flags, and each value is mapped to a [`Value`] according to its [`ValueMeta`].
@@ -35,12 +35,12 @@
 //! ```
 
 use super::map::{Condition, Map};
-use super::meta::{KeyMeta, ValueMeta};
-use super::value::ValueFile;
-use super::{ComplexConfigNode, Config, LayerId, OBJECT_LAYER_ID, Registry, SubstVars, Value};
+use super::meta::{KeyMeta, ValueMeta, ObjectMeta};
+use super::value::ConfiguredFile;
+use super::{ComplexConfigNode, Object, LayerId, OBJECT_LAYER_ID, SubstVars, Value};
 use crate::IntoDicomErr;
 use crate::network::{HostDefinition, Network, NetworkDefinition};
-use crate::{Arc, HashMap, dicom_err, ensure, error::Result};
+use crate::{HashMap, dicom_err, ensure, error::Result};
 
 use serde::Deserialize;
 use serde::de::{self, DeserializeSeed, Deserializer, MapAccess, SeqAccess, Visitor};
@@ -52,12 +52,12 @@ pub const CONFIG_LAYER_ID: LayerId = LayerId::Borrowed("file");
 
 /// Loads configuration from a YAML file or a directory of `*.yml` files.
 pub struct YamlLoader {
-    registry: Arc<Registry>,
+    registry: &'static ObjectMeta,
 }
 
 impl YamlLoader {
-    /// Creates a loader bound to a metadata `registry`
-    pub fn new(registry: Arc<Registry>) -> YamlLoader {
+    /// Creates a loader bound to a metadata `object`
+    pub fn new(registry: &'static ObjectMeta) -> YamlLoader {
         YamlLoader { registry }
     }
 
@@ -66,7 +66,7 @@ impl YamlLoader {
     /// If `path` is a file, it is the entire configuration. If it is a
     /// directory, every `*.yml` file in it is loaded in alphabetical order, with
     /// later files overriding earlier ones (last value wins).
-    pub fn load(&self, path: impl AsRef<Path>) -> Result<Config> {
+    pub fn load(&self, path: impl AsRef<Path>) -> Result<Object> {
         let files = collect_files(path.as_ref())?;
         ensure!(
             !files.is_empty(),
@@ -75,7 +75,7 @@ impl YamlLoader {
             path.as_ref().display()
         );
 
-        let index = build_index(&self.registry)?;
+        let index = build_index(self.registry)?;
         let acc = Accumulator {
             map: RefCell::new(Map::new()),
         };
@@ -93,8 +93,8 @@ impl YamlLoader {
     }
 
     /// Loads configuration from a single in-memory YAML document.
-    pub fn load_str(&self, text: &str) -> Result<Config> {
-        let index = build_index(&self.registry)?;
+    pub fn load_str(&self, text: &str) -> Result<Object> {
+        let index = build_index(self.registry)?;
         let acc = Accumulator {
             map: RefCell::new(Map::new()),
         };
@@ -106,10 +106,10 @@ impl YamlLoader {
         self.finalize(acc)
     }
 
-    fn finalize(&self, acc: Accumulator) -> Result<Config> {
-        Ok(Config::new(
+    fn finalize(&self, acc: Accumulator) -> Result<Object> {
+        Ok(Object::new(
             CONFIG_LAYER_ID,
-            self.registry.clone(),
+            self.registry,
             acc.map.into_inner(),
         ))
     }
@@ -141,7 +141,7 @@ enum IndexNode<'a> {
     CondList(HashMap<String, &'a KeyMeta>),
 }
 
-fn build_index(registry: &Registry) -> Result<IndexNode<'_>> {
+fn build_index(registry: &ObjectMeta) -> Result<IndexNode<'_>> {
     let mut root = IndexNode::Branch(HashMap::new());
     for km in registry.iter() {
         if km.runtime {
@@ -534,7 +534,7 @@ impl<'de, 'a> Visitor<'de> for MetaVisitor<'a> {
     fn visit_i64<E: de::Error>(self, v: i64) -> std::result::Result<Value, E> {
         match self.meta {
             ValueMeta::Int { .. } => Ok(Value::Int(v)),
-            ValueMeta::Vec { items, .. } => Ok(Value::Vec(vec![scalar_int(items, v)?])),
+            ValueMeta::Vec { meta, .. } => Ok(Value::Vec(vec![scalar_int(meta, v)?])),
             _ => Err(self.mismatch("an integer")),
         }
     }
@@ -568,11 +568,11 @@ impl<'de, 'a> Visitor<'de> for MetaVisitor<'a> {
     }
 
     fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> std::result::Result<Value, A::Error> {
-        let ValueMeta::Vec { items, .. } = self.meta else {
+        let ValueMeta::Vec { meta, .. } = self.meta else {
             return Err(self.mismatch("a list"));
         };
         let mut out = Vec::new();
-        while let Some(v) = seq.next_element_seed(ValueSeed::new(items))? {
+        while let Some(v) = seq.next_element_seed(ValueSeed::new(meta))? {
             out.push(v);
         }
         Ok(Value::Vec(out))
@@ -580,8 +580,8 @@ impl<'de, 'a> Visitor<'de> for MetaVisitor<'a> {
 
     fn visit_map<A: MapAccess<'de>>(self, map: A) -> std::result::Result<Value, A::Error> {
         match self.meta {
-            ValueMeta::Object { meta: items, .. } => visit_object(items, map),
-            ValueMeta::Map { values, .. } => visit_value_map(values, map),
+            ValueMeta::Object { meta, .. } => visit_object(meta(), map),
+            ValueMeta::Map { meta, .. } => visit_value_map(meta, map),
             ValueMeta::File { .. } => visit_file_map(map),
             _ => Err(self.mismatch("an object")),
         }
@@ -631,7 +631,7 @@ fn scalar_str(meta: &ValueMeta, v: &str) -> std::result::Result<Value, ScalarErr
             .parse()
             .map(Value::Vr)
             .map_err(|e| ScalarErr::Custom(format!("invalid VR {v:?}: {e}"))),
-        ValueMeta::File { .. } => Ok(Value::File(ValueFile::Name {
+        ValueMeta::File { .. } => Ok(Value::File(ConfiguredFile::Name {
             path: v.to_string(),
             hot_reload: false,
         })),
@@ -651,8 +651,8 @@ fn scalar_str(meta: &ValueMeta, v: &str) -> std::result::Result<Value, ScalarErr
                 .map(Value::Host)
                 .map_err(|e| ScalarErr::Custom(format!("invalid host {v:?}: {e}")))
         }
-        ValueMeta::Vec { items, .. } => {
-            let item = scalar_str(items, v)?;
+        ValueMeta::Vec { meta, .. } => {
+            let item = scalar_str(meta, v)?;
             Ok(Value::Vec(vec![item]))
         }
         _ => Err(ScalarErr::Mismatch),
@@ -660,19 +660,16 @@ fn scalar_str(meta: &ValueMeta, v: &str) -> std::result::Result<Value, ScalarErr
 }
 
 /// Builds a nested [`Value::Object`] from a YAML map routed by `items`.
-fn visit_object<'de, A: MapAccess<'de>>(items: &'static [KeyMeta], mut map: A) -> std::result::Result<Value, A::Error> {
+fn visit_object<'de, A: MapAccess<'de>>(items: &'static ObjectMeta, mut map: A) -> std::result::Result<Value, A::Error> {
     let mut nested = Map::new();
     while let Some(key) = map.next_key::<String>()? {
-        let km = items
-            .iter()
-            .find(|k| k.key.0 == key)
+        let km = items.key_meta_str(&key)
             .ok_or_else(|| de::Error::custom(format!("unknown field {key:?}")))?;
         let value = map.next_value_seed(ValueSeed::new(&km.value_meta))?;
         validate_leaf(km, &value).map_err(de::Error::custom)?;
         nested.add(km.key, value, None);
     }
-    let registry = Arc::new(Registry::new_from_meta(items));
-    Ok(Value::Object(Config::new(OBJECT_LAYER_ID, registry, nested)))
+    Ok(Value::Object(Object::new(OBJECT_LAYER_ID, items, nested)))
 }
 
 /// Builds a [`Value::Map`] of string keys to values typed by `values`.
@@ -699,11 +696,11 @@ fn visit_file_map<'de, A: MapAccess<'de>>(mut map: A) -> std::result::Result<Val
         }
     }
     match (path, content) {
-        (Some(p), None) => Ok(Value::File(ValueFile::Name {
+        (Some(p), None) => Ok(Value::File(ConfiguredFile::Name {
             path: p,
             hot_reload: reload,
         })),
-        (None, Some(c)) => Ok(Value::File(ValueFile::Content(c.into_bytes()))),
+        (None, Some(c)) => Ok(Value::File(ConfiguredFile::Content(c.into_bytes()))),
         (Some(_), Some(_)) => Err(de::Error::custom("file has both a path and inline content")),
         (None, None) => Err(de::Error::custom("file has neither a path nor content")),
     }
@@ -771,8 +768,9 @@ impl<'de> Visitor<'de> for ConfigNodeVisitor {
 
 #[cfg(test)]
 mod tests {
+    use crate::{Arc, config_object_meta};
     use super::*;
-    use crate::config::meta::{EditName, MaybeGenerated, ValueDefault};
+    use crate::config::meta::{EditName, Choices};
     use crate::config::{ConfigValues, Key};
     use crate::network::AssocDescription;
 
@@ -790,7 +788,7 @@ mod tests {
             edit: None,
             conditional: false,
             runtime: false,
-            default: ValueDefault::Default,
+            default: None,
             value_meta: ValueMeta::String {
                 regexp: None,
                 min: None,
@@ -804,7 +802,7 @@ mod tests {
             edit: None,
             conditional: false,
             runtime: false,
-            default: ValueDefault::Default,
+            default: None,
             value_meta: ValueMeta::Int {
                 min: Some(0),
                 max: Some(65535),
@@ -813,30 +811,32 @@ mod tests {
             },
         },
     ];
+    
+    config_object_meta!{ fn listen_meta() = &LISTEN_ITEMS }
+    
     static LISTEN_OBJ: ValueMeta = ValueMeta::Object {
-        meta: &LISTEN_ITEMS,
-        validate: |_| Ok(()),
+        meta: || listen_meta(),
         nullable: false,
     };
 
-    static ENC_CHOICES: [(u32, &str, EditName); 2] = [
+    static ENC_CHOICES: [(u32, &str, Option<EditName>); 2] = [
         (
             0,
             "deny",
-            EditName {
+            Some(EditName {
                 display_name: "Deny",
                 brief: None,
                 help: None,
-            },
+            }),
         ),
         (
             1,
             "fix",
-            EditName {
+            Some(EditName {
                 display_name: "Fix",
                 brief: None,
                 help: None,
-            },
+            }),
         ),
     ];
 
@@ -853,7 +853,7 @@ mod tests {
             edit: None,
             conditional: true,
             runtime: false,
-            default: ValueDefault::Default,
+            default: None,
             value_meta: ValueMeta::Duration {
                 min: None,
                 max: None,
@@ -866,7 +866,7 @@ mod tests {
             edit: None,
             conditional: true,
             runtime: false,
-            default: ValueDefault::Default,
+            default: None,
             value_meta: ValueMeta::Int {
                 min: Some(0),
                 max: None,
@@ -879,11 +879,11 @@ mod tests {
             edit: None,
             conditional: false,
             runtime: false,
-            default: ValueDefault::Default,
+            default: None,
             value_meta: ValueMeta::Vec {
-                items: &STRING_ITEM,
-                min_length: None,
-                max_length: None,
+                meta: &STRING_ITEM,
+                min: None,
+                max: None,
                 stride: None,
                 nullable: false,
             },
@@ -893,11 +893,11 @@ mod tests {
             edit: None,
             conditional: false,
             runtime: false,
-            default: ValueDefault::Default,
+            default: None,
             value_meta: ValueMeta::Vec {
-                items: &LISTEN_OBJ,
-                min_length: None,
-                max_length: None,
+                meta: &LISTEN_OBJ,
+                min: None,
+                max: None,
                 stride: None,
                 nullable: false,
             },
@@ -907,9 +907,9 @@ mod tests {
             edit: None,
             conditional: false,
             runtime: false,
-            default: ValueDefault::Default,
+            default: None,
             value_meta: ValueMeta::Enum {
-                one_of: MaybeGenerated::Static(&ENC_CHOICES),
+                one_of: Choices::Static(&ENC_CHOICES),
                 subst: false,
                 nullable: false,
             },
@@ -919,18 +919,19 @@ mod tests {
             edit: None,
             conditional: false,
             runtime: false,
-            default: ValueDefault::Default,
+            default: None,
             value_meta: ValueMeta::Map {
-                values: &STRING_ITEM,
-                min_length: None,
-                max_length: None,
+                meta: &STRING_ITEM,
+                min: None,
+                max: None,
                 nullable: false,
             },
         },
     ];
+    config_object_meta!{ fn meta() = &METAS }
 
     fn loader() -> YamlLoader {
-        YamlLoader::new(Arc::new(Registry::new_from_meta(&METAS)))
+        YamlLoader::new(meta())
     }
 
     const DOC: &str = "\
@@ -1056,7 +1057,7 @@ dicom:
                 edit: None,
                 conditional: false,
                 runtime: false,
-                default: ValueDefault::Default,
+                default: None,
                 value_meta: ValueMeta::String {
                     regexp: None,
                     min: None,
@@ -1072,11 +1073,11 @@ dicom:
                 edit: None,
                 conditional: false,
                 runtime: false,
-                default: ValueDefault::Default,
+                default: None,
                 value_meta: ValueMeta::Vec {
-                    items: &SUBST_ITEM,
-                    min_length: None,
-                    max_length: None,
+                    meta: &SUBST_ITEM,
+                    min: None,
+                    max: None,
                     stride: None,
                     nullable: false,
                 },
@@ -1088,7 +1089,7 @@ dicom:
             edit: None,
             conditional: false,
             runtime: false,
-            default: ValueDefault::Default,
+            default: None,
             value_meta: ValueMeta::String {
                 regexp: None,
                 min: None,
@@ -1100,7 +1101,9 @@ dicom:
 
         SubstVars::install(Arc::new(SubstVars::builder().var("WHO", "world").build()));
 
-        let cfg = YamlLoader::new(Arc::new(Registry::new_from_meta(&SUBST_METAS)))
+        config_object_meta!{ fn subst_meta() = &SUBST_METAS }
+
+        let cfg = YamlLoader::new(subst_meta())
             .load_str("greeting: hi $WHO\nnames: $WHO\n")
             .expect("load");
         assert!(matches!(cfg.config_get(&Key::new("greeting"), None), Some(Value::String(s)) if s == "hi world"));
@@ -1109,7 +1112,9 @@ dicom:
             other => panic!("names: {other:?}"),
         }
 
-        let cfg = YamlLoader::new(Arc::new(Registry::new_from_meta(&PLAIN_METAS)))
+        config_object_meta!{ fn plain_meta() = &PLAIN_METAS }
+
+        let cfg = YamlLoader::new(plain_meta())
             .load_str("greeting: hi $WHO\n")
             .expect("load");
         assert!(matches!(cfg.config_get(&Key::new("greeting"), None), Some(Value::String(s)) if s == "hi $WHO"));
@@ -1124,12 +1129,12 @@ dicom:
                 edit: None,
                 conditional: false,
                 runtime: false,
-                default: ValueDefault::Default,
+                default: None,
                 value_meta: ValueMeta::Network {
                     domain: true,
                     unix: true,
-                    v4: true,
-                    v6: true,
+                    ipv4: true,
+                    ipv6: true,
                     subst: true,
                     nullable: true,
                 },
@@ -1139,12 +1144,12 @@ dicom:
                 edit: None,
                 conditional: false,
                 runtime: false,
-                default: ValueDefault::Default,
+                default: None,
                 value_meta: ValueMeta::Host {
                     domain: true,
                     unix: true,
-                    v4: true,
-                    v6: true,
+                    ipv4: true,
+                    ipv6: true,
                     default_port: Some(104),
                     subst: false,
                     nullable: true,
@@ -1153,8 +1158,9 @@ dicom:
         ];
 
         SubstVars::install(Arc::new(SubstVars::builder().var("NET", "127.0.0.1/24").build()));
+        config_object_meta!( fn net_host_meta() = &NET_HOST );
 
-        let cfg = YamlLoader::new(Arc::new(Registry::new_from_meta(&NET_HOST)))
+        let cfg = YamlLoader::new(net_host_meta())
             .load_str("bind: $NET\npeer: 10.0.0.1\n")
             .expect("load");
 
@@ -1175,7 +1181,7 @@ dicom:
         }
 
         // A malformed literal is rejected.
-        let err = YamlLoader::new(Arc::new(Registry::new_from_meta(&NET_HOST)))
+        let err = YamlLoader::new(net_host_meta())
             .load_str("bind: not a network!!\npeer: 10.0.0.1\n")
             .unwrap_err();
         assert!(format!("{err}").contains("network"));
@@ -1195,17 +1201,18 @@ dicom:
             edit: None,
             conditional: false,
             runtime: false,
-            default: ValueDefault::Default,
+            default: None,
             value_meta: ValueMeta::Vec {
-                items: &NULLABLE_STR_ITEM,
-                min_length: None,
-                max_length: None,
+                meta: &NULLABLE_STR_ITEM,
+                min: None,
+                max: None,
                 stride: None,
                 nullable: false,
             },
         }];
 
-        let loader = YamlLoader::new(Arc::new(Registry::new_from_meta(&NULL_LIST)));
+        config_object_meta!( fn null_list_meta() = &NULL_LIST );
+        let loader = YamlLoader::new(null_list_meta());
         let cfg = loader.load_str("names:\n  - A\n  - null\n").expect("load");
         match cfg.config_get(&Key::new("names"), None) {
             Some(Value::Vec(v)) => {
@@ -1222,16 +1229,17 @@ dicom:
             edit: None,
             conditional: false,
             runtime: false,
-            default: ValueDefault::Default,
+            default: None,
             value_meta: ValueMeta::Vec {
-                items: &STRING_ITEM,
-                min_length: None,
-                max_length: None,
+                meta: &STRING_ITEM,
+                min: None,
+                max: None,
                 stride: None,
                 nullable: false,
             },
         }];
-        let loader = YamlLoader::new(Arc::new(Registry::new_from_meta(&PLAIN_LIST)));
+        config_object_meta!( fn plain_list_meta() = &PLAIN_LIST );
+        let loader = YamlLoader::new(plain_list_meta());
         assert!(loader.load_str("names:\n  - A\n  - null\n").is_err());
     }
 }

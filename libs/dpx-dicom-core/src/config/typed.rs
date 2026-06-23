@@ -128,15 +128,14 @@ fn missing(key: Key) -> ! {
 
 #[cfg(test)]
 mod tests {
-    use super::super::{
-        Config, GLOBAL_LAYER_ID, Registry, Value,
+    use super::*;
+    use crate::config::{
+        GLOBAL_LAYER_ID, Object, Value,
         map::{Condition, Conditionals, Map},
         meta::KeyMeta,
-        meta::ValueDefault,
         meta::ValueMeta,
     };
-    use super::*;
-    use crate::Arc;
+    use crate::config_object_meta;
 
     use std::time::Duration;
 
@@ -149,7 +148,7 @@ mod tests {
             edit: None,
             conditional: false,
             runtime: false,
-            default: ValueDefault::Static(Value::Duration(Duration::from_secs(10))),
+            default: Some(|| Value::Duration(Duration::from_secs(10))),
             value_meta: ValueMeta::Duration {
                 min: None,
                 max: None,
@@ -162,7 +161,7 @@ mod tests {
             edit: None,
             conditional: true,
             runtime: false,
-            default: ValueDefault::Static(Value::Int(5)),
+            default: Some(|| Value::Int(5)),
             value_meta: ValueMeta::Int {
                 min: None,
                 max: None,
@@ -172,6 +171,8 @@ mod tests {
         },
     ];
 
+    config_object_meta!( fn test_object_meta() = &METAS );
+
     fn timeout() -> TypedKey<Duration, Req> {
         TypedKey::new(K_TIMEOUT, false)
     }
@@ -179,11 +180,7 @@ mod tests {
         TypedKey::new(K_MAX, true)
     }
 
-    fn registry() -> Arc<Registry> {
-        Arc::new(Registry::new_from_meta(&METAS))
-    }
-
-    fn populated() -> Config {
+    fn populated() -> Object {
         let keys = [
             (
                 Key::new(K_TIMEOUT),
@@ -206,7 +203,7 @@ mod tests {
                 ),
             ),
         ];
-        Config::new(GLOBAL_LAYER_ID.clone(), registry(), Map::from_iter(keys))
+        Object::new(GLOBAL_LAYER_ID.clone(), test_object_meta(), Map::from_iter(keys))
     }
 
     #[test]
@@ -216,7 +213,7 @@ mod tests {
 
     #[test]
     fn plain_falls_back_to_default() {
-        let cfg = Config::new_empty(GLOBAL_LAYER_ID.clone(), registry());
+        let cfg = Object::new_empty(GLOBAL_LAYER_ID.clone(), test_object_meta());
         assert_eq!(timeout().get(&cfg), Duration::from_secs(10));
     }
 
@@ -237,7 +234,7 @@ mod tests {
 
     #[test]
     fn conditional_falls_back_to_default() {
-        let cfg = Config::new_empty(GLOBAL_LAYER_ID, registry());
+        let cfg = Object::new_empty(GLOBAL_LAYER_ID, test_object_meta());
         assert_eq!(max_key().get_for(&cfg, None), 5);
     }
 }

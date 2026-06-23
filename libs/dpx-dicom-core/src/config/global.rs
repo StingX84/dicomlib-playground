@@ -1,12 +1,12 @@
 //! The hot-swappable config manager.
 
-use super::Config;
+use super::Object;
 use crate::error::{ErrContext, Result};
 use crate::event::{Event, EventObserver};
 use crate::{Arc, Context};
 use std::sync::LazyLock;
 
-/// The single source of truth for getting and setting the global base [`Config`].
+/// The single source of truth for getting and setting the global base [`Object`].
 ///
 /// `GlobalConfig` is a singleton.
 /// Read the live configuration with [`current`](Self::current), replace it directly with
@@ -29,9 +29,9 @@ use std::sync::LazyLock;
 /// All handlers are synchronous and must not block for long; they run on the
 /// thread that called [`set_transactional`](Self::set_transactional).
 pub struct GlobalConfig {
-    on_prepare: Event<Config>,
-    on_commit: Event<Config>,
-    on_abort: Event<Config>,
+    on_prepare: Event<Object>,
+    on_commit: Event<Object>,
+    on_abort: Event<Object>,
 }
 
 static MANAGER: LazyLock<GlobalConfig> = LazyLock::new(|| GlobalConfig {
@@ -43,7 +43,7 @@ static MANAGER: LazyLock<GlobalConfig> = LazyLock::new(|| GlobalConfig {
 impl GlobalConfig {
     /// Returns the live global configuration. The [`Context`] root always carries
     /// a base configuration, so this never returns `None`. Lock-free.
-    pub fn current() -> Arc<Config> {
+    pub fn current() -> Arc<Object> {
         Context::global_config()
     }
 
@@ -54,7 +54,7 @@ impl GlobalConfig {
     /// configuration is left unchanged, and the veto error is returned.
     ///
     /// See also: [`set_forced`](Self::set_forced)
-    pub fn set_transactional(candidate: Arc<Config>) -> Result {
+    pub fn set_transactional(candidate: Arc<Object>) -> Result {
         if let Err(e) = MANAGER.on_prepare.fire(candidate.as_ref()) {
             let _ = MANAGER.on_abort.fire(candidate.as_ref());
             return Err(e).err_context("configuration reload vetoed");
@@ -69,7 +69,7 @@ impl GlobalConfig {
     /// two-phase reload protocol.
     ///
     /// See also: [`set_transactional`](Self::set_transactional)
-    pub fn set_forced(config: Arc<Config>) {
+    pub fn set_forced(config: Arc<Object>) {
         Context::publish_global_config(config);
     }
 
@@ -77,21 +77,21 @@ impl GlobalConfig {
     ///
     /// A handler validates the candidate configuration and reserves whatever the
     /// module needs to switch to it; returning an error vetoes the reload.
-    pub fn on_prepare() -> EventObserver<Config> {
+    pub fn on_prepare() -> EventObserver<Object> {
         MANAGER.on_prepare.observer()
     }
 
     /// Subscribe-only handle to the *commit* phase, fired once the candidate has
     /// gone live. A commit handler cannot veto — the configuration is already
     /// published — so any error it returns does not roll the reload back.
-    pub fn on_commit() -> EventObserver<Config> {
+    pub fn on_commit() -> EventObserver<Object> {
         MANAGER.on_commit.observer()
     }
 
     /// Subscribe-only handle to the *abort* phase, fired when a reload was vetoed
     /// during prepare. Unlike commit, this notifies every abort subscriber, so a
     /// handler must tolerate being called even when its own prepare did not run.
-    pub fn on_abort() -> EventObserver<Config> {
+    pub fn on_abort() -> EventObserver<Object> {
         MANAGER.on_abort.observer()
     }
 }
@@ -100,9 +100,9 @@ impl GlobalConfig {
 
 #[cfg(test)]
 mod tests {
-    use super::super::{ConfigValues, GLOBAL_LAYER_ID, Key, Map, Registry, Value, meta::*};
+    use super::super::{ConfigValues, GLOBAL_LAYER_ID, Key, Map, Value, meta::*};
     use super::*;
-    use crate::ensure;
+    use crate::{ensure, config_object_meta};
     use crate::event::Subscription;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Mutex, PoisonError};
@@ -117,7 +117,7 @@ mod tests {
         edit: None,
         conditional: false,
         runtime: true,
-        default: ValueDefault::Default,
+        default: None,
         value_meta: ValueMeta::Int {
             min: None,
             max: None,
@@ -126,14 +126,16 @@ mod tests {
         },
     }];
 
+    config_object_meta!( fn object_meta() = &VERSION_METAS );
+
     fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
         m.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    fn empty_config(version: i64) -> Arc<Config> {
-        Arc::new(Config::new(
+    fn config_object(version: i64) -> Arc<Object> {
+        Arc::new(Object::new(
             GLOBAL_LAYER_ID.clone(),
-            Arc::new(Registry::new_from_meta(VERSION_METAS)),
+            object_meta(),
             Map::from_iter([(VERSION_KEY, Value::Int(version))]),
         ))
     }
@@ -155,20 +157,20 @@ mod tests {
     impl Recorder {
         /// Subscribes this recorder to all three phase events. The returned
         /// handles must be kept alive for the subscriptions to stay active.
-        fn subscribe(self: &Arc<Self>) -> [Subscription<Config>; 3] {
+        fn subscribe(self: &Arc<Self>) -> [Subscription<Object>; 3] {
             let p = Arc::clone(self);
-            let prepare = GlobalConfig::on_prepare().subscribe(move |_c: &Config| {
+            let prepare = GlobalConfig::on_prepare().subscribe(move |_c: &Object| {
                 p.prepared.fetch_add(1, Ordering::SeqCst);
                 ensure!(!p.veto, Configuration, "vetoed");
                 Ok(())
             });
             let c = Arc::clone(self);
-            let commit = GlobalConfig::on_commit().subscribe(move |_c: &Config| {
+            let commit = GlobalConfig::on_commit().subscribe(move |_c: &Object| {
                 c.committed.fetch_add(1, Ordering::SeqCst);
                 Ok(())
             });
             let a = Arc::clone(self);
-            let abort = GlobalConfig::on_abort().subscribe(move |_c: &Config| {
+            let abort = GlobalConfig::on_abort().subscribe(move |_c: &Object| {
                 a.aborted.fetch_add(1, Ordering::SeqCst);
                 Ok(())
             });
@@ -179,12 +181,12 @@ mod tests {
     #[test]
     fn successful_reload_prepares_commits_and_publishes() {
         let _guard = lock(&SERIAL);
-        GlobalConfig::set_forced(empty_config(1));
+        GlobalConfig::set_forced(config_object(1));
 
         let sub = Arc::new(Recorder::default());
         let _subs = sub.subscribe();
 
-        GlobalConfig::set_transactional(empty_config(2)).expect("reload");
+        GlobalConfig::set_transactional(config_object(2)).expect("reload");
 
         assert_eq!(sub.prepared.load(Ordering::SeqCst), 1);
         assert_eq!(sub.committed.load(Ordering::SeqCst), 1);
@@ -196,7 +198,7 @@ mod tests {
     #[test]
     fn veto_aborts_subscribers_and_keeps_old_config() {
         let _guard = lock(&SERIAL);
-        GlobalConfig::set_forced(empty_config(1));
+        GlobalConfig::set_forced(config_object(1));
 
         let ok = Arc::new(Recorder::default());
         let bad = Arc::new(Recorder {
@@ -206,7 +208,7 @@ mod tests {
         let _ok_subs = ok.subscribe();
         let _bad_subs = bad.subscribe();
 
-        let err = GlobalConfig::set_transactional(empty_config(2)).unwrap_err();
+        let err = GlobalConfig::set_transactional(config_object(2)).unwrap_err();
         assert_eq!(err.kind, crate::ErrorKind::Configuration);
 
         // The first subscriber prepared, the reload was vetoed, nothing committed.
@@ -225,12 +227,12 @@ mod tests {
     #[test]
     fn dropped_subscriptions_are_inactive() {
         let _guard = lock(&SERIAL);
-        GlobalConfig::set_forced(empty_config(1));
+        GlobalConfig::set_forced(config_object(1));
 
         let sub = Arc::new(Recorder::default());
         drop(sub.subscribe());
 
-        GlobalConfig::set_transactional(empty_config(2)).expect("reload");
+        GlobalConfig::set_transactional(config_object(2)).expect("reload");
         assert_eq!(current_version(), 2);
         // Dropping the handles cancelled every subscription.
         assert_eq!(sub.prepared.load(Ordering::SeqCst), 0);

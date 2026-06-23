@@ -115,7 +115,7 @@ impl ComplexConfigNode {
 /// struct IpRangeType;
 /// impl ComplexType for IpRangeType {
 ///     fn name(&self) -> &'static str { "ipRange" }
-///     fn default(&self) -> Result<Arc<dyn Any + Send + Sync>> {
+///     fn make_default_value(&self) -> Result<Arc<dyn Any + Send + Sync>> {
 ///         Ok(Arc::new(IpRange {
 ///             lo: Ipv4Addr::new(0, 0, 0, 0),
 ///             hi: Ipv4Addr::new(255, 255, 255, 255),
@@ -149,7 +149,7 @@ pub trait ComplexType: Send + Sync + 'static {
     fn name(&self) -> &'static str;
 
     /// Creates a default value when it is not nullable.
-    fn default(&self) -> Result<Arc<dyn Any + Send + Sync>>;
+    fn make_default_value(&self) -> Result<Arc<dyn Any + Send + Sync>>;
 
     /// Decodes a serialized subtree into the runtime value (deserialization signal).
     fn decode(&self, node: &ComplexConfigNode) -> Result<Arc<dyn Any + Send + Sync>>;

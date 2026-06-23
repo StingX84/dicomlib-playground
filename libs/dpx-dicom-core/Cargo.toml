@@ -15,6 +15,7 @@ version.workspace = true
 default = ["serde"]
 tokio = ["dep:tokio"]
 serde = ["dep:serde", "dep:serde-saphyr", "dep:humantime"]
+uuid = [ "dep:uuid" ]
 unstable = []
 static_dictionary = []
 
@@ -34,6 +35,8 @@ glob = "0.3"
 inventory = "0.3"
 # Machine-unique identifier used as a component in generated DICOM UIDs
 machine-uid = "0.6"
+# Compile-time string concatenation for macros
+paste = "1.0"
 # Regular expression matching for per-key configuration value validation
 regex = "1.11"
 # Structured, async-aware logging and diagnostics throughout the library
@@ -48,6 +51,9 @@ serde = { version = "1.0", optional = true, features = ["derive"] }
 serde-saphyr = { version = "0.0.28", optional = true }
 # Human-friendly duration parsing ("10s", "5m") for configuration values
 humantime = { version = "2.3", optional = true }
+# Universally unique identifier (UUID) support for DICOM UIDs and other identifiers
+uuid = { version = "1", optional = true, features = ["v4"] }
+# Asynchronous runtime for concurrent operations, required for async DICOM I/O
 tokio = { version = "1", optional = true, features = ["full"] }
 
 [dev-dependencies]
