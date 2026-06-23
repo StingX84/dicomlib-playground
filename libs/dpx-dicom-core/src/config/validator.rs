@@ -105,6 +105,12 @@ impl<'a> Validator<'a> {
                 _ => Ok(()),
             },
 
+            #[cfg(feature = "uuid")]
+            (ValueMeta::Uuid { non_zero, .. }, Value::Uuid(u)) => {
+                ensure!(!*non_zero || !u.is_nil(), Configuration, "UUID must not be the nil UUID");
+                Ok(())
+            }
+
             (
                 ValueMeta::File {
                     allow_content,

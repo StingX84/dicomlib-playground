@@ -143,11 +143,11 @@ declare_value_meta!(
     /// - `one_of`: the list of valid choices tuples:
     ///   - 0 : the integer value stored in the config file
     ///   - 1 : programmatic identity of the choice, used in code
-    ///   - 2 : the human-facing name of the choice, used in the GUI/TUI
-    /// - `nullable`: the value may be [`Value::Null`].
+    ///   - 2 : optional human-facing name of the choice, used in the GUI/TUI
     ///
     /// Flags:
     /// - `subst`: the enum may be specified as a string with `${...}` substitutions
+    /// - `nullable`: the value may be [`Value::Null`].
     Enum { required: { one_of: Choices<(u32, &'static str, Option<EditName>)> }, flags: { subst } },
   
     /// Duration value, a time interval. See [`Value::Duration`].
@@ -155,19 +155,21 @@ declare_value_meta!(
     /// Flags:
     /// - `subst`: the duration may be specified as a string with `${...}` substitutions
     /// - `nullable`: the value may be [`Value::Null`].
+    /// 
+    /// Limits:
+    /// - `min`: the duration must be at least this value.
+    /// - `max`: the duration must be at most this value.
     Duration { flags: { subst }, limits: { min: std::time::Duration, max: std::time::Duration } },
    
     /// DICOM Tag value with special formatting. See [`Value::Tag`].
     ///
     /// Flags:
-    /// - `subst`: the tag may be specified as a string with `${...}` substitutions
     /// - `nullable`: the value may be [`Value::Null`].
     Tag { limits: { one_of: Choices<crate::Tag> } },
    
     /// DICOM VR value with special formatting. See [`Value::Vr`].
     ///
     /// Flags:
-    /// - `subst`: the VR may be specified as a string with `${...}` substitutions
     /// - `nullable`: the value may be [`Value::Null`].
     Vr { limits: { one_of: Choices<crate::Vr> } },
    
@@ -363,11 +365,7 @@ impl ObjectMeta {
         let mut defaults = Vec::new();
         defaults.reserve_exact(meta.len());
         for key_meta in meta {
-            let def_value = if let Some(default_fn) = key_meta.default {
-                default_fn()
-            } else {
-                Value::Null
-            };
+            let def_value = key_meta.default.map_or(Value::Null, |default_fn| default_fn());
 
             #[cfg(debug_assertions)]
             assert!(
@@ -483,7 +481,8 @@ impl<'a> Iterator for ObjectMetaKeyIter<'a> {
     }
 }
 
-/// A static registry of configuration keys and their metadata.
+/// A provider of `ObjectMeta` for global static registration.
+/// Every submitted `ObjectMetaProvider` is collected into a global [`ObjectMeta`] by [`collected_global_meta()`].
 ///
 /// Example:
 /// ```rust
@@ -492,9 +491,9 @@ impl<'a> Iterator for ObjectMetaKeyIter<'a> {
 ///     KeyMetaBuilder::new(Key::new("some_string"), build::String::new().build()).build(),
 ///     KeyMetaBuilder::new(Key::new("some_int"), build::Int::new().build()).build(),
 /// ];
-/// config_object_meta!( fn app_conf_meta() = &APP_CONF_KEYS );
+/// config_object_meta!( fn app_conf_meta() = APP_CONF_KEYS );
 ///
-/// inventory::submit!( ObjectMetaProvider(|| app_conf_meta()) );
+/// inventory::submit!( ObjectMetaProvider(app_conf_meta) );
 /// ```
 pub struct ObjectMetaProvider(pub fn() -> &'static ObjectMeta);
 inventory::collect!(ObjectMetaProvider);
@@ -658,8 +657,7 @@ impl EditNameBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config_object_meta;
-
+    
     #[test]
     fn test_if_no_duplicate_keys_in_combined_meta() {
         fn check_value_meta(value_meta: &ValueMeta) {

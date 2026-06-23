@@ -4,7 +4,7 @@
 //! nullability `N` ([`Req`]/[`Opt`]) and whether it is conditional.
 //!
 //! Return shape is driven by the markers: a [`Req`] key yields `T` directly (it
-//! panics only if the registry invariant — every key has a default — is broken),
+//! panics only if the ObjectMeta invariant — every key has a default — is broken),
 //! an [`Opt`] key yields `Option<T>`. The concrete `T` view is chosen by
 //! [`ValueRef`]: `Copy` scalars are returned by value, heap types by reference.
 
@@ -119,7 +119,7 @@ impl<T: ValueRef> TypedKey<T, Opt> {
 #[inline(never)]
 fn missing(key: Key) -> ! {
     panic!(
-        "configuration key {:?} has no value and no default — registry invariant violated",
+        "configuration key {:?} has no value and no default — MetaObject invariant violated",
         key.as_str()
     )
 }

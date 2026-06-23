@@ -107,11 +107,13 @@ impl YamlLoader {
     }
 
     fn finalize(&self, acc: Accumulator) -> Result<Object> {
-        Ok(Object::new(
-            CONFIG_LAYER_ID,
-            self.registry,
-            acc.map.into_inner(),
-        ))
+        let values = acc.map.into_inner();
+        // The root document is itself an object: once every file has merged into
+        // `values`, every required top-level key must be present. Unlike a value
+        // error, a missing key has no source position, so this carries no
+        // `line:column`.
+        check_required(self.registry, &values).map_err(|m| dicom_err!(Configuration, "{m}"))?;
+        Ok(Object::new(CONFIG_LAYER_ID, self.registry, values))
     }
 }
 
@@ -615,6 +617,10 @@ fn scalar_str(meta: &ValueMeta, v: &str) -> std::result::Result<Value, ScalarErr
     };
     match meta {
         ValueMeta::String { .. } => Ok(Value::String(v.to_string())),
+        ValueMeta::Int { .. } => v
+            .parse()
+            .map(Value::Int)
+            .map_err(|e| ScalarErr::Custom(format!("invalid integer {v:?}: {e}"))),
         ValueMeta::Enum { one_of, .. } => one_of
             .iter()
             .find(|(_, name, _)| *name == v)
@@ -631,6 +637,11 @@ fn scalar_str(meta: &ValueMeta, v: &str) -> std::result::Result<Value, ScalarErr
             .parse()
             .map(Value::Vr)
             .map_err(|e| ScalarErr::Custom(format!("invalid VR {v:?}: {e}"))),
+        #[cfg(feature = "uuid")]
+        ValueMeta::Uuid { .. } => v
+            .parse()
+            .map(Value::Uuid)
+            .map_err(|e| ScalarErr::Custom(format!("invalid UUID {v:?}: {e}"))),
         ValueMeta::File { .. } => Ok(Value::File(ConfiguredFile::Name {
             path: v.to_string(),
             hot_reload: false,
@@ -669,7 +680,32 @@ fn visit_object<'de, A: MapAccess<'de>>(items: &'static ObjectMeta, mut map: A) 
         validate_leaf(km, &value).map_err(de::Error::custom)?;
         nested.add(km.key, value, None);
     }
+    check_required(items, &nested).map_err(de::Error::custom)?;
     Ok(Value::Object(Object::new(OBJECT_LAYER_ID, items, nested)))
+}
+
+/// Enforces presence of required keys once an object has been fully read.
+///
+/// A key is *required* when it is non-nullable and has no usable default (its
+/// default resolves to [`Value::Null`]): such a key must appear in the object,
+/// since nothing else can supply a value. A key with a real default may be
+/// omitted — it resolves through [`ObjectMeta::default_of`] at read time —
+/// and an explicit `null` for a non-nullable key is rejected earlier, when the
+/// value itself is read.
+///
+/// Runtime keys are never read from a file, and conditional keys are
+/// association-matched and resolve through their own fallback; both are skipped.
+/// Applies equally to a nested object and to the root document.
+fn check_required(items: &'static ObjectMeta, present: &Map) -> std::result::Result<(), String> {
+    for km in items.iter() {
+        if km.runtime || km.conditional || present.0.contains_key(&km.key) {
+            continue;
+        }
+        if !km.value_meta.is_nullable() && matches!(items.default_of(&km.key), None | Some(Value::Null)) {
+            return Err(format!("missing required key {:?}", km.key.0));
+        }
+    }
+    Ok(())
 }
 
 /// Builds a [`Value::Map`] of string keys to values typed by `values`.
@@ -879,7 +915,7 @@ mod tests {
             edit: None,
             conditional: false,
             runtime: false,
-            default: None,
+            default: Some(|| Value::Vec(Vec::new())),
             value_meta: ValueMeta::Vec {
                 meta: &STRING_ITEM,
                 min: None,
@@ -893,7 +929,7 @@ mod tests {
             edit: None,
             conditional: false,
             runtime: false,
-            default: None,
+            default: Some(|| Value::Vec(Vec::new())),
             value_meta: ValueMeta::Vec {
                 meta: &LISTEN_OBJ,
                 min: None,
@@ -907,7 +943,7 @@ mod tests {
             edit: None,
             conditional: false,
             runtime: false,
-            default: None,
+            default: Some(|| Value::Enum(1)),
             value_meta: ValueMeta::Enum {
                 one_of: Choices::Static(&ENC_CHOICES),
                 subst: false,
@@ -919,7 +955,7 @@ mod tests {
             edit: None,
             conditional: false,
             runtime: false,
-            default: None,
+            default: Some(|| Value::Map(Default::default())),
             value_meta: ValueMeta::Map {
                 meta: &STRING_ITEM,
                 min: None,
@@ -1021,6 +1057,55 @@ dicom:
         let msg = format!("{err}");
         assert!(msg.contains("line 1"), "missing location: {msg}");
         assert!(msg.contains("bogus"), "missing key: {msg}");
+    }
+
+    // A `listen` element requires `addr` (non-nullable, no default); `port` is
+    // nullable, so it may be omitted.
+    #[test]
+    fn object_missing_required_key_is_rejected() {
+        let err = loader()
+            .load_str("dicom:\n  listen:\n    - port: 104\n")
+            .unwrap_err();
+        let msg = format!("{err}");
+        assert!(msg.contains("missing required key"), "unexpected: {msg}");
+        assert!(msg.contains("addr"), "unexpected: {msg}");
+    }
+
+    #[test]
+    fn object_with_required_key_and_omitted_nullable_loads() {
+        let cfg = loader()
+            .load_str("dicom:\n  listen:\n    - addr: localhost\n")
+            .expect("load");
+        match cfg.config_get(&K_LISTEN, None) {
+            Some(Value::Vec(v)) => assert_eq!(v.len(), 1),
+            other => panic!("listen: {other:?}"),
+        }
+    }
+
+    // The root document is an object too: a required top-level key absent from
+    // every file is rejected at finalize.
+    #[test]
+    fn root_missing_required_key_is_rejected() {
+        static REQUIRED: [KeyMeta; 1] = [KeyMeta {
+            key: Key::new("name"),
+            edit: None,
+            conditional: false,
+            runtime: false,
+            default: None,
+            value_meta: ValueMeta::String {
+                regexp: None,
+                min: None,
+                max: None,
+                subst: false,
+                nullable: false,
+            },
+        }];
+        config_object_meta! { fn required_meta() = &REQUIRED }
+
+        let err = YamlLoader::new(required_meta()).load_str("{}\n").unwrap_err();
+        let msg = format!("{err}");
+        assert!(msg.contains("missing required key"), "unexpected: {msg}");
+        assert!(msg.contains("name"), "unexpected: {msg}");
     }
 
     #[test]
@@ -1241,5 +1326,131 @@ dicom:
         config_object_meta!( fn plain_list_meta() = &PLAIN_LIST );
         let loader = YamlLoader::new(plain_list_meta());
         assert!(loader.load_str("names:\n  - A\n  - null\n").is_err());
+    }
+
+    // Exercises every `ValueMeta` variant through the loader, asserting each maps
+    // to the matching `Value`. `Uuid` is feature-gated and covered separately.
+    #[test]
+    fn loads_every_value_type() {
+        use crate::config::meta::{KeyMetaBuilder, build};
+        use std::any::Any;
+
+        #[derive(Debug)]
+        struct Port(u16);
+        struct PortType;
+        impl crate::config::ComplexType for PortType {
+            fn name(&self) -> &'static str {
+                "port"
+            }
+            fn make_default_value(&self) -> crate::error::Result<Arc<dyn Any + Send + Sync>> {
+                Ok(Arc::new(Port(80)))
+            }
+            fn decode(&self, node: &ComplexConfigNode) -> crate::error::Result<Arc<dyn Any + Send + Sync>> {
+                let n = node.as_int().ok_or_else(|| dicom_err!(InvalidData, "port expects an integer"))?;
+                Ok(Arc::new(Port(
+                    u16::try_from(n).map_err(|_| dicom_err!(InvalidData, "port out of range"))?,
+                )))
+            }
+            fn encode(&self, value: &dyn Any) -> crate::error::Result<ComplexConfigNode> {
+                let p = value.downcast_ref::<Port>().ok_or_else(|| dicom_err!(Internal, "wrong type"))?;
+                Ok(ComplexConfigNode::Int(p.0 as i64))
+            }
+        }
+        static PORT_TYPE: PortType = PortType;
+
+        static STR_ITEM: ValueMeta = ValueMeta::String {
+            regexp: None,
+            min: None,
+            max: None,
+            subst: false,
+            nullable: false,
+        };
+        static INNER: &[KeyMeta] = &[KeyMetaBuilder::new(Key::new("inner"), build::String::new().build()).build()];
+        config_object_meta! { fn inner_meta() = INNER }
+
+        static ALL: &[KeyMeta] = &[
+            KeyMetaBuilder::new(Key::new("b"), build::Bool::new().build()).build(),
+            KeyMetaBuilder::new(Key::new("s"), build::String::new().build()).build(),
+            KeyMetaBuilder::new(Key::new("i"), build::Int::new().build()).build(),
+            KeyMetaBuilder::new(Key::new("e"), build::Enum::new(Choices::Static(&ENC_CHOICES)).build()).build(),
+            KeyMetaBuilder::new(Key::new("dur"), build::Duration::new().build()).build(),
+            KeyMetaBuilder::new(Key::new("tag"), build::Tag::new().build()).build(),
+            KeyMetaBuilder::new(Key::new("vr"), build::Vr::new().build()).build(),
+            KeyMetaBuilder::new(Key::new("file"), build::File::new().allow_content().build()).build(),
+            KeyMetaBuilder::new(Key::new("net"), build::Network::new().ipv4().build()).build(),
+            KeyMetaBuilder::new(Key::new("host"), build::Host::new().ipv4().default_port(104).build()).build(),
+            KeyMetaBuilder::new(Key::new("obj"), build::Object::new(inner_meta).build()).build(),
+            KeyMetaBuilder::new(Key::new("vec"), build::Vec::new(&STR_ITEM).build()).build(),
+            KeyMetaBuilder::new(Key::new("map"), build::Map::new(&STR_ITEM).build()).build(),
+            KeyMetaBuilder::new(Key::new("cplx"), build::Complex::new(&PORT_TYPE).build()).build(),
+        ];
+        config_object_meta! { fn all_meta() = ALL }
+
+        let doc = "\
+b: true
+s: hello
+i: 42
+e: fix
+dur: 10s
+tag: \"(0010,0010)\"
+vr: PN
+file:
+  content: PEM DATA
+net: 127.0.0.1
+host: 10.0.0.1
+obj:
+  inner: nested
+vec:
+  - a
+  - b
+map:
+  k1: v1
+cplx: 104
+";
+        let cfg = YamlLoader::new(all_meta()).load_str(doc).expect("load");
+
+        assert!(matches!(cfg.config_get(&Key::new("b"), None), Some(Value::Bool(true))));
+        assert!(matches!(cfg.config_get(&Key::new("s"), None), Some(Value::String(s)) if s == "hello"));
+        assert!(matches!(cfg.config_get(&Key::new("i"), None), Some(Value::Int(42))));
+        assert!(matches!(cfg.config_get(&Key::new("e"), None), Some(Value::Enum(1))));
+        assert!(matches!(cfg.config_get(&Key::new("dur"), None), Some(Value::Duration(d)) if d.as_secs() == 10));
+        assert!(matches!(cfg.config_get(&Key::new("tag"), None), Some(Value::Tag(_))));
+        assert!(matches!(cfg.config_get(&Key::new("vr"), None), Some(Value::Vr(_))));
+        assert!(matches!(cfg.config_get(&Key::new("file"), None), Some(Value::File(_))));
+        assert!(matches!(cfg.config_get(&Key::new("net"), None), Some(Value::Network(_))));
+        assert!(matches!(cfg.config_get(&Key::new("host"), None), Some(Value::Host(_))));
+        assert!(matches!(cfg.config_get(&Key::new("obj"), None), Some(Value::Object(_))));
+        assert!(matches!(cfg.config_get(&Key::new("vec"), None), Some(Value::Vec(v)) if v.len() == 2));
+        assert!(matches!(cfg.config_get(&Key::new("map"), None), Some(Value::Map(m)) if m.len() == 1));
+        assert!(matches!(cfg.config_get(&Key::new("cplx"), None), Some(Value::Complex(_))));
+    }
+
+    #[cfg(feature = "uuid")]
+    #[test]
+    fn loads_uuid_value() {
+        static UUID_META: &[KeyMeta] = &[KeyMeta {
+            key: Key::new("id"),
+            edit: None,
+            conditional: false,
+            runtime: false,
+            default: None,
+            value_meta: ValueMeta::Uuid {
+                non_zero: true,
+                subst: false,
+                nullable: false,
+            },
+        }];
+        config_object_meta! { fn uuid_meta() = UUID_META }
+
+        let cfg = YamlLoader::new(uuid_meta())
+            .load_str("id: 550e8400-e29b-41d4-a716-446655440000\n")
+            .expect("load");
+        assert!(matches!(cfg.config_get(&Key::new("id"), None), Some(Value::Uuid(_))));
+
+        // The nil UUID is rejected under the `non_zero` flag.
+        let err = YamlLoader::new(uuid_meta())
+            .load_str("id: 00000000-0000-0000-0000-000000000000\n")
+            .unwrap_err();
+        assert!(format!("{err}").contains("nil UUID"), "unexpected: {err}");
     }
 }
