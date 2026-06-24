@@ -118,6 +118,8 @@ impl PartialEq for Value {
             (Value::Duration(a), Value::Duration(b)) => a == b,
             (Value::Tag(a), Value::Tag(b)) => a == b,
             (Value::Vr(a), Value::Vr(b)) => a == b,
+            #[cfg(feature = "uuid")]
+            (Value::Uuid(a), Value::Uuid(b)) => a == b,
             (Value::File(a), Value::File(b)) => a == b,
             (Value::Network(a), Value::Network(b)) => a == b,
             (Value::Host(a), Value::Host(b)) => a == b,
@@ -142,6 +144,8 @@ impl PartialOrd for Value {
             (Value::Duration(a), Value::Duration(b)) => a.partial_cmp(b),
             (Value::Tag(a), Value::Tag(b)) => a.partial_cmp(b),
             (Value::Vr(a), Value::Vr(b)) => a.partial_cmp(b),
+            #[cfg(feature = "uuid")]
+            (Value::Uuid(a), Value::Uuid(b)) => a.partial_cmp(b),
             (Value::File(ConfiguredFile::Content { 0: a }), Value::File(ConfiguredFile::Content { 0: b })) => a.partial_cmp(b),
             (Value::File(ConfiguredFile::Name { path: a, .. }), Value::File(ConfiguredFile::Name { path: b, .. })) => {
                 a.partial_cmp(b)
@@ -362,5 +366,19 @@ impl<X: 'static> ValueRef for Vec<X> {
         } else {
             None
         }
+    }
+}
+
+#[cfg(all(test, feature = "uuid"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn uuid_values_compare_by_inner_value() {
+        let a = uuid::Uuid::from_u128(1);
+        let b = uuid::Uuid::from_u128(2);
+        assert_eq!(Value::Uuid(a), Value::Uuid(a));
+        assert_ne!(Value::Uuid(a), Value::Uuid(b));
+        assert!(Value::Uuid(a) < Value::Uuid(b));
     }
 }

@@ -183,7 +183,112 @@ impl FromIterator<(Key, Value, Condition)> for Map {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Arc;
+    use crate::network::{HostDefinition, NetworkDefinition, PeerAddress, PeerSocketAddr};
     use std::assert_matches;
+
+    fn net(cidr: &str) -> Network {
+        cidr.parse::<NetworkDefinition>().unwrap().resolve_sync().unwrap()
+    }
+
+    fn peer(sock: &str) -> Arc<PeerAddress> {
+        let sa: std::net::SocketAddr = sock.parse().unwrap();
+        Arc::new(PeerAddress {
+            definition: HostDefinition::Ip {
+                addr: sa.ip(),
+                port: Some(sa.port()),
+            },
+            sock_addr: PeerSocketAddr::Ip(sa),
+        })
+    }
+
+    #[test]
+    fn network_conditions_rank_and_fall_back() {
+        let key = Key::new("k");
+        let mut cs = Map::new();
+        cs.add(key, Value::Int(0), None);
+        cs.add(
+            key,
+            Value::Int(1),
+            Some(Condition {
+                local_network: Some(net("172.16.0.0/12")),
+                ..Default::default()
+            }),
+        );
+        cs.add(
+            key,
+            Value::Int(2),
+            Some(Condition {
+                peer_network: Some(net("10.0.0.0/8")),
+                ..Default::default()
+            }),
+        );
+
+        // Both networks match — peer_network outranks local_network.
+        let both = AssocDescription {
+            peer_addr: Some(peer("10.1.1.1:104")),
+            local_addr: Some(peer("172.16.1.1:104")),
+            ..Default::default()
+        };
+        assert_matches!(cs.get_ranked(&key, Some(&both)), Some((Value::Int(2), ..)));
+
+        // Only the local network matches.
+        let local_only = AssocDescription {
+            peer_addr: Some(peer("8.8.8.8:104")),
+            local_addr: Some(peer("172.16.1.1:104")),
+            ..Default::default()
+        };
+        assert_matches!(cs.get_ranked(&key, Some(&local_only)), Some((Value::Int(1), ..)));
+
+        // Neither network matches — fall back to the unconditional value.
+        let neither = AssocDescription {
+            peer_addr: Some(peer("8.8.8.8:104")),
+            local_addr: Some(peer("8.8.4.4:104")),
+            ..Default::default()
+        };
+        assert_matches!(cs.get_ranked(&key, Some(&neither)), Some((Value::Int(0), ..)));
+
+        // A network condition with no corresponding address can never match.
+        let no_addr = AssocDescription::default();
+        assert_matches!(cs.get_ranked(&key, Some(&no_addr)), Some((Value::Int(0), ..)));
+    }
+
+    #[test]
+    fn equal_rank_prefers_newer_value() {
+        let key = Key::new("k");
+        let mut cs = Map::new();
+        let cond = || Condition {
+            peer_aet: Some("PEER".into()),
+            ..Default::default()
+        };
+        cs.add(key, Value::Int(1), Some(cond()));
+        cs.add(key, Value::Int(2), Some(cond()));
+
+        let assoc = AssocDescription {
+            peer_aet: Some("PEER".into()),
+            ..Default::default()
+        };
+        assert_matches!(cs.get_ranked(&key, Some(&assoc)), Some((Value::Int(2), ..)));
+    }
+
+    #[test]
+    fn unconditional_lookup_ignores_conditional_entries() {
+        let key = Key::new("k");
+        let mut cs = Map::new();
+        cs.add(
+            key,
+            Value::Int(1),
+            Some(Condition {
+                peer_aet: Some("PEER".into()),
+                ..Default::default()
+            }),
+        );
+        // No unconditional value exists, so a no-assoc lookup finds nothing.
+        assert!(cs.get_ranked(&key, None).is_none());
+        // A missing key yields nothing in either mode.
+        assert!(cs.get_ranked(&Key::new("absent"), None).is_none());
+        assert!(cs.get_ranked(&Key::new("absent"), Some(&AssocDescription::default())).is_none());
+    }
 
     #[test]
     fn conditional_lookup_prefers_most_specific() {

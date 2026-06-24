@@ -661,7 +661,46 @@ impl EditNameBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+    use crate::config_object_meta;
+
+    static A_KEYS: &[KeyMeta] = &[
+        KeyMetaBuilder::new(Key::new("a1"), build::Int::new().build())
+            .default(|| Value::Int(1))
+            .build(),
+        KeyMetaBuilder::new(Key::new("a2"), build::Int::new().build())
+            .default(|| Value::Int(2))
+            .build(),
+    ];
+    static B_KEYS: &[KeyMeta] = &[KeyMetaBuilder::new(Key::new("b1"), build::Int::new().build())
+        .default(|| Value::Int(3))
+        .build()];
+    static EMPTY_KEYS: &[KeyMeta] = &[];
+    config_object_meta!( fn a_meta() = A_KEYS );
+    config_object_meta!( fn b_meta() = B_KEYS );
+    config_object_meta!( fn empty_meta() = EMPTY_KEYS );
+
+    #[test]
+    fn combined_meta_flattens_and_resolves_across_parts() {
+        // Empty parts interleaved to exercise the iterator's skip-empty path.
+        let combined = ObjectMeta::Combined(vec![empty_meta(), a_meta(), empty_meta(), b_meta()]);
+
+        let keys: Vec<Key> = combined.iter().map(|km| km.key).collect();
+        assert_eq!(keys.len(), 3);
+        assert!(keys.contains(&Key::new("a1")));
+        assert!(keys.contains(&Key::new("a2")));
+        assert!(keys.contains(&Key::new("b1")));
+
+        // Defaults resolve from either part; unknown keys yield nothing.
+        assert_eq!(combined.default_of(&Key::new("a1")), Some(&Value::Int(1)));
+        assert_eq!(combined.default_of(&Key::new("b1")), Some(&Value::Int(3)));
+        assert_eq!(combined.default_of(&Key::new("nope")), None);
+
+        // Lookups search across every part.
+        assert!(combined.key_meta(&Key::new("b1")).is_some());
+        assert!(combined.key_meta_str("a2").is_some());
+        assert!(combined.key_meta(&Key::new("nope")).is_none());
+    }
+
     #[test]
     fn test_if_no_duplicate_keys_in_combined_meta() {
         fn check_value_meta(value_meta: &ValueMeta) {

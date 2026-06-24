@@ -408,15 +408,9 @@ mod tests {
     use std::any::Any;
 
     fn validate(meta: &ValueMeta, value: &Value) -> crate::error::Result<()> {
+        let key_meta = KeyMetaBuilder::new(Key::new("test"), meta.clone()).runtime().build();
         let stack = Validator {
-            key_meta: &KeyMeta {
-                key: Key::new("test"),
-                edit: None,
-                conditional: false,
-                runtime: true,
-                default: None,
-                value_meta: meta.clone(),
-            },
+            key_meta: &key_meta,
             value_meta: meta,
             vec_index: None,
             map_key: None,
@@ -428,13 +422,7 @@ mod tests {
 
     #[test]
     fn string_validation_respects_length_and_pattern() {
-        let meta = ValueMeta::String {
-            regexp: Some(r"^[A-Z]+$"),
-            min: Some(2),
-            max: Some(4),
-            subst: false,
-            nullable: false,
-        };
+        let meta = build::String::new().regexp(r"^[A-Z]+$").min(2).max(4).build();
         assert!(validate(&meta, &Value::String("ABC".into())).is_ok());
         // too short
         assert!(validate(&meta, &Value::String("A".into())).is_err());
@@ -446,12 +434,7 @@ mod tests {
 
     #[test]
     fn int_range_is_enforced() {
-        let meta = ValueMeta::Int {
-            min: Some(0),
-            max: Some(10),
-            subst: false,
-            nullable: false,
-        };
+        let meta = build::Int::new().min(0).max(10).build();
         assert!(validate(&meta, &Value::Int(5)).is_ok());
         assert!(validate(&meta, &Value::Int(-1)).is_err());
         assert!(validate(&meta, &Value::Int(11)).is_err());
@@ -479,37 +462,22 @@ mod tests {
                 }),
             ),
         ];
-        let meta = ValueMeta::Enum {
-            one_of: Choices::Static(&CHOICES),
-            nullable: false,
-            subst: false,
-        };
+        let meta = build::Enum::new(Choices::Static(&CHOICES)).build();
         assert!(validate(&meta, &Value::Enum(1)).is_ok());
         assert!(validate(&meta, &Value::Enum(3)).is_err());
     }
 
     #[test]
     fn type_mismatch_is_rejected() {
-        let meta = ValueMeta::Bool { nullable: false };
+        let meta = build::Bool::new().build();
         let err = validate(&meta, &Value::Int(1)).unwrap_err();
         assert_eq!(err.kind, crate::ErrorKind::Internal);
     }
 
     #[test]
     fn vec_validates_each_element() {
-        static ITEM: ValueMeta = ValueMeta::Int {
-            min: Some(0),
-            max: None,
-            subst: false,
-            nullable: false,
-        };
-        let meta = ValueMeta::Vec {
-            meta: &ITEM,
-            min: Some(1),
-            max: Some(3),
-            stride: None,
-            nullable: false,
-        };
+        static ITEM: ValueMeta = build::Int::new().min(0).build();
+        let meta = build::Vec::new(&ITEM).min(1).max(3).build();
         assert!(validate(&meta, &Value::Vec(vec![Value::Int(1), Value::Int(2)])).is_ok());
         // element out of range
         assert!(validate(&meta, &Value::Vec(vec![Value::Int(-1)])).is_err());
@@ -517,26 +485,14 @@ mod tests {
         let many4 = Value::Vec(vec![Value::Int(1), Value::Int(2), Value::Int(3), Value::Int(4)]);
         assert!(validate(&meta, &many4).is_err());
         // stride is one
-        let meta = ValueMeta::Vec {
-            meta: &ITEM,
-            min: None,
-            max: None,
-            stride: Some(1),
-            nullable: false,
-        };
+        let meta = build::Vec::new(&ITEM).stride(1).build();
         assert!(validate(&meta, &many4).is_ok());
         let many3 = Value::Vec(vec![Value::Int(1), Value::Int(2), Value::Int(3)]);
         assert!(validate(&meta, &many3).is_ok());
         let empty = Value::Vec(Vec::new());
         assert!(validate(&meta, &empty).is_ok());
         // stride is even
-        let meta = ValueMeta::Vec {
-            meta: &ITEM,
-            min: None,
-            max: None,
-            stride: Some(2),
-            nullable: false,
-        };
+        let meta = build::Vec::new(&ITEM).stride(2).build();
         assert!(validate(&meta, &many4).is_ok());
         assert!(validate(&meta, &many3).is_err());
         assert!(validate(&meta, &empty).is_ok());
@@ -592,13 +548,71 @@ mod tests {
         assert_eq!(ty.encode(decoded.as_ref()).unwrap(), JsonValue::from(104));
     }
 
+    // ── File ─────────────────────────────────────────────────────────────────
+
+    fn name_file(path: &str, hot_reload: bool) -> Value {
+        Value::File(ConfiguredFile::Name {
+            path: path.to_owned(),
+            hot_reload,
+        })
+    }
+
+    #[test]
+    fn file_content_is_gated_by_allow_content() {
+        let content = Value::File(ConfiguredFile::Content(vec![1, 2, 3]));
+
+        let allowed = build::File::new().allow_content().build();
+        assert!(validate(&allowed, &content).is_ok());
+
+        let denied = build::File::new().allow_file().build();
+        assert!(validate(&denied, &content).is_err());
+    }
+
+    #[test]
+    fn file_path_must_be_non_empty_and_absolute() {
+        let meta = build::File::new().allow_dir().allow_file().build();
+        assert!(validate(&meta, &name_file("", false)).is_err());
+        assert!(validate(&meta, &name_file("relative/path", false)).is_err());
+    }
+
+    #[test]
+    fn file_hot_reload_requires_meta_permission() {
+        // A value asking for hot-reload against a meta that forbids it.
+        let no_reload = build::File::new().allow_dir().allow_file().build();
+        assert!(validate(&no_reload, &name_file("/some/absolute", true)).is_err());
+
+        let with_reload = build::File::new().allow_dir().allow_file().hot_reload().build();
+        assert!(validate(&with_reload, &name_file("/some/absolute", true)).is_ok());
+    }
+
+    #[test]
+    fn file_existence_constraints_are_enforced() {
+        let dir = std::env::temp_dir().join(format!("dpx_file_validate_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let existing = dir.join("present.txt");
+        std::fs::write(&existing, b"x").unwrap();
+        let missing = dir.join("absent.txt");
+
+        let must_exist = build::File::new().allow_file().should_exist().build();
+        assert!(validate(&must_exist, &name_file(existing.to_str().unwrap(), false)).is_ok());
+        assert!(validate(&must_exist, &name_file(missing.to_str().unwrap(), false)).is_err());
+
+        let must_not_exist = build::File::new().allow_file().should_not_exist().build();
+        assert!(validate(&must_not_exist, &name_file(missing.to_str().unwrap(), false)).is_ok());
+        assert!(validate(&must_not_exist, &name_file(existing.to_str().unwrap(), false)).is_err());
+
+        // A directory where only files are allowed is rejected.
+        let file_only = build::File::new().allow_file().build();
+        assert!(validate(&file_only, &name_file(dir.to_str().unwrap(), false)).is_err());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[cfg(feature = "serde")]
     #[test]
     fn custom_value_meta_delegates_validation_to_type() {
-        let meta = ValueMeta::Custom {
-            ty: &PORT_TYPE,
-            nullable: false,
-        };
+        let meta = build::Custom::new(&PORT_TYPE).build();
         let good: Arc<dyn Any + Send + Sync> = Arc::new(Port(104));
         assert!(validate(&meta, &Value::Custom(good)).is_ok());
 

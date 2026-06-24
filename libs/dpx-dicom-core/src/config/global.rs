@@ -108,19 +108,8 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     static VERSION_KEY: Key = Key::new("version");
-    static VERSION_METAS: &[KeyMeta] = &[KeyMeta {
-        key: VERSION_KEY,
-        edit: None,
-        conditional: false,
-        runtime: true,
-        default: None,
-        value_meta: ValueMeta::Int {
-            min: None,
-            max: None,
-            subst: false,
-            nullable: false,
-        },
-    }];
+    static VERSION_METAS: &[KeyMeta] =
+        &[KeyMetaBuilder::new(VERSION_KEY, build::Int::new().build()).runtime().build()];
 
     config_object_meta!( fn object_meta() = &VERSION_METAS );
 

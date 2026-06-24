@@ -132,8 +132,7 @@ mod tests {
     use crate::config::{
         GLOBAL_LAYER_ID, Object, Value,
         map::{Condition, Conditionals, Map},
-        meta::KeyMeta,
-        meta::ValueMeta,
+        meta::{KeyMeta, KeyMetaBuilder, build},
     };
     use crate::config_object_meta;
 
@@ -141,34 +140,23 @@ mod tests {
 
     const K_TIMEOUT: &str = "timeout";
     const K_MAX: &str = "max";
+    const K_LABEL: &str = "label";
+    const K_RETRIES: &str = "retries";
 
-    static METAS: [KeyMeta; 2] = [
-        KeyMeta {
-            key: Key::new(K_TIMEOUT),
-            edit: None,
-            conditional: false,
-            runtime: false,
-            default: Some(|| Value::Duration(Duration::from_secs(10))),
-            value_meta: ValueMeta::Duration {
-                min: None,
-                max: None,
-                subst: false,
-                nullable: false,
-            },
-        },
-        KeyMeta {
-            key: Key::new(K_MAX),
-            edit: None,
-            conditional: true,
-            runtime: false,
-            default: Some(|| Value::Int(5)),
-            value_meta: ValueMeta::Int {
-                min: None,
-                max: None,
-                subst: false,
-                nullable: false,
-            },
-        },
+    static METAS: [KeyMeta; 4] = [
+        KeyMetaBuilder::new(Key::new(K_TIMEOUT), build::Duration::new().build())
+            .default(|| Value::Duration(Duration::from_secs(10)))
+            .build(),
+        KeyMetaBuilder::new(Key::new(K_MAX), build::Int::new().build())
+            .conditional()
+            .default(|| Value::Int(5))
+            .build(),
+        // Nullable, no default: an Opt read yields None when unset.
+        KeyMetaBuilder::new(Key::new(K_LABEL), build::String::new().nullable().build()).build(),
+        // Nullable but with a default: an Opt read falls back to Some(default).
+        KeyMetaBuilder::new(Key::new(K_RETRIES), build::Int::new().nullable().build())
+            .default(|| Value::Int(3))
+            .build(),
     ];
 
     config_object_meta!( fn test_object_meta() = &METAS );
@@ -236,5 +224,35 @@ mod tests {
     fn conditional_falls_back_to_default() {
         let cfg = Object::new_empty(GLOBAL_LAYER_ID, test_object_meta());
         assert_eq!(max_key().get_for(&cfg, None), 5);
+    }
+
+    fn label() -> TypedKey<String, Opt> {
+        TypedKey::new(K_LABEL, false)
+    }
+    fn retries() -> TypedKey<i64, Opt> {
+        TypedKey::new(K_RETRIES, false)
+    }
+
+    #[test]
+    fn opt_reads_explicit_value() {
+        let cfg = Object::new(
+            GLOBAL_LAYER_ID.clone(),
+            test_object_meta(),
+            Map::from_iter([(Key::new(K_LABEL), Value::String("hi".into()))]),
+        );
+        assert_eq!(label().get(&cfg), Some("hi"));
+    }
+
+    #[test]
+    fn opt_without_value_or_default_is_none() {
+        let cfg = Object::new_empty(GLOBAL_LAYER_ID.clone(), test_object_meta());
+        assert_eq!(label().get(&cfg), None);
+        assert_eq!(label().get_for(&cfg, None), None);
+    }
+
+    #[test]
+    fn opt_falls_back_to_default() {
+        let cfg = Object::new_empty(GLOBAL_LAYER_ID.clone(), test_object_meta());
+        assert_eq!(retries().get(&cfg), Some(3));
     }
 }

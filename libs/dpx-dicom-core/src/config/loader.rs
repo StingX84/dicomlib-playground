@@ -166,7 +166,7 @@ fn build_index(registry: &ObjectMeta) -> Result<IndexNode<'_>> {
 }
 
 /// Recursively descends/creates `Branch` nodes along `path`, returning the
-/// branch map at its end. Written recursively to avoid the loop-reborrow that
+/// branch map at its end. Written recursively to avoid the loop-re borrow that
 /// trips the borrow checker.
 fn branch_descend<'a, 'n>(
     node: &'n mut IndexNode<'a>,
@@ -751,54 +751,20 @@ fn visit_file_map<'de, A: MapAccess<'de>>(mut map: A) -> std::result::Result<Val
 mod tests {
     use crate::{Arc, config_object_meta};
     use super::*;
-    use crate::config::meta::{EditName, Choices};
+    use crate::config::meta::{EditName, Choices, KeyMetaBuilder, build};
     use crate::config::{ConfigValues, Key};
     use crate::network::AssocDescription;
 
-    static STRING_ITEM: ValueMeta = ValueMeta::String {
-        regexp: None,
-        min: None,
-        max: None,
-        subst: false,
-        nullable: false,
-    };
+    static STRING_ITEM: ValueMeta = build::String::new().build();
 
     static LISTEN_ITEMS: [KeyMeta; 2] = [
-        KeyMeta {
-            key: Key::new("addr"),
-            edit: None,
-            conditional: false,
-            runtime: false,
-            default: None,
-            value_meta: ValueMeta::String {
-                regexp: None,
-                min: None,
-                max: None,
-                subst: false,
-                nullable: false,
-            },
-        },
-        KeyMeta {
-            key: Key::new("port"),
-            edit: None,
-            conditional: false,
-            runtime: false,
-            default: None,
-            value_meta: ValueMeta::Int {
-                min: Some(0),
-                max: Some(65535),
-                subst: false,
-                nullable: true,
-            },
-        },
+        KeyMetaBuilder::new(Key::new("addr"), build::String::new().build()).build(),
+        KeyMetaBuilder::new(Key::new("port"), build::Int::new().min(0).max(65535).nullable().build()).build(),
     ];
-    
+
     config_object_meta!{ fn listen_meta() = &LISTEN_ITEMS }
-    
-    static LISTEN_OBJ: ValueMeta = ValueMeta::Object {
-        meta: || listen_meta(),
-        nullable: false,
-    };
+
+    static LISTEN_OBJ: ValueMeta = build::Object::new(listen_meta).build();
 
     static ENC_CHOICES: [(u32, &str, Option<EditName>); 2] = [
         (
@@ -829,85 +795,20 @@ mod tests {
     const K_DELIM: Key = Key::new("delimiters");
 
     static METAS: [KeyMeta; 6] = [
-        KeyMeta {
-            key: K_ARTIM,
-            edit: None,
-            conditional: true,
-            runtime: false,
-            default: None,
-            value_meta: ValueMeta::Duration {
-                min: None,
-                max: None,
-                subst: false,
-                nullable: false,
-            },
-        },
-        KeyMeta {
-            key: K_MAX,
-            edit: None,
-            conditional: true,
-            runtime: false,
-            default: None,
-            value_meta: ValueMeta::Int {
-                min: Some(0),
-                max: None,
-                subst: false,
-                nullable: false,
-            },
-        },
-        KeyMeta {
-            key: K_LOCAL_AET,
-            edit: None,
-            conditional: false,
-            runtime: false,
-            default: Some(|| Value::Vec(Vec::new())),
-            value_meta: ValueMeta::Vec {
-                meta: &STRING_ITEM,
-                min: None,
-                max: None,
-                stride: None,
-                nullable: false,
-            },
-        },
-        KeyMeta {
-            key: K_LISTEN,
-            edit: None,
-            conditional: false,
-            runtime: false,
-            default: Some(|| Value::Vec(Vec::new())),
-            value_meta: ValueMeta::Vec {
-                meta: &LISTEN_OBJ,
-                min: None,
-                max: None,
-                stride: None,
-                nullable: false,
-            },
-        },
-        KeyMeta {
-            key: K_MODE,
-            edit: None,
-            conditional: false,
-            runtime: false,
-            default: Some(|| Value::Enum(1)),
-            value_meta: ValueMeta::Enum {
-                one_of: Choices::Static(&ENC_CHOICES),
-                subst: false,
-                nullable: false,
-            },
-        },
-        KeyMeta {
-            key: K_DELIM,
-            edit: None,
-            conditional: false,
-            runtime: false,
-            default: Some(|| Value::Map(Default::default())),
-            value_meta: ValueMeta::Map {
-                meta: &STRING_ITEM,
-                min: None,
-                max: None,
-                nullable: false,
-            },
-        },
+        KeyMetaBuilder::new(K_ARTIM, build::Duration::new().build()).conditional().build(),
+        KeyMetaBuilder::new(K_MAX, build::Int::new().min(0).build()).conditional().build(),
+        KeyMetaBuilder::new(K_LOCAL_AET, build::Vec::new(&STRING_ITEM).build())
+            .default(|| Value::Vec(Vec::new()))
+            .build(),
+        KeyMetaBuilder::new(K_LISTEN, build::Vec::new(&LISTEN_OBJ).build())
+            .default(|| Value::Vec(Vec::new()))
+            .build(),
+        KeyMetaBuilder::new(K_MODE, build::Enum::new(Choices::Static(&ENC_CHOICES)).build())
+            .default(|| Value::Enum(1))
+            .build(),
+        KeyMetaBuilder::new(K_DELIM, build::Map::new(&STRING_ITEM).build())
+            .default(|| Value::Map(Default::default()))
+            .build(),
     ];
     config_object_meta!{ fn meta() = &METAS }
 
@@ -1031,20 +932,8 @@ dicom:
     // every file is rejected at finalize.
     #[test]
     fn root_missing_required_key_is_rejected() {
-        static REQUIRED: [KeyMeta; 1] = [KeyMeta {
-            key: Key::new("name"),
-            edit: None,
-            conditional: false,
-            runtime: false,
-            default: None,
-            value_meta: ValueMeta::String {
-                regexp: None,
-                min: None,
-                max: None,
-                subst: false,
-                nullable: false,
-            },
-        }];
+        static REQUIRED: [KeyMeta; 1] =
+            [KeyMetaBuilder::new(Key::new("name"), build::String::new().build()).build()];
         config_object_meta! { fn required_meta() = &REQUIRED }
 
         let err = YamlLoader::new(required_meta()).load_str("{}\n").unwrap_err();
@@ -1074,60 +963,16 @@ dicom:
     #[test]
     fn subst_expands_only_when_meta_opts_in() {
         let _guard = super::super::subst::lock_global_for_test();
-        static SUBST_ITEM: ValueMeta = ValueMeta::String {
-            regexp: None,
-            min: None,
-            max: None,
-            subst: true,
-            nullable: false,
-        };
+        static SUBST_ITEM: ValueMeta = build::String::new().subst().build();
         static SUBST_METAS: [KeyMeta; 2] = [
-            KeyMeta {
-                key: Key::new("greeting"),
-                edit: None,
-                conditional: false,
-                runtime: false,
-                default: None,
-                value_meta: ValueMeta::String {
-                    regexp: None,
-                    min: None,
-                    max: None,
-                    subst: true,
-                    nullable: false,
-                },
-            },
+            KeyMetaBuilder::new(Key::new("greeting"), build::String::new().subst().build()).build(),
             // List whose items opt into substitution; coercion of a bare scalar
             // must still expand via the item meta.
-            KeyMeta {
-                key: Key::new("names"),
-                edit: None,
-                conditional: false,
-                runtime: false,
-                default: None,
-                value_meta: ValueMeta::Vec {
-                    meta: &SUBST_ITEM,
-                    min: None,
-                    max: None,
-                    stride: None,
-                    nullable: false,
-                },
-            },
+            KeyMetaBuilder::new(Key::new("names"), build::Vec::new(&SUBST_ITEM).build()).build(),
         ];
         // A non-subst field must be left untouched.
-        static PLAIN_METAS: [KeyMeta; 1] = [KeyMeta {
-            key: Key::new("greeting"),
-            edit: None,
-            conditional: false,
-            runtime: false,
-            default: None,
-            value_meta: ValueMeta::String {
-                regexp: None,
-                min: None,
-                max: None,
-                subst: false,
-                nullable: false,
-            },
-        }];
+        static PLAIN_METAS: [KeyMeta; 1] =
+            [KeyMetaBuilder::new(Key::new("greeting"), build::String::new().build()).build()];
 
         SubstVars::install(Arc::new(SubstVars::builder().var("WHO", "world").build()));
 
@@ -1154,37 +999,16 @@ dicom:
     fn network_and_host_parse_from_string_literals() {
         let _guard = super::super::subst::lock_global_for_test();
         static NET_HOST: [KeyMeta; 2] = [
-            KeyMeta {
-                key: Key::new("bind"),
-                edit: None,
-                conditional: false,
-                runtime: false,
-                default: None,
-                value_meta: ValueMeta::Network {
-                    domain: true,
-                    unix: true,
-                    ipv4: true,
-                    ipv6: true,
-                    subst: true,
-                    nullable: true,
-                },
-            },
-            KeyMeta {
-                key: Key::new("peer"),
-                edit: None,
-                conditional: false,
-                runtime: false,
-                default: None,
-                value_meta: ValueMeta::Host {
-                    domain: true,
-                    unix: true,
-                    ipv4: true,
-                    ipv6: true,
-                    default_port: Some(104),
-                    subst: false,
-                    nullable: true,
-                },
-            },
+            KeyMetaBuilder::new(
+                Key::new("bind"),
+                build::Network::new().domain().unix().ipv4().ipv6().subst().nullable().build(),
+            )
+            .build(),
+            KeyMetaBuilder::new(
+                Key::new("peer"),
+                build::Host::new().domain().unix().ipv4().ipv6().default_port(104).nullable().build(),
+            )
+            .build(),
         ];
 
         SubstVars::install(Arc::new(SubstVars::builder().var("NET", "127.0.0.1/24").build()));
@@ -1219,27 +1043,9 @@ dicom:
 
     #[test]
     fn vec_item_nullability_comes_from_item_meta() {
-        static NULLABLE_STR_ITEM: ValueMeta = ValueMeta::String {
-            regexp: None,
-            min: None,
-            max: None,
-            subst: false,
-            nullable: true,
-        };
-        static NULL_LIST: [KeyMeta; 1] = [KeyMeta {
-            key: Key::new("names"),
-            edit: None,
-            conditional: false,
-            runtime: false,
-            default: None,
-            value_meta: ValueMeta::Vec {
-                meta: &NULLABLE_STR_ITEM,
-                min: None,
-                max: None,
-                stride: None,
-                nullable: false,
-            },
-        }];
+        static NULLABLE_STR_ITEM: ValueMeta = build::String::new().nullable().build();
+        static NULL_LIST: [KeyMeta; 1] =
+            [KeyMetaBuilder::new(Key::new("names"), build::Vec::new(&NULLABLE_STR_ITEM).build()).build()];
 
         config_object_meta!( fn null_list_meta() = &NULL_LIST );
         let loader = YamlLoader::new(null_list_meta());
@@ -1254,20 +1060,8 @@ dicom:
         }
 
         // A non-nullable item rejects `null`.
-        static PLAIN_LIST: [KeyMeta; 1] = [KeyMeta {
-            key: Key::new("names"),
-            edit: None,
-            conditional: false,
-            runtime: false,
-            default: None,
-            value_meta: ValueMeta::Vec {
-                meta: &STRING_ITEM,
-                min: None,
-                max: None,
-                stride: None,
-                nullable: false,
-            },
-        }];
+        static PLAIN_LIST: [KeyMeta; 1] =
+            [KeyMetaBuilder::new(Key::new("names"), build::Vec::new(&STRING_ITEM).build()).build()];
         config_object_meta!( fn plain_list_meta() = &PLAIN_LIST );
         let loader = YamlLoader::new(plain_list_meta());
         assert!(loader.load_str("names:\n  - A\n  - null\n").is_err());
@@ -1277,7 +1071,6 @@ dicom:
     // to the matching `Value`. `Uuid` is feature-gated and covered separately.
     #[test]
     fn loads_every_value_type() {
-        use crate::config::meta::{KeyMetaBuilder, build};
         use std::any::Any;
 
         #[derive(Debug)]
@@ -1300,13 +1093,7 @@ dicom:
         }
         static PORT_TYPE: PortType = PortType;
 
-        static STR_ITEM: ValueMeta = ValueMeta::String {
-            regexp: None,
-            min: None,
-            max: None,
-            subst: false,
-            nullable: false,
-        };
+        static STR_ITEM: ValueMeta = build::String::new().build();
         static INNER: &[KeyMeta] = &[KeyMetaBuilder::new(Key::new("inner"), build::String::new().build()).build()];
         config_object_meta! { fn inner_meta() = INNER }
 
@@ -1372,7 +1159,6 @@ custom: 104
     // value, inside a nested object, inside an array and inside a map.
     #[test]
     fn serde_custom_type_reads_from_global_context_at_every_nesting() {
-        use crate::config::meta::{KeyMetaBuilder, build};
         use crate::config::{GlobalConfig, subst::lock_global_for_test};
         use serde::{Deserialize, Serialize};
 
@@ -1383,10 +1169,7 @@ custom: 104
         }
         static ENDPOINT: crate::config::Serde<Endpoint> = crate::config::Serde::new("endpoint");
 
-        static EP_ITEM: ValueMeta = ValueMeta::Custom {
-            ty: &ENDPOINT,
-            nullable: false,
-        };
+        static EP_ITEM: ValueMeta = build::Custom::new(&ENDPOINT).build();
         static INNER: &[KeyMeta] = &[KeyMetaBuilder::new(Key::new("ep"), build::Custom::new(&ENDPOINT).build()).build()];
         config_object_meta! { fn inner_meta() = INNER }
 
@@ -1466,7 +1249,6 @@ map:
     // load error rather than silently dropping the value.
     #[test]
     fn serde_custom_type_rejects_invalid_payload() {
-        use crate::config::meta::{KeyMetaBuilder, build};
         use serde::{Deserialize, Serialize};
 
         #[derive(Debug, Serialize, Deserialize)]
@@ -1488,18 +1270,8 @@ map:
     #[cfg(feature = "uuid")]
     #[test]
     fn loads_uuid_value() {
-        static UUID_META: &[KeyMeta] = &[KeyMeta {
-            key: Key::new("id"),
-            edit: None,
-            conditional: false,
-            runtime: false,
-            default: None,
-            value_meta: ValueMeta::Uuid {
-                non_zero: true,
-                subst: false,
-                nullable: false,
-            },
-        }];
+        static UUID_META: &[KeyMeta] =
+            &[KeyMetaBuilder::new(Key::new("id"), build::Uuid::new().non_zero().build()).build()];
         config_object_meta! { fn uuid_meta() = UUID_META }
 
         let cfg = YamlLoader::new(uuid_meta())
