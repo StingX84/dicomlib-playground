@@ -104,12 +104,8 @@ mod tests {
     use super::*;
     use crate::{ensure, config_object_meta};
     use crate::event::Subscription;
+    use super::super::subst::lock_global_for_test;
     use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::sync::{Mutex, PoisonError};
-
-    // The base configuration lives in the process-global `Context`, so these
-    // tests share that state and must run serially.
-    static SERIAL: Mutex<()> = Mutex::new(());
 
     static VERSION_KEY: Key = Key::new("version");
     static VERSION_METAS: &[KeyMeta] = &[KeyMeta {
@@ -127,10 +123,6 @@ mod tests {
     }];
 
     config_object_meta!( fn object_meta() = &VERSION_METAS );
-
-    fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
-        m.lock().unwrap_or_else(PoisonError::into_inner)
-    }
 
     fn config_object(version: i64) -> Arc<Object> {
         Arc::new(Object::new(
@@ -180,7 +172,7 @@ mod tests {
 
     #[test]
     fn successful_reload_prepares_commits_and_publishes() {
-        let _guard = lock(&SERIAL);
+        let _guard = lock_global_for_test();
         GlobalConfig::set_forced(config_object(1));
 
         let sub = Arc::new(Recorder::default());
@@ -197,7 +189,7 @@ mod tests {
 
     #[test]
     fn veto_aborts_subscribers_and_keeps_old_config() {
-        let _guard = lock(&SERIAL);
+        let _guard = lock_global_for_test();
         GlobalConfig::set_forced(config_object(1));
 
         let ok = Arc::new(Recorder::default());
@@ -226,7 +218,7 @@ mod tests {
 
     #[test]
     fn dropped_subscriptions_are_inactive() {
-        let _guard = lock(&SERIAL);
+        let _guard = lock_global_for_test();
         GlobalConfig::set_forced(config_object(1));
 
         let sub = Arc::new(Recorder::default());

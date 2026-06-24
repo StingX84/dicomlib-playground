@@ -256,14 +256,15 @@ declare_value_meta!(
     /// - `min`: the map must have at least this many entries.
     /// - `max`: the map must have at most this many entries.
     Map { required: { meta: &'static ValueMeta }, limits: { min: usize, max: usize } },
-    /// Complex value, a type-erased value with a known type identity. See [`Value::Complex`].
+    /// Application-defined value, a type-erased value with a known type identity. See [`Value::Custom`].
     ///
     /// Required:
-    /// - `ty`: the type identity of the complex value.
+    /// - `ty`: the type identity of the custom value.
     ///
     /// Flags:
     /// - `nullable`: the value may be [`Value::Null`].
-    Complex { required: { ty: &'static dyn crate::config::ComplexType} }
+    #[cfg(feature = "serde")]
+    Custom { required: { ty: &'static dyn crate::config::CustomType} }
 );
 
 /// A statically- or dynamically-sourced list of choices.
@@ -444,7 +445,10 @@ impl ObjectMeta {
             (ValueMeta::Object { .. }, Value::Object(_)) => true,
             (ValueMeta::Vec { .. }, Value::Vec(_)) => true,
             (ValueMeta::Map { .. }, Value::Map(_)) => true,
-            (ValueMeta::Complex { ty, .. }, Value::Complex(v)) if v.type_id() == ty.type_id() => true,
+            #[cfg(feature = "serde")]
+            (ValueMeta::Custom { ty, .. }, Value::Custom(v)) => v.type_id() == ty.type_id(),
+            #[cfg(feature = "serde")]
+            (ValueMeta::Custom { .. }, _) => true, // Allow custom readers to produce any type
             _ => false,
         }
     }

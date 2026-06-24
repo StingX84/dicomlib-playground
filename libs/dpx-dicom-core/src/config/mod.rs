@@ -16,7 +16,8 @@
 //! - **Loader** ([`loader`]) — a [`serde`] deserializer that reads a configuration
 //!   file and produces a [`Object`].
 
-pub mod complex;
+#[cfg(feature = "serde")]
+pub mod custom;
 pub mod global;
 #[cfg(feature = "serde")]
 pub mod loader;
@@ -30,7 +31,8 @@ pub mod value;
 
 use std::borrow::Cow;
 
-pub use complex::{ComplexConfigNode, ComplexType};
+#[cfg(feature = "serde")]
+pub use custom::{CustomType, Serde};
 pub use global::GlobalConfig;
 #[cfg(feature = "serde")]
 pub use loader::YamlLoader;

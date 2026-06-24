@@ -23,7 +23,7 @@ use std::borrow::Cow;
 /// # use ::dpx_dicom_core::TagKey;
 /// assert_eq!(TagKey::from(0x12345678), TagKey::new(0x1234, 0x5678));
 /// assert_eq!(TagKey::from((0x1234, 0x5678)), TagKey::new(0x1234, 0x5678));
-/// assert_eq!(0x12345678u32, TagKey::new(0x1234, 0x5678).into());
+/// assert_eq!(0x12345678u32, u32::from(TagKey::new(0x1234, 0x5678)));
 /// assert_eq!((0x1234, 0x5678), TagKey::new(0x1234, 0x5678).into());
 /// ```
 /// See other examples in [std::fmt::Display](#method.fmt) and [std::str::FromStr](#method.from_str) trait implementations.
@@ -483,7 +483,7 @@ mod tests {
         assert_eq!(k.group(), 0x1234);
         assert_eq!(k.element(), 0x5678);
         assert_eq!(k.as_u32(), 0x12345678);
-        assert_eq!(0x12345678u32, k.into());
+        assert_eq!(0x12345678u32, u32::from(k));
         assert_eq!((0x1234u16, 0x5678u16), k.into());
 
         // Try all the errors
@@ -498,6 +498,9 @@ mod tests {
 
     #[test]
     fn can_retrieve_meta() {
+        // Installs into the process-global context; serialize against every
+        // other test that swaps global state.
+        let _guard = crate::config::subst::lock_global_for_test();
         crate::declare_tags! {
             const TAGS = [
                 TestTag: { (0x4321, 0x10AA, "test"), AE, 1, "Test Tag", Vendored(None) },

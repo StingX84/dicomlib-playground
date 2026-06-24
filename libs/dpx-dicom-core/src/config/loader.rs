@@ -37,7 +37,7 @@
 use super::map::{Condition, Map};
 use super::meta::{KeyMeta, ValueMeta, ObjectMeta};
 use super::value::ConfiguredFile;
-use super::{ComplexConfigNode, Object, LayerId, OBJECT_LAYER_ID, SubstVars, Value};
+use super::{Object, LayerId, OBJECT_LAYER_ID, SubstVars, Value};
 use crate::IntoDicomErr;
 use crate::network::{HostDefinition, Network, NetworkDefinition};
 use crate::{HashMap, dicom_err, ensure, error::Result};
@@ -497,11 +497,11 @@ impl<'a> ValueSeed<'a> {
 impl<'de, 'a> DeserializeSeed<'de> for ValueSeed<'a> {
     type Value = Value;
     fn deserialize<D: Deserializer<'de>>(self, d: D) -> std::result::Result<Value, D::Error> {
-        if let ValueMeta::Complex { ty, .. } = self.meta {
-            let node = ComplexConfigNode::deserialize(d)?;
+        if let ValueMeta::Custom { ty, .. } = self.meta {
+            let node = serde_json::Value::deserialize(d)?;
             return ty
                 .decode(&node)
-                .map(Value::Complex)
+                .map(Value::Custom)
                 .map_err(|e| de::Error::custom(format!("{e}")));
         }
         d.deserialize_any(MetaVisitor { meta: self.meta })
@@ -742,63 +742,8 @@ fn visit_file_map<'de, A: MapAccess<'de>>(mut map: A) -> std::result::Result<Val
     }
 }
 
-// ── ConfigNode deserialization (for Complex values) ─────────────────────────
-
-impl<'de> serde::Deserialize<'de> for ComplexConfigNode {
-    fn deserialize<D: Deserializer<'de>>(d: D) -> std::result::Result<Self, D::Error> {
-        d.deserialize_any(ConfigNodeVisitor)
-    }
-}
-
-struct ConfigNodeVisitor;
-
-impl<'de> Visitor<'de> for ConfigNodeVisitor {
-    type Value = ComplexConfigNode;
-    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "any YAML value")
-    }
-    fn visit_bool<E: de::Error>(self, v: bool) -> std::result::Result<ComplexConfigNode, E> {
-        Ok(ComplexConfigNode::Bool(v))
-    }
-    fn visit_i64<E: de::Error>(self, v: i64) -> std::result::Result<ComplexConfigNode, E> {
-        Ok(ComplexConfigNode::Int(v))
-    }
-    fn visit_u64<E: de::Error>(self, v: u64) -> std::result::Result<ComplexConfigNode, E> {
-        Ok(ComplexConfigNode::Int(i64::try_from(v).unwrap_or(i64::MAX)))
-    }
-    fn visit_f64<E: de::Error>(self, v: f64) -> std::result::Result<ComplexConfigNode, E> {
-        Ok(ComplexConfigNode::Float(v))
-    }
-    fn visit_str<E: de::Error>(self, v: &str) -> std::result::Result<ComplexConfigNode, E> {
-        Ok(ComplexConfigNode::Str(v.to_string()))
-    }
-    fn visit_string<E: de::Error>(self, v: String) -> std::result::Result<ComplexConfigNode, E> {
-        Ok(ComplexConfigNode::Str(v))
-    }
-    fn visit_unit<E: de::Error>(self) -> std::result::Result<ComplexConfigNode, E> {
-        Ok(ComplexConfigNode::Null)
-    }
-    fn visit_none<E: de::Error>(self) -> std::result::Result<ComplexConfigNode, E> {
-        Ok(ComplexConfigNode::Null)
-    }
-    fn visit_some<D: Deserializer<'de>>(self, d: D) -> std::result::Result<ComplexConfigNode, D::Error> {
-        ComplexConfigNode::deserialize(d)
-    }
-    fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> std::result::Result<ComplexConfigNode, A::Error> {
-        let mut out = Vec::new();
-        while let Some(v) = seq.next_element::<ComplexConfigNode>()? {
-            out.push(v);
-        }
-        Ok(ComplexConfigNode::Seq(out))
-    }
-    fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> std::result::Result<ComplexConfigNode, A::Error> {
-        let mut out = Vec::new();
-        while let Some((k, v)) = map.next_entry::<String, ComplexConfigNode>()? {
-            out.push((k, v));
-        }
-        Ok(ComplexConfigNode::Map(out))
-    }
-}
+// Custom values deserialize straight into `serde_json::Value`, which serde-saphyr
+// fills from the YAML stream; the registered `CustomType` then decodes it.
 
 // ── Tests ───────────────────────────────────────────────────────────────────
 
@@ -1338,22 +1283,19 @@ dicom:
         #[derive(Debug)]
         struct Port(u16);
         struct PortType;
-        impl crate::config::ComplexType for PortType {
+        impl crate::config::CustomType for PortType {
             fn name(&self) -> &'static str {
                 "port"
             }
-            fn make_default_value(&self) -> crate::error::Result<Arc<dyn Any + Send + Sync>> {
-                Ok(Arc::new(Port(80)))
-            }
-            fn decode(&self, node: &ComplexConfigNode) -> crate::error::Result<Arc<dyn Any + Send + Sync>> {
-                let n = node.as_int().ok_or_else(|| dicom_err!(InvalidData, "port expects an integer"))?;
+            fn decode(&self, node: &serde_json::Value) -> crate::error::Result<Arc<dyn Any + Send + Sync>> {
+                let n = node.as_i64().ok_or_else(|| dicom_err!(InvalidData, "port expects an integer"))?;
                 Ok(Arc::new(Port(
                     u16::try_from(n).map_err(|_| dicom_err!(InvalidData, "port out of range"))?,
                 )))
             }
-            fn encode(&self, value: &dyn Any) -> crate::error::Result<ComplexConfigNode> {
+            fn encode(&self, value: &dyn Any) -> crate::error::Result<serde_json::Value> {
                 let p = value.downcast_ref::<Port>().ok_or_else(|| dicom_err!(Internal, "wrong type"))?;
-                Ok(ComplexConfigNode::Int(p.0 as i64))
+                Ok(serde_json::Value::from(p.0))
             }
         }
         static PORT_TYPE: PortType = PortType;
@@ -1382,7 +1324,7 @@ dicom:
             KeyMetaBuilder::new(Key::new("obj"), build::Object::new(inner_meta).build()).build(),
             KeyMetaBuilder::new(Key::new("vec"), build::Vec::new(&STR_ITEM).build()).build(),
             KeyMetaBuilder::new(Key::new("map"), build::Map::new(&STR_ITEM).build()).build(),
-            KeyMetaBuilder::new(Key::new("cplx"), build::Complex::new(&PORT_TYPE).build()).build(),
+            KeyMetaBuilder::new(Key::new("custom"), build::Custom::new(&PORT_TYPE).build()).build(),
         ];
         config_object_meta! { fn all_meta() = ALL }
 
@@ -1405,7 +1347,7 @@ vec:
   - b
 map:
   k1: v1
-cplx: 104
+custom: 104
 ";
         let cfg = YamlLoader::new(all_meta()).load_str(doc).expect("load");
 
@@ -1422,7 +1364,125 @@ cplx: 104
         assert!(matches!(cfg.config_get(&Key::new("obj"), None), Some(Value::Object(_))));
         assert!(matches!(cfg.config_get(&Key::new("vec"), None), Some(Value::Vec(v)) if v.len() == 2));
         assert!(matches!(cfg.config_get(&Key::new("map"), None), Some(Value::Map(m)) if m.len() == 1));
-        assert!(matches!(cfg.config_get(&Key::new("cplx"), None), Some(Value::Complex(_))));
+        assert!(matches!(cfg.config_get(&Key::new("custom"), None), Some(Value::Custom(_))));
+    }
+
+    // A `serde`-deriving type, adapted via `Serde<T>`, loads from YAML and is
+    // retrieved through the global context at every nesting position: as the root
+    // value, inside a nested object, inside an array and inside a map.
+    #[test]
+    fn serde_custom_type_reads_from_global_context_at_every_nesting() {
+        use crate::config::meta::{KeyMetaBuilder, build};
+        use crate::config::{GlobalConfig, subst::lock_global_for_test};
+        use serde::{Deserialize, Serialize};
+
+        #[derive(Debug, PartialEq, Serialize, Deserialize)]
+        struct Endpoint {
+            host: String,
+            port: u16,
+        }
+        static ENDPOINT: crate::config::Serde<Endpoint> = crate::config::Serde::new("endpoint");
+
+        static EP_ITEM: ValueMeta = ValueMeta::Custom {
+            ty: &ENDPOINT,
+            nullable: false,
+        };
+        static INNER: &[KeyMeta] = &[KeyMetaBuilder::new(Key::new("ep"), build::Custom::new(&ENDPOINT).build()).build()];
+        config_object_meta! { fn inner_meta() = INNER }
+
+        static ROOT: &[KeyMeta] = &[
+            KeyMetaBuilder::new(Key::new("ep"), build::Custom::new(&ENDPOINT).build()).build(),
+            KeyMetaBuilder::new(Key::new("obj"), build::Object::new(inner_meta).build()).build(),
+            KeyMetaBuilder::new(Key::new("arr"), build::Vec::new(&EP_ITEM).build()).build(),
+            KeyMetaBuilder::new(Key::new("map"), build::Map::new(&EP_ITEM).build()).build(),
+        ];
+        config_object_meta! { fn root_meta() = ROOT }
+
+        let doc = "\
+ep:
+  host: root
+  port: 104
+obj:
+  ep:
+    host: nested
+    port: 1
+arr:
+  - host: a
+    port: 11
+  - host: b
+    port: 22
+map:
+  k1:
+    host: m
+    port: 33
+";
+        let cfg = YamlLoader::new(root_meta()).load_str(doc).expect("load");
+
+        let _guard = lock_global_for_test();
+        GlobalConfig::set_forced(Arc::new(cfg));
+        let cfg = GlobalConfig::current();
+
+        fn endpoint(v: &Value) -> &Endpoint {
+            match v {
+                Value::Custom(any) => any.downcast_ref::<Endpoint>().expect("Endpoint payload"),
+                other => panic!("expected Value::Custom, got {other:?}"),
+            }
+        }
+
+        // Root.
+        assert_eq!(
+            endpoint(cfg.config_get(&Key::new("ep"), None).expect("root ep")),
+            &Endpoint { host: "root".into(), port: 104 }
+        );
+
+        // Nested object.
+        let obj = match cfg.config_get(&Key::new("obj"), None).expect("obj") {
+            Value::Object(o) => o,
+            other => panic!("expected Value::Object, got {other:?}"),
+        };
+        assert_eq!(
+            endpoint(obj.config_get(&Key::new("ep"), None).expect("nested ep")),
+            &Endpoint { host: "nested".into(), port: 1 }
+        );
+
+        // Array.
+        let arr = match cfg.config_get(&Key::new("arr"), None).expect("arr") {
+            Value::Vec(items) => items,
+            other => panic!("expected Value::Vec, got {other:?}"),
+        };
+        assert_eq!(arr.len(), 2);
+        assert_eq!(endpoint(&arr[0]), &Endpoint { host: "a".into(), port: 11 });
+        assert_eq!(endpoint(&arr[1]), &Endpoint { host: "b".into(), port: 22 });
+
+        // Map.
+        let map = match cfg.config_get(&Key::new("map"), None).expect("map") {
+            Value::Map(m) => m,
+            other => panic!("expected Value::Map, got {other:?}"),
+        };
+        assert_eq!(endpoint(map.get("k1").expect("map k1")), &Endpoint { host: "m".into(), port: 33 });
+    }
+
+    // A `serde` decode failure (here: a required field missing) is surfaced as a
+    // load error rather than silently dropping the value.
+    #[test]
+    fn serde_custom_type_rejects_invalid_payload() {
+        use crate::config::meta::{KeyMetaBuilder, build};
+        use serde::{Deserialize, Serialize};
+
+        #[derive(Debug, Serialize, Deserialize)]
+        struct Endpoint {
+            host: String,
+            port: u16,
+        }
+        static ENDPOINT: crate::config::Serde<Endpoint> = crate::config::Serde::new("endpoint");
+
+        static ROOT: &[KeyMeta] = &[KeyMetaBuilder::new(Key::new("ep"), build::Custom::new(&ENDPOINT).build()).build()];
+        config_object_meta! { fn root_meta() = ROOT }
+
+        let err = YamlLoader::new(root_meta())
+            .load_str("ep:\n  port: 104\n")
+            .unwrap_err();
+        assert!(format!("{err}").contains("host"), "unexpected error: {err}");
     }
 
     #[cfg(feature = "uuid")]

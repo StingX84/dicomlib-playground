@@ -51,7 +51,8 @@ pub enum Value {
     Object(Object),
     Vec(Vec<Value>),
     Map(Map<String, Value>),
-    Complex(Arc<dyn std::any::Any + Send + Sync>),
+    #[cfg(feature = "serde")]
+    Custom(Arc<dyn std::any::Any + Send + Sync>),
 }
 
 impl Value {
@@ -74,7 +75,8 @@ impl Value {
             Value::Object(_) => "Object",
             Value::Vec(_) => "Vec",
             Value::Map(_) => "Map",
-            Value::Complex(_) => "Complex",
+            #[cfg(feature = "serde")]
+            Value::Custom(_) => "Custom",
         }
     }
 }
@@ -99,7 +101,8 @@ impl std::fmt::Display for Value {
             Value::Object(_) => write!(f, "Object"),
             Value::Vec(vec) => write!(f, "{:?}", vec),
             Value::Map(map) => write!(f, "{:?}", map),
-            Value::Complex(_) => write!(f, "Complex"),
+            #[cfg(feature = "serde")]
+            Value::Custom(_) => write!(f, "Custom"),
         }
     }
 }
@@ -121,7 +124,8 @@ impl PartialEq for Value {
             (Value::Object(_), Value::Object(_)) => false,
             (Value::Vec(a), Value::Vec(b)) => a == b,
             (Value::Map(a), Value::Map(b)) => a == b,
-            (Value::Complex(_), Value::Complex(_)) => false, // No equality for complex types
+            #[cfg(feature = "serde")]
+            (Value::Custom(_), Value::Custom(_)) => false, // No equality for custom types
             _ => false,                                      // Different variants are not equal
         }
     }
@@ -147,7 +151,8 @@ impl PartialOrd for Value {
             (Value::Object(_), Value::Object(_)) => None, // No natural ordering for objects
             (Value::Vec(_), Value::Vec(_)) => None,       // No natural ordering for vectors
             (Value::Map(_), Value::Map(_)) => None,       // No natural ordering for maps
-            (Value::Complex(_), Value::Complex(_)) => None, // No natural ordering for complex types
+            #[cfg(feature = "serde")]
+            (Value::Custom(_), Value::Custom(_)) => None, // No natural ordering for custom types
             _ => None,                                    // Different variants are not comparable
         }
     }

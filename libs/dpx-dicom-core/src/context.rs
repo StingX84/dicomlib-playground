@@ -665,6 +665,9 @@ mod tests {
         // Installing a root that only sets a configuration must not drop the
         // dictionaries: the new self-contained root inherits them from the
         // previous root, so the required-field accessors can never panic.
+        // Mutates the process-global context; serialize against every other
+        // test that swaps global state.
+        let _guard = crate::config::subst::lock_global_for_test();
         let cfg = config_with([]);
         let prev = Context::extend().config(Arc::clone(&cfg)).install_global();
 

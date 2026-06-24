@@ -336,9 +336,10 @@ impl<'a> Validator<'a> {
                 Ok(())
             }
 
-            // Complex values are application-defined; the registered codec is the
+            // Custom values are application-defined; the registered codec is the
             // only thing that understands the concrete type, so delegate to it.
-            (ValueMeta::Complex { ty, .. }, Value::Complex(any)) => ty.validate(any.as_ref()),
+            #[cfg(feature = "serde")]
+            (ValueMeta::Custom { ty, .. }, Value::Custom(any)) => ty.validate(any.as_ref()),
 
             (key, value) => Err(dicom_err!(
                 Internal,
@@ -397,8 +398,12 @@ impl<'a> Validator<'a> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::{ComplexConfigNode, ComplexType, Key, meta::*};
+    use super::super::{Key, meta::*};
+    #[cfg(feature = "serde")]
+    use super::super::CustomType;
     use super::*;
+    #[cfg(feature = "serde")]
+    use serde_json::Value as JsonValue;
     use crate::Arc;
     use std::any::Any;
 
@@ -537,32 +542,32 @@ mod tests {
         assert!(validate(&meta, &empty).is_ok());
     }
 
-    // ── Complex application-defined types ─────────────────────────────────────
+    // ── Custom application-defined types ─────────────────────────────────────
 
+    #[cfg(feature = "serde")]
     #[derive(Debug, PartialEq)]
     struct Port(u16);
 
+    #[cfg(feature = "serde")]
     struct PortType;
-    impl ComplexType for PortType {
+    #[cfg(feature = "serde")]
+    impl CustomType for PortType {
         fn name(&self) -> &'static str {
             "port"
         }
-        fn make_default_value(&self) -> crate::error::Result<Arc<dyn Any + Send + Sync>> {
-            Ok(Arc::new(Port(80)))
-        }
-        fn decode(&self, node: &ComplexConfigNode) -> crate::error::Result<Arc<dyn Any + Send + Sync>> {
+        fn decode(&self, node: &JsonValue) -> crate::error::Result<Arc<dyn Any + Send + Sync>> {
             let n = node
-                .as_int()
+                .as_i64()
                 .ok_or_else(|| crate::dicom_err!(InvalidData, "port expects an integer"))?;
             Ok(Arc::new(Port(
                 u16::try_from(n).map_err(|_| crate::dicom_err!(InvalidData, "port out of range"))?,
             )))
         }
-        fn encode(&self, value: &dyn Any) -> crate::error::Result<ComplexConfigNode> {
+        fn encode(&self, value: &dyn Any) -> crate::error::Result<JsonValue> {
             let p = value
                 .downcast_ref::<Port>()
                 .ok_or_else(|| crate::dicom_err!(Internal, "port got wrong value type"))?;
-            Ok(ComplexConfigNode::Int(p.0 as i64))
+            Ok(JsonValue::from(p.0))
         }
         fn validate(&self, value: &dyn Any) -> crate::error::Result<()> {
             let p = value
@@ -575,26 +580,29 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "serde")]
     static PORT_TYPE: PortType = PortType;
 
+    #[cfg(feature = "serde")]
     #[test]
-    fn complex_type_round_trips_through_config_node() {
-        let ty: &'static dyn ComplexType = &PORT_TYPE;
-        let decoded = ty.decode(&ComplexConfigNode::Int(104)).unwrap();
+    fn custom_type_round_trips_through_json() {
+        let ty: &'static dyn CustomType = &PORT_TYPE;
+        let decoded = ty.decode(&JsonValue::from(104)).unwrap();
         assert_eq!(decoded.downcast_ref::<Port>(), Some(&Port(104)));
-        assert_eq!(ty.encode(decoded.as_ref()).unwrap(), ComplexConfigNode::Int(104));
+        assert_eq!(ty.encode(decoded.as_ref()).unwrap(), JsonValue::from(104));
     }
 
+    #[cfg(feature = "serde")]
     #[test]
-    fn complex_value_meta_delegates_validation_to_type() {
-        let meta = ValueMeta::Complex {
+    fn custom_value_meta_delegates_validation_to_type() {
+        let meta = ValueMeta::Custom {
             ty: &PORT_TYPE,
             nullable: false,
         };
         let good: Arc<dyn Any + Send + Sync> = Arc::new(Port(104));
-        assert!(validate(&meta, &Value::Complex(good)).is_ok());
+        assert!(validate(&meta, &Value::Custom(good)).is_ok());
 
         let bad: Arc<dyn Any + Send + Sync> = Arc::new(Port(0));
-        assert!(validate(&meta, &Value::Complex(bad)).is_err());
+        assert!(validate(&meta, &Value::Custom(bad)).is_err());
     }
 }

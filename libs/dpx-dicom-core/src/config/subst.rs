@@ -185,8 +185,10 @@ impl Builder {
     }
 }
 
-/// Serializes tests that swap the process-global instance, so they cannot
-/// clobber each other's installed [`SubstVars`].
+/// Serializes every test that swaps process-global state — the global
+/// [`Context`](crate::Context) root (tag/uid dictionaries, base config) and the
+/// installed [`SubstVars`]. They all share one `ArcSwap`, so without a single
+/// crate-wide lock their save/restore dances clobber each other.
 #[cfg(test)]
 pub(crate) static GLOBAL_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 

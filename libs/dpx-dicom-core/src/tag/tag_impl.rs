@@ -412,6 +412,9 @@ mod tests {
 
     #[test]
     fn can_retrieve_meta() {
+        // Installs into the process-global context; serialize against every
+        // other test that swaps global state.
+        let _guard = crate::config::subst::lock_global_for_test();
         crate::declare_tags! {
             const TAGS = [
                 TestTag: { (0x4321, 0x10AA, "test"), AE, 1, "Test Tag", Vendored(None) },
