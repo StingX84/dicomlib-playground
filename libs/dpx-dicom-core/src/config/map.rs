@@ -52,10 +52,9 @@ impl Map {
     pub fn add(&mut self, key: Key, value: Value, cond: Option<Condition>) {
         let entry = self.0.entry(key);
         match entry {
-            std::collections::hash_map::Entry::Occupied(mut existing) => existing
-                .get_mut()
-                .0
-                .push((value, cond.unwrap_or(DEFAULT_CONDITION))),
+            std::collections::hash_map::Entry::Occupied(mut existing) => {
+                existing.get_mut().0.push((value, cond.unwrap_or(DEFAULT_CONDITION)))
+            }
             std::collections::hash_map::Entry::Vacant(vacant) => {
                 vacant.insert(Conditionals(vec![(value, cond.unwrap_or(DEFAULT_CONDITION))]));
             }
@@ -287,7 +286,10 @@ mod tests {
         assert!(cs.get_ranked(&key, None).is_none());
         // A missing key yields nothing in either mode.
         assert!(cs.get_ranked(&Key::new("absent"), None).is_none());
-        assert!(cs.get_ranked(&Key::new("absent"), Some(&AssocDescription::default())).is_none());
+        assert!(
+            cs.get_ranked(&Key::new("absent"), Some(&AssocDescription::default()))
+                .is_none()
+        );
     }
 
     #[test]

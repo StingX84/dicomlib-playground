@@ -29,14 +29,16 @@ static_dictionary = []
 arc-swap = "1.9.1"
 # Fast CRC32 for data integrity verification in DICOM datasets
 crc32fast = "1.5"
+# Compile-time string dedentation for multi-line config values
+dedent = "0.1"
 # Cross-platform file system path manipulation and normalization
 glob = "0.3"
 # Link-time registration of VR types, tag dictionaries, and other extensible DICOM registries
 inventory = "0.3"
 # Machine-unique identifier used as a component in generated DICOM UIDs
 machine-uid = "0.6"
-# Compile-time string concatenation for macros
-paste = "1.0"
+# Compile-time string concatenation and identifier generation for config macros
+place_macro = "1.1"
 # Regular expression matching for per-key configuration value validation
 regex = "1.11"
 # Structured, async-aware logging and diagnostics throughout the library

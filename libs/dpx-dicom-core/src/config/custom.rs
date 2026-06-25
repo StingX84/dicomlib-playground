@@ -119,7 +119,10 @@ pub struct Serde<T> {
 
 impl<T> Serde<T> {
     pub const fn new(name: &'static str) -> Self {
-        Self { name, _marker: PhantomData }
+        Self {
+            name,
+            _marker: PhantomData,
+        }
     }
 }
 
@@ -132,8 +135,7 @@ where
     }
 
     fn decode(&self, node: &JsonValue) -> Result<Arc<dyn Any + Send + Sync>> {
-        let v: T = serde_json::from_value(node.clone())
-            .map_err(|e| dicom_err!(InvalidData, "{}: {e}", self.name))?;
+        let v: T = serde_json::from_value(node.clone()).map_err(|e| dicom_err!(InvalidData, "{}: {e}", self.name))?;
         Ok(Arc::new(v))
     }
 

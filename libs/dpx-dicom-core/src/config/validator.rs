@@ -1,4 +1,4 @@
-use super::{Value, ConfiguredFile, meta::KeyMeta, meta::ValueMeta};
+use super::{File, Value, meta::KeyMeta, meta::ValueMeta};
 use crate::{DicomError, ErrContext, Result, config::map::DEFAULT_CONDITION, dicom_err, ensure};
 
 #[derive(Debug, PartialEq, PartialOrd, Ord, Eq)]
@@ -38,7 +38,7 @@ impl<'a> std::fmt::Display for Validator<'a> {
 impl<'a> Validator<'a> {
     pub fn validate(&self, value: &Value) -> Result {
         if matches!(value, Value::Null) {
-            ensure!(self.value_meta.is_nullable(), Configuration, "not nullable");
+            ensure!(self.value_meta.is_optional(), Configuration, "not optional");
             return Ok(());
         }
         self.validate_value(value).map_err(|e| self.extend_error(e))?;
@@ -107,7 +107,11 @@ impl<'a> Validator<'a> {
 
             #[cfg(feature = "uuid")]
             (ValueMeta::Uuid { non_zero, .. }, Value::Uuid(u)) => {
-                ensure!(!*non_zero || !u.is_nil(), Configuration, "UUID must not be the nil UUID");
+                ensure!(
+                    !*non_zero || !u.is_nil(),
+                    Configuration,
+                    "UUID must not be the nil UUID"
+                );
                 Ok(())
             }
 
@@ -125,10 +129,10 @@ impl<'a> Validator<'a> {
                 Value::File(f),
             ) => {
                 match f {
-                    ConfiguredFile::Content(..) => {
+                    File::Content(..) => {
                         ensure!(*allow_content, Configuration, "inline file content is not allowed here");
                     }
-                    ConfiguredFile::Name { path, hot_reload } => {
+                    File::Name { path, hot_reload } => {
                         ensure!(!path.is_empty(), Configuration, "file path cannot be empty");
                         ensure!(
                             !*hot_reload || *meta_hot_reload,
@@ -160,27 +164,13 @@ impl<'a> Validator<'a> {
                                     );
                                 }
                             }
-                        }
-                        else 
-                        {
+                        } else {
                             let path = std::path::Path::new(path);
-                            ensure!(
-                                path.is_absolute(),
-                                Configuration,
-                                "file path {path:?} must be absolute"
-                            );
+                            ensure!(path.is_absolute(), Configuration, "file path {path:?} must be absolute");
                             if path.exists() {
-                                ensure!(
-                                    !*should_not_exist,
-                                    Configuration,
-                                    "file path {path:?} must not exist"
-                                );
+                                ensure!(!*should_not_exist, Configuration, "file path {path:?} must not exist");
                             } else {
-                                ensure!(
-                                    !*should_exist,
-                                    Configuration,
-                                    "file path {path:?} must exist"
-                                );
+                                ensure!(!*should_exist, Configuration, "file path {path:?} must exist");
                             }
                             if !*allow_dir {
                                 ensure!(
@@ -204,7 +194,11 @@ impl<'a> Validator<'a> {
 
             (
                 ValueMeta::Network {
-                    domain, unix, ipv4, ipv6, ..
+                    domain,
+                    unix,
+                    ipv4,
+                    ipv6,
+                    ..
                 },
                 Value::Network(network),
             ) => {
@@ -231,7 +225,11 @@ impl<'a> Validator<'a> {
 
             (
                 ValueMeta::Host {
-                    domain, unix, ipv4, ipv6, ..
+                    domain,
+                    unix,
+                    ipv4,
+                    ipv6,
+                    ..
                 },
                 Value::Host(host),
             ) => {
@@ -258,7 +256,11 @@ impl<'a> Validator<'a> {
 
             (ValueMeta::Object { meta, .. }, Value::Object(obj)) => {
                 for (key, conditionals) in obj.values().iter() {
-                    ensure!(std::ptr::eq(meta(), obj.object_meta()), Configuration, "object has unexpected field {key:?}");
+                    ensure!(
+                        std::ptr::eq(meta(), obj.object_meta()),
+                        Configuration,
+                        "object has unexpected field {key:?}"
+                    );
                     let Some(key_meta) = obj.object_meta.key_meta(key) else {
                         return Err(dicom_err!(Configuration, "object has unexpected field {key:?}"));
                     };
@@ -272,20 +274,20 @@ impl<'a> Validator<'a> {
                         parent: Some(self),
                     };
                     for (value, cond) in conditionals.0.iter() {
-                        ensure!(key_meta.conditional || cond == &DEFAULT_CONDITION, Configuration, "object field {key:?} is not conditional but has a condition");
+                        ensure!(
+                            key_meta.conditional || cond == &DEFAULT_CONDITION,
+                            Configuration,
+                            "object field {key:?} is not conditional but has a condition"
+                        );
                         sub_stack.validate(value).err_context("invalid object field")?;
                     }
                 }
                 Ok(())
-            },
+            }
 
             (
                 ValueMeta::Vec {
-                    meta,
-                    min,
-                    max,
-                    stride,
-                    ..
+                    meta, min, max, stride, ..
                 },
                 Value::Vec(elements),
             ) => {
@@ -314,15 +316,7 @@ impl<'a> Validator<'a> {
                 Ok(())
             }
 
-            (
-                ValueMeta::Map {
-                    meta,
-                    min,
-                    max,
-                    ..
-                },
-                Value::Map(entries),
-            ) => {
+            (ValueMeta::Map { meta, min, max, .. }, Value::Map(entries)) => {
                 Validator::check_range("map", entries.len(), min, max)?;
                 for (k, v) in entries.iter() {
                     let sub_stack = Validator {
@@ -398,13 +392,13 @@ impl<'a> Validator<'a> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::{Key, meta::*};
     #[cfg(feature = "serde")]
     use super::super::CustomType;
+    use super::super::{Key, meta::*};
     use super::*;
+    use crate::Arc;
     #[cfg(feature = "serde")]
     use serde_json::Value as JsonValue;
-    use crate::Arc;
     use std::any::Any;
 
     fn validate(meta: &ValueMeta, value: &Value) -> crate::error::Result<()> {
@@ -442,22 +436,20 @@ mod tests {
 
     #[test]
     fn enum_membership_is_checked() {
-        static CHOICES: [(u32, &str, Option<EditName>); 2] = [
+        static CHOICES: [(u32, &str, Option<EnumVisual>); 2] = [
             (
                 1,
                 "a",
-                Some(EditName {
+                Some(EnumVisual {
                     display_name: "a",
-                    brief: Some("A"),
                     help: None,
                 }),
             ),
             (
                 2,
                 "b",
-                Some(EditName {
+                Some(EnumVisual {
                     display_name: "b",
-                    brief: Some("B"),
                     help: None,
                 }),
             ),
@@ -551,7 +543,7 @@ mod tests {
     // ── File ─────────────────────────────────────────────────────────────────
 
     fn name_file(path: &str, hot_reload: bool) -> Value {
-        Value::File(ConfiguredFile::Name {
+        Value::File(File::Name {
             path: path.to_owned(),
             hot_reload,
         })
@@ -559,7 +551,7 @@ mod tests {
 
     #[test]
     fn file_content_is_gated_by_allow_content() {
-        let content = Value::File(ConfiguredFile::Content(vec![1, 2, 3]));
+        let content = Value::File(File::Content(vec![1, 2, 3]));
 
         let allowed = build::File::new().allow_content().build();
         assert!(validate(&allowed, &content).is_ok());

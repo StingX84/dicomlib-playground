@@ -11,11 +11,11 @@
 use std::marker::PhantomData;
 
 use super::{ConfigValues, Key, ValueRef};
-use crate::{context::Context, network::AssocDescription};
+use crate::network::AssocDescription;
 
-/// Marker for a non-nullable key: reads return `T`.
+/// Marker for a non-optional key: reads return `T`.
 pub enum Req {}
-/// Marker for a nullable key: reads return `Option<T>`.
+/// Marker for a optional key: reads return `Option<T>`.
 pub enum Opt {}
 
 /// Type-level marker over the value type and nullability, carried by
@@ -23,23 +23,20 @@ pub enum Opt {}
 /// `Send + Sync + Copy` regardless of `T`/`N`.
 type Marker<T, N> = PhantomData<(fn() -> T, fn() -> N)>;
 
-/// A configuration key carrying its value type `T`, nullability `N` and whether
-/// it is association-matched. Construct via [`TypedKey::new`] (or the `config!`
-/// macro); read via [`get`](TypedKey::get) / [`get_for`](TypedKey::get_for).
+/// A configuration key carrying its value type `T`, nullability `N`.
+/// Construct via [`TypedKey::new`] (or the `declare_config_object!`
+/// macro); read via [`get`](TypedKey::get).
 #[derive(Copy, Clone)]
 pub struct TypedKey<T, N = Req> {
     key: Key,
-    conditional: bool,
     _p: Marker<T, N>,
 }
 
 impl<T, N> TypedKey<T, N> {
-    /// Creates a typed handle for the dotted store `path`. `conditional` selects
-    /// the association-matched store on read.
-    pub const fn new(path: &'static str, conditional: bool) -> TypedKey<T, N> {
+    /// Creates a typed handle for the dotted store `path`.
+    pub const fn new(path: &'static str) -> TypedKey<T, N> {
         TypedKey {
             key: Key::new(path),
-            conditional,
             _p: PhantomData,
         }
     }
@@ -48,70 +45,26 @@ impl<T, N> TypedKey<T, N> {
     pub const fn key(&self) -> Key {
         self.key
     }
-
-    /// Whether this key resolves against the association-matched store.
-    pub const fn conditional(&self) -> bool {
-        self.conditional
-    }
 }
 
 // ── Reading ───────────────────────────────────────────────────────────────────
 
-impl<T: ValueRef, N> TypedKey<T, N> {
-    /// Resolves against a single layer using an explicit condition.
-    fn resolve<'c>(
-        &self,
-        conf: &'c impl ConfigValues,
-        assoc: Option<&AssocDescription>,
-    ) -> Option<<T as ValueRef>::Ref<'c>> {
-        if self.conditional {
-            conf.config_get_as::<T>(&self.key, assoc)
-        } else {
-            conf.config_get_as::<T>(&self.key, None)
-        }
-    }
-
-    /// Resolves against a single layer, deriving the condition from the current
-    /// [`Context`]. Unconditional keys never touch the context.
-    fn resolve_current<'c>(&self, conf: &'c impl ConfigValues) -> Option<<T as ValueRef>::Ref<'c>> {
-        let assoc = if self.conditional {
-            Context::with_current(|ctx| ctx.assoc().cloned())
-        } else {
-            None
-        };
-        conf.config_get_as::<T>(&self.key, assoc.as_deref())
-    }
-}
-
 impl<T: ValueRef> TypedKey<T, Req> {
-    /// Reads the value, deriving the condition from the current [`Context`].
-    pub fn get<'c>(&self, conf: &'c impl ConfigValues) -> <T as ValueRef>::Ref<'c> {
-        self.resolve_current(conf).unwrap_or_else(|| missing(self.key))
-    }
-
     /// Reads the value, matching conditionals against `src`.
-    pub fn get_for<'c>(
-        &self,
-        conf: &'c impl ConfigValues,
-        src: impl Into<Option<&'c AssocDescription>>,
-    ) -> <T as ValueRef>::Ref<'c> {
-        self.resolve(conf, src.into()).unwrap_or_else(|| missing(self.key))
+    pub fn get<'c>(&self, obj: &'c impl ConfigValues, assoc: Option<&'c AssocDescription>) -> <T as ValueRef>::Ref<'c> {
+        obj.config_get_as::<T>(&self.key, assoc)
+            .unwrap_or_else(|| missing(self.key))
     }
 }
 
 impl<T: ValueRef> TypedKey<T, Opt> {
-    /// Reads the value, deriving the condition from the current [`Context`].
-    pub fn get<'c>(&self, conf: &'c impl ConfigValues) -> Option<<T as ValueRef>::Ref<'c>> {
-        self.resolve_current(conf)
-    }
-
-    /// Reads the value, matching conditionals against `src`.
-    pub fn get_for<'c>(
+    /// Reads the value, deriving the condition from the specified [`Context`].
+    pub fn get<'c>(
         &self,
-        conf: &'c impl ConfigValues,
-        src: impl Into<Option<&'c AssocDescription>>,
+        ctx: &'c impl ConfigValues,
+        assoc: Option<&'c AssocDescription>,
     ) -> Option<<T as ValueRef>::Ref<'c>> {
-        self.resolve(conf, src.into())
+        ctx.config_get_as::<T>(&self.key, assoc)
     }
 }
 
@@ -130,7 +83,7 @@ fn missing(key: Key) -> ! {
 mod tests {
     use super::*;
     use crate::config::{
-        GLOBAL_LAYER_ID, Object, Value,
+        Object, Value,
         map::{Condition, Conditionals, Map},
         meta::{KeyMeta, KeyMetaBuilder, build},
     };
@@ -152,9 +105,9 @@ mod tests {
             .default(|| Value::Int(5))
             .build(),
         // Nullable, no default: an Opt read yields None when unset.
-        KeyMetaBuilder::new(Key::new(K_LABEL), build::String::new().nullable().build()).build(),
+        KeyMetaBuilder::new(Key::new(K_LABEL), build::String::new().optional().build()).build(),
         // Nullable but with a default: an Opt read falls back to Some(default).
-        KeyMetaBuilder::new(Key::new(K_RETRIES), build::Int::new().nullable().build())
+        KeyMetaBuilder::new(Key::new(K_RETRIES), build::Int::new().optional().build())
             .default(|| Value::Int(3))
             .build(),
     ];
@@ -162,10 +115,10 @@ mod tests {
     config_object_meta!( fn test_object_meta() = &METAS );
 
     fn timeout() -> TypedKey<Duration, Req> {
-        TypedKey::new(K_TIMEOUT, false)
+        TypedKey::new(K_TIMEOUT)
     }
     fn max_key() -> TypedKey<i64, Req> {
-        TypedKey::new(K_MAX, true)
+        TypedKey::new(K_MAX)
     }
 
     fn populated() -> Object {
@@ -191,18 +144,18 @@ mod tests {
                 ),
             ),
         ];
-        Object::new(GLOBAL_LAYER_ID.clone(), test_object_meta(), Map::from_iter(keys))
+        Object::new(test_object_meta(), Map::from_iter(keys))
     }
 
     #[test]
     fn plain_reads_explicit_value_by_value() {
-        assert_eq!(timeout().get(&populated()), Duration::from_secs(30));
+        assert_eq!(timeout().get(&populated(), None), Duration::from_secs(30));
     }
 
     #[test]
     fn plain_falls_back_to_default() {
-        let cfg = Object::new_empty(GLOBAL_LAYER_ID.clone(), test_object_meta());
-        assert_eq!(timeout().get(&cfg), Duration::from_secs(10));
+        let cfg = Object::new_empty(test_object_meta());
+        assert_eq!(timeout().get(&cfg, None), Duration::from_secs(10));
     }
 
     #[test]
@@ -212,47 +165,45 @@ mod tests {
             peer_aet: Some("PEER".into()),
             ..Default::default()
         };
-        assert_eq!(max_key().get_for(&cfg, Some(&peer)), 99);
+        assert_eq!(max_key().get(&cfg, Some(&peer)), 99);
         let other = AssocDescription {
             peer_aet: Some("OTHER".into()),
             ..Default::default()
         };
-        assert_eq!(max_key().get_for(&cfg, Some(&other)), 7);
+        assert_eq!(max_key().get(&cfg, Some(&other)), 7);
     }
 
     #[test]
     fn conditional_falls_back_to_default() {
-        let cfg = Object::new_empty(GLOBAL_LAYER_ID, test_object_meta());
-        assert_eq!(max_key().get_for(&cfg, None), 5);
+        let cfg = Object::new_empty(test_object_meta());
+        assert_eq!(max_key().get(&cfg, None), 5);
     }
 
     fn label() -> TypedKey<String, Opt> {
-        TypedKey::new(K_LABEL, false)
+        TypedKey::new(K_LABEL)
     }
     fn retries() -> TypedKey<i64, Opt> {
-        TypedKey::new(K_RETRIES, false)
+        TypedKey::new(K_RETRIES)
     }
 
     #[test]
     fn opt_reads_explicit_value() {
         let cfg = Object::new(
-            GLOBAL_LAYER_ID.clone(),
             test_object_meta(),
             Map::from_iter([(Key::new(K_LABEL), Value::String("hi".into()))]),
         );
-        assert_eq!(label().get(&cfg), Some("hi"));
+        assert_eq!(label().get(&cfg, None), Some("hi"));
     }
 
     #[test]
     fn opt_without_value_or_default_is_none() {
-        let cfg = Object::new_empty(GLOBAL_LAYER_ID.clone(), test_object_meta());
-        assert_eq!(label().get(&cfg), None);
-        assert_eq!(label().get_for(&cfg, None), None);
+        let cfg = Object::new_empty(test_object_meta());
+        assert_eq!(label().get(&cfg, None), None);
     }
 
     #[test]
     fn opt_falls_back_to_default() {
-        let cfg = Object::new_empty(GLOBAL_LAYER_ID.clone(), test_object_meta());
-        assert_eq!(retries().get(&cfg), Some(3));
+        let cfg = Object::new_empty(test_object_meta());
+        assert_eq!(retries().get(&cfg, None), Some(3));
     }
 }

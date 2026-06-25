@@ -37,13 +37,13 @@ pub use global::GlobalConfig;
 #[cfg(feature = "serde")]
 pub use loader::YamlLoader;
 pub use map::{Condition, Map};
+pub use meta::Value;
 pub use subst::{AppDir, SubstVars};
-pub use value::{Value, ConfiguredFile, ValueRef, millis, mins, secs};
+pub use value::{File, ValueRef, millis, mins, secs};
 
-use crate::{network::AssocDescription};
+use crate::network::AssocDescription;
 
 pub const GLOBAL_LAYER_ID: LayerId = LayerId::Borrowed("<global>");
-pub const OBJECT_LAYER_ID: LayerId = LayerId::Borrowed("<object>");
 
 /// Uniquely identifies a configuration key.
 ///
@@ -87,7 +87,9 @@ pub trait ConfigValues {
     /// Returns a list of all values stored.
     ///
     /// Keys are sorted by layer and can duplicate.
-    fn config_iter(&self) -> Self::Iter<'_>;
+    fn config_iter<'a>(&'a self, parent_layer_id: Option<&'a LayerId>) -> Self::Iter<'a>
+    where
+        Self: 'a;
 
     /// Returns a default value for `key` from the registry.
     fn config_default_of(&self, key: &Key) -> Option<&Value>;
@@ -115,30 +117,42 @@ pub trait ConfigValues {
 
 #[derive(Debug, Clone)]
 pub struct Object {
-    layer_id: LayerId,
+    layer_id: Option<LayerId>,
     object_meta: &'static meta::ObjectMeta,
     values: Map,
 }
 
 impl Object {
-    pub fn new(layer_id: LayerId, object_meta: &'static meta::ObjectMeta, values: Map) -> Self {
+    pub fn new(object_meta: &'static meta::ObjectMeta, values: Map) -> Self {
         Object {
-            layer_id,
+            layer_id: None,
             object_meta,
             values,
         }
     }
 
-    pub fn new_empty(layer_id: LayerId, object_meta: &'static meta::ObjectMeta) -> Self {
+    pub fn new_with_layer_id(object_meta: &'static meta::ObjectMeta, values: Map, layer_id: LayerId) -> Self {
         Object {
-            layer_id,
+            layer_id: Some(layer_id),
+            object_meta,
+            values,
+        }
+    }
+
+    pub fn new_empty(object_meta: &'static meta::ObjectMeta) -> Self {
+        Object {
+            layer_id: None,
             object_meta,
             values: Map::new(),
         }
     }
 
-    pub fn layer_id(&self) -> &LayerId {
-        &self.layer_id
+    pub fn layer_id(&self) -> Option<&LayerId> {
+        self.layer_id.as_ref()
+    }
+
+    pub fn set_layer_id(&mut self, layer_id: LayerId) {
+        self.layer_id = Some(layer_id);
     }
 
     /// The metadata registry this layer resolves keys and defaults against.
@@ -165,7 +179,7 @@ impl Object {
 }
 
 pub struct ConfigIter<'a> {
-    config: &'a Object,
+    layer_id: &'a LayerId,
     map_iter: std::collections::hash_map::Iter<'a, Key, map::Conditionals>,
     cond_iter: Option<(&'a Key, std::slice::Iter<'a, (Value, Condition)>)>,
 }
@@ -175,7 +189,7 @@ impl<'a> Iterator for ConfigIter<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         if let Some((key, cond_iter)) = &mut self.cond_iter {
             if let Some((val, cond)) = cond_iter.next() {
-                return Some((key, val, Some(cond), &self.config.layer_id));
+                return Some((key, val, Some(cond), self.layer_id));
             } else {
                 self.cond_iter = None;
             }
@@ -196,9 +210,12 @@ impl ConfigValues for Object {
     where
         Self: 'a;
 
-    fn config_iter(&self) -> Self::Iter<'_> {
+    fn config_iter<'a>(&'a self, parent_layer_id: Option<&'a LayerId>) -> Self::Iter<'a>
+    where
+        Self: 'a,
+    {
         ConfigIter {
-            config: self,
+            layer_id: self.layer_id.as_ref().or(parent_layer_id).unwrap_or(&GLOBAL_LAYER_ID),
             map_iter: self.values.0.iter(),
             cond_iter: None,
         }

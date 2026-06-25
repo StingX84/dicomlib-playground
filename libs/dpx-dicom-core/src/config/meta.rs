@@ -7,7 +7,7 @@
 
 #![allow(clippy::new_without_default)]
 
-use super::{Key, Value};
+use super::Key;
 use std::{any::Any, sync::OnceLock};
 
 // cspell:ignore rfield
@@ -15,57 +15,78 @@ macro_rules! declare_value_meta {
     ($(
         $(#[doc = $doc:tt])*
         $(#[cfg($cfg:meta)])*
-        $name:ident { $(required: { $($rfield:ident : $rty:ty),* } $(,)?)? $(flags: { $($flag:ident),* } $(,)?)? $(limits: { $($field:ident : $ty:ty),* })? }),* $(,)
-    ?) => {
+        $name:ident { $(required: { $($rfield:ident : $rty:ty),* } $(,)?)? $(flags: { $($flag:ident),* } $(,)?)? $(limits: { $($field:ident : $ty:ty),* })? } = $native:ty),* $(,)
+    ?) => {::place_macro::place! {
         /// Describes the type, constraints and flags of a [`Value`].
         #[derive(Debug, Clone)]
         pub enum ValueMeta {$(
+            #[doc = __str__("Native: `" $native "`")]
             $(#[doc = $doc])*
             $(#[cfg($cfg)])*
             $name {
                 $($($rfield: $rty,)*)?
                 $($($flag: bool,)*)?
                 $($($field: Option<$ty>,)*)?
-                nullable: bool
+                optional: bool
             },
         )*}
         impl ValueMeta {
             pub const fn kind_name(&self) -> &'static str {
                 match self {
-                    $($(#[cfg($cfg)])* Self::$name { .. } => stringify!($name),)*
+                    $($(#[cfg($cfg)])* Self::__ident__($name) { .. } => stringify!($name),)*
                 }
             }
-            pub const fn is_nullable(&self) -> bool {
+            pub const fn is_optional(&self) -> bool {
                 match self {
-                    $($(#[cfg($cfg)])* Self::$name { nullable, .. } => *nullable,)*
+                    $($(#[cfg($cfg)])* Self::__ident__($name) { optional, .. } => *optional,)*
                 }
             }
             pub const fn is_support_subst(&self) -> bool {
-                declare_value_meta!(@subst_match (self) () $( $(#[cfg($cfg)])* $name [ $($($flag)*)? ] )* )
+                declare_value_meta!(@subst_match (self) () $( $(#[cfg($cfg)])* __ident__($name) [ $($($flag)*)? ] )* )
+            }
+        }
+        #[derive(Debug, Clone)]
+        pub enum Value {
+            Null,
+            $(
+                $(#[doc = $doc])*
+                $(#[cfg($cfg)])*
+                __ident__($name)($native),
+            )*
+        }
+        impl Value {
+            pub const fn kind_name(&self) -> &'static str {
+                match self {
+                    Self::Null => "Null",
+                    $($(#[cfg($cfg)])* Self::__ident__($name) { .. } => stringify!($name),)*
+                }
             }
         }
         pub mod build {
             #![allow(unused_imports)]
             use super::*;
+            pub trait Native {
+               type T;
+            }
             $(
                 declare_value_meta!{@doc_selector,
                     concat!("Builder for [`ValueMeta::", stringify!($name), "`]"),
                     $(#[cfg($cfg)])*,
-                pub struct $name {
+                pub struct __ident__($name) {
                     $($($rfield: $rty,)*)?
                     $($($flag: bool,)*)?
                     $($($field: Option<$ty>,)*)?
-                    nullable: bool,
+                    optional: bool,
                 }
             }
             $(#[cfg($cfg)])*
-            impl $name {
+            impl __ident__($name) {
                 pub const fn new($($($rfield : $rty),*)?) -> Self {
                     Self {
                         $($($rfield,)*)?
                         $($($flag: false,)*)?
                         $($($field: None,)*)?
-                        nullable: false
+                        optional: false
                     }
                 }
                 $($(pub const fn $field(mut self, value: $ty) -> Self {
@@ -76,8 +97,8 @@ macro_rules! declare_value_meta {
                     self.$flag = true;
                     self
                 })*)?
-                pub const fn nullable(mut self) -> Self {
-                    self.nullable = true;
+                pub const fn optional(mut self) -> Self {
+                    self.optional = true;
                     self
                 }
                 pub const fn build(self) -> super::ValueMeta {
@@ -85,12 +106,14 @@ macro_rules! declare_value_meta {
                         $($($rfield: self.$rfield,)*)?
                         $($($flag: self.$flag,)*)?
                         $($($field: self.$field,)*)?
-                        nullable: self.nullable,
+                        optional: self.optional,
                     }
                 }
             }
+            $(#[cfg($cfg)])*
+            impl Native for __ident__($name) { type T = $native; }
         )*}
-    };
+    }};
     // Build the `is_support_subst` match by recursing over variants and their
     // flags, emitting a real arm only for variants that carry a `subst` flag.
     (@subst_match ($s:expr) ($($arm:tt)*)) => {
@@ -112,31 +135,34 @@ macro_rules! declare_value_meta {
 
 declare_value_meta!(
     /// Boolean value, `true` or `false`.
-    Bool { },
-   
+    ///
+    /// Flags:
+    /// - `optional`: the value may be [`Value::Null`].
+    Bool { } = bool,
+
     /// String value, UTF-8 text. See [`Value::String`].
     ///
     /// Flags:
     /// - `subst`: the string may contain `${...}` substitutions that are resolved during config read.
-    /// - `nullable`: the value may be [`Value::Null`].
+    /// - `optional`: the value may be [`Value::Null`].
     ///
     /// Limits:
     /// - `regexp`: the string must match this regex.
     /// - `min`: the string must be at least this many characters long.
     /// - `max`: the string must be at most this many characters long.
-    String { flags: { subst }, limits: { regexp: &'static str, min: usize, max: usize } },
-   
+    String { flags: { subst }, limits: { regexp: &'static str, min: usize, max: usize } } = std::string::String,
+
     /// Integer value, 64-bit signed. See [`Value::Int`].
     ///
     /// Flags:
     /// - `subst`: the integer may be specified as a string with `${...}` substitutions that are resolved during config read.
-    /// - `nullable`: the value may be [`Value::Null`].
+    /// - `optional`: the value may be [`Value::Null`].
     ///
     /// Limits:
     /// - `min`: the integer must be at least this value.
     /// - `max`: the integer must be at most this value.
-    Int { flags: { subst }, limits: { min: i64, max: i64 } },
-    
+    Int { flags: { subst }, limits: { min: i64, max: i64 } } = i64,
+
     /// Enumeration value, one of a fixed set of choices. See [`Value::Enum`].
     ///
     /// Required:
@@ -147,41 +173,41 @@ declare_value_meta!(
     ///
     /// Flags:
     /// - `subst`: the enum may be specified as a string with `${...}` substitutions
-    /// - `nullable`: the value may be [`Value::Null`].
-    Enum { required: { one_of: Choices<(u32, &'static str, Option<EditName>)> }, flags: { subst } },
-  
+    /// - `optional`: the value may be [`Value::Null`].
+    Enum { required: { one_of: Choices<(u32, &'static str, Option<EnumVisual>)> }, flags: { subst } } = u32,
+
     /// Duration value, a time interval. See [`Value::Duration`].
     ///
     /// Flags:
     /// - `subst`: the duration may be specified as a string with `${...}` substitutions
-    /// - `nullable`: the value may be [`Value::Null`].
-    /// 
+    /// - `optional`: the value may be [`Value::Null`].
+    ///
     /// Limits:
     /// - `min`: the duration must be at least this value.
     /// - `max`: the duration must be at most this value.
-    Duration { flags: { subst }, limits: { min: std::time::Duration, max: std::time::Duration } },
-   
+    Duration { flags: { subst }, limits: { min: std::time::Duration, max: std::time::Duration } } = std::time::Duration,
+
     /// DICOM Tag value with special formatting. See [`Value::Tag`].
     ///
     /// Flags:
-    /// - `nullable`: the value may be [`Value::Null`].
-    Tag { limits: { one_of: Choices<crate::Tag> } },
-   
+    /// - `optional`: the value may be [`Value::Null`].
+    Tag { limits: { one_of: Choices<crate::Tag> } } = crate::Tag,
+
     /// DICOM VR value with special formatting. See [`Value::Vr`].
     ///
     /// Flags:
-    /// - `nullable`: the value may be [`Value::Null`].
-    Vr { limits: { one_of: Choices<crate::Vr> } },
-   
+    /// - `optional`: the value may be [`Value::Null`].
+    Vr { limits: { one_of: Choices<crate::Vr> } } = crate::Vr,
+
     /// Universally unique identifier (UUID) value with special formatting. See [`Value::Uuid`].
     ///
     /// Flags:
     /// - `non_zero`: the UUID must not be the nil/zero UUID.
     /// - `subst`: the UUID may be specified as a string with `${...}` substitutions
-    /// - `nullable`: the value may be [`Value::Null`].
+    /// - `optional`: the value may be [`Value::Null`].
     #[cfg(feature = "uuid")]
-    Uuid { flags: { non_zero, subst } },
-   
+    Uuid { flags: { non_zero, subst } } = uuid::Uuid,
+
     /// File path or content value. See [`Value::File`].
     ///
     /// Flags:
@@ -193,9 +219,9 @@ declare_value_meta!(
     /// - `should_exist`: the file must exist when the config is loaded.
     /// - `should_not_exist`: the file must not exist when the config is loaded.
     /// - `subst`: the file path may contain `${...}` substitutions that are resolved during config read.
-    /// - `nullable`: the value may be [`Value::Null`].
-    File { flags: { allow_content, allow_dir, allow_file, allow_glob, hot_reload, should_exist, should_not_exist, subst } },
-   
+    /// - `optional`: the value may be [`Value::Null`].
+    File { flags: { allow_content, allow_dir, allow_file, allow_glob, hot_reload, should_exist, should_not_exist, subst } } = crate::config::File,
+
     /// Network address with special formatting. See [`Value::Network`].
     ///
     /// Flags:
@@ -204,8 +230,8 @@ declare_value_meta!(
     /// - `ipv4`: the address may be specified as an IPv4 address.
     /// - `ipv6`: the address may be specified as an IPv6 address.
     /// - `subst`: the address may be specified as a string with `${...}` substitutions
-    /// - `nullable`: the value may be [`Value::Null`].
-    Network { flags: { domain, unix, ipv4, ipv6, subst } },
+    /// - `optional`: the value may be [`Value::Null`].
+    Network { flags: { domain, unix, ipv4, ipv6, subst } } = crate::network::Network,
 
     /// Hostname or IP address with optional port with special formatting. See [`Value::Host`].
     ///
@@ -215,56 +241,56 @@ declare_value_meta!(
     /// - `ipv4`: the host may be specified as an IPv4 address.
     /// - `ipv6`: the host may be specified as an IPv6 address.
     /// - `subst`: the host may be specified as a string with `${...}` substitutions
-    /// - `nullable`: the value may be [`Value::Null`].
-    /// 
+    /// - `optional`: the value may be [`Value::Null`].
+    ///
     /// Limits:
     /// - `default_port`: the default port to use if none is specified in the host string.
-    Host { flags: { domain, unix, ipv4, ipv6, subst }, limits: { default_port: u16 } },
-  
+    Host { flags: { domain, unix, ipv4, ipv6, subst }, limits: { default_port: u16 } } = crate::network::Host,
+
     /// Object value, a nested configuration structure. See [`Value::Object`].
     ///
     /// Required:
     /// - `meta`: the metadata of the nested object.
     ///
     /// Flags:
-    /// - `nullable`: the value may be [`Value::Null`].
-    Object { required: { meta: fn() -> &'static ObjectMeta } },
-   
+    /// - `optional`: the value may be [`Value::Null`].
+    Object { required: { meta: fn() -> &'static ObjectMeta } } = crate::config::Object,
+
     /// Vector value, a list of values of the same type. See [`Value::Vec`].
     ///
     /// Required:
     /// - `meta`: the metadata of the vector element type.
     ///
     /// Flags:
-    /// - `nullable`: the value may be [`Value::Null`].
+    /// - `optional`: the value may be [`Value::Null`].
     ///
     /// Limits:
     /// - `min`: the vector must have at least this many elements.
     /// - `max`: the vector must have at most this many elements.
     /// - `stride`: the vector must have a number of elements that is a multiple of
-    Vec { required: { meta: &'static ValueMeta }, limits: { min: usize, max: usize, stride: usize } },
-   
+    Vec { required: { meta: &'static ValueMeta }, limits: { min: usize, max: usize, stride: usize } } = crate::Vec<crate::config::Value>,
+
     /// Map value, a dictionary of values of the same type. See [`Value::Map`].
     ///
     /// Required:
     /// - `meta`: the metadata of the map value type.
     ///
     /// Flags:
-    /// - `nullable`: the value may be [`Value::Null`].
+    /// - `optional`: the value may be [`Value::Null`].
     ///
     /// Limits:
     /// - `min`: the map must have at least this many entries.
     /// - `max`: the map must have at most this many entries.
-    Map { required: { meta: &'static ValueMeta }, limits: { min: usize, max: usize } },
+    Map { required: { meta: &'static ValueMeta }, limits: { min: usize, max: usize } } = crate::Map<String, crate::config::Value>,
     /// Application-defined value, a type-erased value with a known type identity. See [`Value::Custom`].
     ///
     /// Required:
     /// - `ty`: the type identity of the custom value.
     ///
     /// Flags:
-    /// - `nullable`: the value may be [`Value::Null`].
+    /// - `optional`: the value may be [`Value::Null`].
     #[cfg(feature = "serde")]
-    Custom { required: { ty: &'static dyn crate::config::CustomType} }
+    Custom { required: { ty: &'static dyn crate::config::CustomType} } = crate::Arc<dyn std::any::Any + Send + Sync>
 );
 
 /// A statically- or dynamically-sourced list of choices.
@@ -290,25 +316,47 @@ impl<T: Clone> Choices<T> {
     }
 }
 
-/// Human-facing identity of a key or an enum choice.
-#[derive(Debug, Default, Clone)]
-pub struct EditConcept {
-    /// Slash-separated section path in the configuration UI. Example: "DICOM/Network".
-    pub section: Option<&'static str>,
-    /// Hide this setting in the GUI by default, unless the user enables "Show Advanced Options".
-    pub is_advanced: bool,
-    /// Show the setting as read-only; the GUI must not let the user change it.
-    pub read_only: bool,
-    /// Setting name for display.
-    pub name: EditName,
+pub trait ConfigEnum:
+    Clone + Copy + PartialEq + Eq + std::fmt::Debug + std::fmt::Display + Into<Value> + Send + Sync + 'static
+{
+    const CHOICES: Choices<(u32, &'static str, Option<EnumVisual>)>;
+
+    fn name(&self) -> &'static str;
+    fn from_name(name: &str) -> Option<Self>;
+    fn as_u32(&self) -> u32;
+    fn from_u32(v: u32) -> Option<Self>;
+    fn as_value(&self) -> crate::config::Value {
+        crate::config::Value::Enum(self.as_u32())
+    }
+    fn from_value(v: &crate::config::Value) -> Option<Self> {
+        match v {
+            crate::config::Value::Enum(u) => Self::from_u32(*u),
+            _ => None,
+        }
+    }
 }
 
+/// Human-facing identity of a key or an enum choice.
 #[derive(Debug, Default, Clone)]
-pub struct EditName {
+pub struct KeyVisual {
+    /// Slash-separated section path in the configuration UI. Example: "DICOM/Network".
+    pub section: Option<&'static str>,
     /// Short name. Example: "Listen Address"
     pub display_name: &'static str,
     /// One line brief. Example: "Accepts IPv4/IPv6 address or domain name with optional port"
     pub brief: Option<&'static str>,
+    /// Long multiline help.
+    pub help: Option<&'static str>,
+    /// Hide this setting in the GUI by default, unless the user enables "Show Advanced Options".
+    pub is_advanced: bool,
+    /// Show the setting as read-only; the GUI must not let the user change it.
+    pub read_only: bool,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct EnumVisual {
+    /// Short name. Example: "Lossless Compression Algorithm"
+    pub display_name: &'static str,
     /// Long multiline help.
     pub help: Option<&'static str>,
 }
@@ -317,7 +365,7 @@ pub struct EditName {
 #[derive(Debug)]
 pub struct KeyMeta {
     pub key: Key,
-    pub edit: Option<EditConcept>,
+    pub visual: Option<KeyVisual>,
     /// When `true`, the value is association-matched: it is stored in YAML as a
     /// `when`-filtered list entry and resolved against the active
     /// [`Condition`](super::Condition). When `false`, it is a plain
@@ -429,7 +477,7 @@ impl ObjectMeta {
     #[cfg(debug_assertions)]
     fn fast_acceptance_test(value_meta: &ValueMeta, value: &Value) -> bool {
         match (value_meta, value) {
-            (_, Value::Null) => true, // does not care about "nullable" here, that is checked elsewhere
+            (_, Value::Null) => true, // does not care about "optional" here, that is checked elsewhere
             (ValueMeta::Bool { .. }, Value::Bool(_)) => true,
             (ValueMeta::String { .. }, Value::String(_)) => true,
             (ValueMeta::Int { .. }, Value::Int(_)) => true,
@@ -512,7 +560,12 @@ pub fn collected_global_meta() -> &'static ObjectMeta {
 
 pub struct KeyMetaBuilder {
     key: Key,
-    edit: Option<EditConcept>,
+    section: Option<&'static str>,
+    display_name: Option<&'static str>,
+    brief: Option<&'static str>,
+    help: Option<&'static str>,
+    is_advanced: bool,
+    read_only: bool,
     conditional: bool,
     runtime: bool,
     default: Option<fn() -> Value>,
@@ -522,15 +575,40 @@ impl KeyMetaBuilder {
     pub const fn new(key: Key, value_meta: ValueMeta) -> Self {
         Self {
             key,
-            edit: None,
+            section: None,
+            display_name: None,
+            brief: None,
+            help: None,
+            is_advanced: false,
+            read_only: false,
             conditional: false,
             runtime: false,
             default: None,
             value_meta,
         }
     }
-    pub const fn edit(mut self, edit: EditConcept) -> Self {
-        self.edit = Some(edit);
+    pub const fn section(mut self, section: &'static str) -> Self {
+        self.section = Some(section);
+        self
+    }
+    pub const fn display_name(mut self, display_name: &'static str) -> Self {
+        self.display_name = Some(display_name);
+        self
+    }
+    pub const fn brief(mut self, brief: &'static str) -> Self {
+        self.brief = Some(brief);
+        self
+    }
+    pub const fn help(mut self, help: &'static str) -> Self {
+        self.help = Some(help);
+        self
+    }
+    pub const fn is_advanced(mut self) -> Self {
+        self.is_advanced = true;
+        self
+    }
+    pub const fn read_only(mut self) -> Self {
+        self.read_only = true;
         self
     }
     pub const fn conditional(mut self) -> Self {
@@ -546,9 +624,22 @@ impl KeyMetaBuilder {
         self
     }
     pub const fn build(self) -> KeyMeta {
+        let visual = if let Some(display_name) = self.display_name {
+            Some(KeyVisual {
+                section: self.section,
+                display_name,
+                brief: self.brief,
+                help: self.help,
+                is_advanced: self.is_advanced,
+                read_only: self.read_only,
+            })
+        } else {
+            None
+        };
+
         KeyMeta {
             key: self.key,
-            edit: self.edit,
+            visual,
             conditional: self.conditional,
             runtime: self.runtime,
             default: self.default,
@@ -557,22 +648,14 @@ impl KeyMetaBuilder {
     }
 }
 
-pub struct EditConceptBuilder {
-    section: Option<&'static str>,
-    is_advanced: bool,
-    read_only: bool,
+pub struct EnumVisualBuilder {
     display_name: Option<&'static str>,
-    brief: Option<&'static str>,
     help: Option<&'static str>,
 }
-impl EditConceptBuilder {
+impl EnumVisualBuilder {
     pub const fn new() -> Self {
         Self {
-            section: None,
-            is_advanced: false,
-            read_only: false,
             display_name: None,
-            brief: None,
             help: None,
         }
     }
@@ -580,74 +663,14 @@ impl EditConceptBuilder {
         self.display_name = Some(display_name);
         self
     }
-    pub const fn section(mut self, section: &'static str) -> Self {
-        self.section = Some(section);
-        self
-    }
-    pub const fn advanced(mut self, advanced: bool) -> Self {
-        self.is_advanced = advanced;
-        self
-    }
-    pub const fn read_only(mut self, read_only: bool) -> Self {
-        self.read_only = read_only;
-        self
-    }
-    pub const fn brief(mut self, brief: &'static str) -> Self {
-        self.brief = Some(brief);
-        self
-    }
     pub const fn help(mut self, help: &'static str) -> Self {
         self.help = Some(help);
         self
     }
-    pub const fn build(self) -> Option<EditConcept> {
+    pub const fn build(self) -> Option<EnumVisual> {
         if let Some(display_name) = self.display_name {
-            Some(EditConcept {
-                section: self.section,
-                is_advanced: self.is_advanced,
-                read_only: self.read_only,
-                name: EditName {
-                    display_name,
-                    brief: self.brief,
-                    help: self.help,
-                },
-            })
-        } else {
-            None
-        }
-    }
-}
-
-pub struct EditNameBuilder {
-    display_name: Option<&'static str>,
-    brief: Option<&'static str>,
-    help: Option<&'static str>,
-}
-impl EditNameBuilder {
-    pub const fn new() -> Self {
-        Self {
-            display_name: None,
-            brief: None,
-            help: None,
-        }
-    }
-    pub const fn display_name(mut self, display_name: &'static str) -> Self {
-        self.display_name = Some(display_name);
-        self
-    }
-    pub const fn brief(mut self, brief: &'static str) -> Self {
-        self.brief = Some(brief);
-        self
-    }
-    pub const fn help(mut self, help: &'static str) -> Self {
-        self.help = Some(help);
-        self
-    }
-    pub const fn build(self) -> Option<EditName> {
-        if let Some(display_name) = self.display_name {
-            Some(EditName {
+            Some(EnumVisual {
                 display_name,
-                brief: self.brief,
                 help: self.help,
             })
         } else {
@@ -655,8 +678,6 @@ impl EditNameBuilder {
         }
     }
 }
-
-
 
 #[cfg(test)]
 mod tests {
@@ -797,7 +818,7 @@ mod tests {
                     allow_file,
                     allow_glob,
                     should_exist,
-                    should_not_exist,   
+                    should_not_exist,
                     ..
                 } => {
                     assert!(
@@ -850,8 +871,7 @@ mod tests {
                     ipv4,
                     ipv6,
                     ..
-                } =>
-                {
+                } => {
                     assert!(
                         *domain || *unix || *ipv4 || *ipv6,
                         "Host must have at least one of domain/unix/ipv4/ipv6 in {}",
@@ -860,7 +880,11 @@ mod tests {
                 }
                 ValueMeta::Object { meta, .. } => check_object_meta(meta()),
                 ValueMeta::Vec {
-                    meta, min, max, stride: stripe, ..
+                    meta,
+                    min,
+                    max,
+                    stride: stripe,
+                    ..
                 } => {
                     if let Some(min) = min
                         && let Some(max) = max

@@ -10,6 +10,7 @@
         "astm",
         "chrono",
         "clippy",
+        "dedentation",
         "deidentification",
         "devyatnikov",
         "dicom",

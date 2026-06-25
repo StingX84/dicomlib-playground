@@ -16,7 +16,6 @@ static GLOBAL_CTX: LazyLock<ArcSwap<Context>> = LazyLock::new(|| {
         tag_dict: Some(Arc::new(tag::Dictionary::default())),
         uid_dict: Some(Arc::new(uid::Dictionary::default())),
         config: Some(Arc::new(config::Object::new_empty(
-            config::GLOBAL_LAYER_ID,
             config::meta::collected_global_meta(),
         ))),
         prev: None,
@@ -246,6 +245,19 @@ impl Context {
             }
         }
     }
+
+    fn detect_parent_config_layer_id(&self) -> Option<&config::LayerId> {
+        let mut node = self.prev.as_deref();
+        while let Some(n) = node {
+            if let Some(cfg) = n.config.as_deref()
+                && let Some(layer_id) = cfg.layer_id()
+            {
+                return Some(layer_id);
+            }
+            node = n.prev.as_deref();
+        }
+        Some(&config::GLOBAL_LAYER_ID)
+    }
 }
 
 pub struct ContextConfigIter<'a> {
@@ -260,7 +272,6 @@ impl<'a> Iterator for ContextConfigIter<'a> {
         Option<&'a config::Condition>,
         &'a config::LayerId,
     );
-
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             if let Some(cfg_iter) = &mut self.cfg_iter {
@@ -269,11 +280,11 @@ impl<'a> Iterator for ContextConfigIter<'a> {
                 }
                 self.cfg_iter = None;
             }
-
             let node = self.node?;
             self.node = node.prev.as_deref();
             if let Some(cfg) = node.config.as_deref() {
-                self.cfg_iter = Some(cfg.config_iter());
+                let parent_layer_id = self.node.and_then(|n| n.detect_parent_config_layer_id());
+                self.cfg_iter = Some(cfg.config_iter(parent_layer_id));
             }
         }
     }
@@ -285,10 +296,14 @@ impl ConfigValues for Context {
     where
         Self: 'a;
 
-    fn config_iter(&self) -> Self::Iter<'_> {
+    fn config_iter<'a>(&'a self, parent_layer_id: Option<&'a config::LayerId>) -> Self::Iter<'a>
+    where
+        Self: 'a,
+    {
+        let parent_layer_id = parent_layer_id.or_else(|| self.detect_parent_config_layer_id());
         ContextConfigIter {
             node: Some(self),
-            cfg_iter: self.config.as_deref().map(|cfg| cfg.config_iter()),
+            cfg_iter: self.config.as_deref().map(|cfg| cfg.config_iter(parent_layer_id)),
         }
     }
 
@@ -486,7 +501,7 @@ impl<F: Future> Future for ContextScope<F> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{assert_matches};
+    use std::assert_matches;
     use std::borrow::Cow;
 
     fn make_assoc(id: u64, peer: &'static str, local: &'static str) -> Arc<AssocDescription> {
@@ -583,22 +598,18 @@ mod tests {
     // ── Configuration layering ────────────────────────────────────────────────
 
     use crate::config::{
-        Condition, Object, GLOBAL_LAYER_ID, GlobalConfig, Key, Value, 
-        meta,
+        Condition, GlobalConfig, Key, Object, Value,
         map::{Conditionals, Map},
+        meta,
     };
 
     const KEY: Key = Key::new("test");
     const TEST_KEYS: &[meta::KeyMeta] = &[];
-    
+
     config_object_meta!( fn test_object_meta() = &TEST_KEYS );
 
     fn config_with<const N: usize>(values: [(Key, Conditionals); N]) -> Arc<config::Object> {
-        Arc::new(Object::new(
-            GLOBAL_LAYER_ID,
-            test_object_meta(),
-            Map::from_iter(values),
-        ))
+        Arc::new(Object::new(test_object_meta(), Map::from_iter(values)))
     }
 
     #[test]

@@ -100,22 +100,22 @@ impl GlobalConfig {
 
 #[cfg(test)]
 mod tests {
-    use super::super::{ConfigValues, GLOBAL_LAYER_ID, Key, Map, Value, meta::*};
-    use super::*;
-    use crate::{ensure, config_object_meta};
-    use crate::event::Subscription;
     use super::super::subst::lock_global_for_test;
+    use super::super::{ConfigValues, Key, Map, Value, meta::*};
+    use super::*;
+    use crate::event::Subscription;
+    use crate::{config_object_meta, ensure};
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     static VERSION_KEY: Key = Key::new("version");
-    static VERSION_METAS: &[KeyMeta] =
-        &[KeyMetaBuilder::new(VERSION_KEY, build::Int::new().build()).runtime().build()];
+    static VERSION_METAS: &[KeyMeta] = &[KeyMetaBuilder::new(VERSION_KEY, build::Int::new().build())
+        .runtime()
+        .build()];
 
     config_object_meta!( fn object_meta() = &VERSION_METAS );
 
     fn config_object(version: i64) -> Arc<Object> {
         Arc::new(Object::new(
-            GLOBAL_LAYER_ID.clone(),
             object_meta(),
             Map::from_iter([(VERSION_KEY, Value::Int(version))]),
         ))

@@ -4,8 +4,7 @@
 //! [`Key`](super::Key). Its concrete shape is described and constrained by the
 //! corresponding [`ValueMeta`](super::meta::ValueMeta) in the [`ObjectMeta`](super::meta::ObjectMeta).
 
-use super::{Object};
-use crate::{Arc, Map};
+use super::{Object, meta::ConfigEnum, meta::Value};
 
 /// Compile-time `Duration` of `n` seconds, for use as a `config!` default.
 pub const fn secs(n: u64) -> std::time::Duration {
@@ -27,58 +26,9 @@ pub const fn mins(n: u64) -> std::time::Duration {
 /// Some settings reference an external file either by path (optionally watched
 /// for changes) or by inline content captured at load time.
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
-pub enum ConfiguredFile {
+pub enum File {
     Name { path: String, hot_reload: bool },
     Content(Vec<u8>),
-}
-
-/// A dynamically-typed configuration value.
-#[derive(Debug, Clone)]
-pub enum Value {
-    Null,
-    Bool(bool),
-    String(String),
-    Int(i64),
-    Enum(u32),
-    Duration(std::time::Duration),
-    Tag(crate::tag::Tag),
-    Vr(crate::vr::Vr),
-    #[cfg(feature = "uuid")]
-    Uuid(uuid::Uuid),
-    File(ConfiguredFile),
-    Network(crate::network::Network),
-    Host(crate::network::Host),
-    Object(Object),
-    Vec(Vec<Value>),
-    Map(Map<String, Value>),
-    #[cfg(feature = "serde")]
-    Custom(Arc<dyn std::any::Any + Send + Sync>),
-}
-
-impl Value {
-    /// Returns a short, stable name of the value's variant, used in diagnostics.
-    pub fn kind_name(&self) -> &'static str {
-        match self {
-            Value::Null => "Null",
-            Value::Bool(_) => "Bool",
-            Value::String(_) => "String",
-            Value::Int(_) => "Int",
-            Value::Enum(_) => "Enum",
-            Value::Duration(_) => "Duration",
-            Value::Tag(_) => "Tag",
-            Value::Vr(_) => "Vr",
-            #[cfg(feature = "uuid")]
-            Value::Uuid(_) => "Uuid",
-            Value::File(_) => "File",
-            Value::Network(_) => "Network",
-            Value::Host(_) => "Host",
-            Value::Object(_) => "Object",
-            Value::Vec(_) => "Vec",
-            Value::Map(_) => "Map",
-            #[cfg(feature = "serde")]
-            Value::Custom(_) => "Custom",
-        }
-    }
 }
 
 impl std::fmt::Display for Value {
@@ -94,8 +44,8 @@ impl std::fmt::Display for Value {
             Value::Vr(v) => write!(f, "{}", v),
             #[cfg(feature = "uuid")]
             Value::Uuid(v) => write!(f, "{}", v),
-            Value::File(ConfiguredFile::Name { path, .. }) => write!(f, "{}", path),
-            Value::File(ConfiguredFile::Content { 0: content }) => write!(f, "{} bytes", content.len()),
+            Value::File(File::Name { path, .. }) => write!(f, "{}", path),
+            Value::File(File::Content { 0: content }) => write!(f, "{} bytes", content.len()),
             Value::Network(network) => write!(f, "{}", network.definition),
             Value::Host(host) => write!(f, "{}", host.definition),
             Value::Object(_) => write!(f, "Object"),
@@ -128,7 +78,7 @@ impl PartialEq for Value {
             (Value::Map(a), Value::Map(b)) => a == b,
             #[cfg(feature = "serde")]
             (Value::Custom(_), Value::Custom(_)) => false, // No equality for custom types
-            _ => false,                                      // Different variants are not equal
+            _ => false, // Different variants are not equal
         }
     }
 }
@@ -146,10 +96,8 @@ impl PartialOrd for Value {
             (Value::Vr(a), Value::Vr(b)) => a.partial_cmp(b),
             #[cfg(feature = "uuid")]
             (Value::Uuid(a), Value::Uuid(b)) => a.partial_cmp(b),
-            (Value::File(ConfiguredFile::Content { 0: a }), Value::File(ConfiguredFile::Content { 0: b })) => a.partial_cmp(b),
-            (Value::File(ConfiguredFile::Name { path: a, .. }), Value::File(ConfiguredFile::Name { path: b, .. })) => {
-                a.partial_cmp(b)
-            }
+            (Value::File(File::Content { 0: a }), Value::File(File::Content { 0: b })) => a.partial_cmp(b),
+            (Value::File(File::Name { path: a, .. }), Value::File(File::Name { path: b, .. })) => a.partial_cmp(b),
             (Value::Network(a), Value::Network(b)) => a.partial_cmp(b),
             (Value::Host(a), Value::Host(b)) => a.partial_cmp(b),
             (Value::Object(_), Value::Object(_)) => None, // No natural ordering for objects
@@ -209,6 +157,21 @@ impl ValueRef for i64 {
     type Ref<'a> = i64;
     fn project(v: &Value) -> Option<i64> {
         if let Value::Int(n) = v { Some(*n) } else { None }
+    }
+}
+
+// ── Value::Enum ──────────────────────────────────────────
+
+impl<T: ConfigEnum> From<&T> for Value {
+    fn from(value: &T) -> Self {
+        Value::Enum(value.as_u32())
+    }
+}
+
+impl<T: ConfigEnum> ValueRef for T {
+    type Ref<'a> = T;
+    fn project(v: &Value) -> Option<T> {
+        T::from_value(v)
     }
 }
 
@@ -369,10 +332,59 @@ impl<X: 'static> ValueRef for Vec<X> {
     }
 }
 
-#[cfg(all(test, feature = "uuid"))]
+#[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::{ConfigValues, Key, Map, meta};
+    use crate::{config_object_meta, declare_config_enums};
 
+    declare_config_enums!(
+        pub enum TestEnum {
+            A,
+            B,
+            C,
+        }
+    );
+
+    static ENUM_KEY: Key = Key::new("my_enum");
+    static OBJECT_META: &[meta::KeyMeta] =
+        &[
+            meta::KeyMetaBuilder::new(ENUM_KEY, meta::build::Enum::new(TestEnum::CHOICES).build())
+                .runtime()
+                .build(),
+        ];
+
+    config_object_meta!( fn object_meta() = &OBJECT_META );
+
+    #[test]
+    fn can_set_and_get_enums() {
+        let values = Map::from_iter([(ENUM_KEY, TestEnum::C.as_value())]);
+        let mut object = Object::new(object_meta(), values);
+        let value = object
+            .config_get_as::<TestEnum>(&ENUM_KEY, None)
+            .expect("should get enum value");
+        assert!(value == TestEnum::C);
+
+        object.values_mut().add(ENUM_KEY, TestEnum::B.as_value(), None);
+        let value = object
+            .config_get_as::<TestEnum>(&ENUM_KEY, None)
+            .expect("should get enum value");
+        assert!(value == TestEnum::B);
+
+        object.values_mut().add(ENUM_KEY, 666.into(), None);
+        assert!(
+            object.config_get_as::<TestEnum>(&ENUM_KEY, None).is_none(),
+            "should not get enum value for invalid int"
+        );
+
+        object.values_mut().add(ENUM_KEY, Value::Null, None);
+        assert!(
+            object.config_get_as::<TestEnum>(&ENUM_KEY, None).is_none(),
+            "should not get enum value for null"
+        );
+    }
+
+    #[cfg(all(test, feature = "uuid"))]
     #[test]
     fn uuid_values_compare_by_inner_value() {
         let a = uuid::Uuid::from_u128(1);

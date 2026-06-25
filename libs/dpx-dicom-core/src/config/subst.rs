@@ -36,8 +36,7 @@ impl AppDir {
     }
 }
 
-static GLOBAL: LazyLock<ArcSwap<SubstVars>> =
-    LazyLock::new(|| ArcSwap::from_pointee(SubstVars::builder().build()));
+static GLOBAL: LazyLock<ArcSwap<SubstVars>> = LazyLock::new(|| ArcSwap::from_pointee(SubstVars::builder().build()));
 
 /// An immutable set of substitution variables and application directories.
 #[derive(Debug, Clone, Default)]
@@ -162,8 +161,7 @@ impl Builder {
         K: Into<String>,
         V: Into<String>,
     {
-        self.vars
-            .extend(pairs.into_iter().map(|(k, v)| (k.into(), v.into())));
+        self.vars.extend(pairs.into_iter().map(|(k, v)| (k.into(), v.into())));
         self
     }
 
@@ -171,12 +169,10 @@ impl Builder {
     /// substitution variable (e.g. `$CONF_DIR`).
     ///
     /// Non-UTF-8 path components are replaced lossily, since substitution targets
-    /// text. 
+    /// text.
     pub fn dir(mut self, dir: AppDir, path: impl AsRef<Path>) -> Self {
-        self.vars.insert(
-            dir.var_name().to_owned(),
-            path.as_ref().to_string_lossy().into_owned(),
-        );
+        self.vars
+            .insert(dir.var_name().to_owned(), path.as_ref().to_string_lossy().into_owned());
         self
     }
 

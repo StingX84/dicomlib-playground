@@ -35,9 +35,9 @@
 //! ```
 
 use super::map::{Condition, Map};
-use super::meta::{KeyMeta, ValueMeta, ObjectMeta};
-use super::value::ConfiguredFile;
-use super::{Object, LayerId, OBJECT_LAYER_ID, SubstVars, Value};
+use super::meta::{KeyMeta, ObjectMeta, ValueMeta};
+use super::value::File;
+use super::{LayerId, Object, SubstVars, Value};
 use crate::IntoDicomErr;
 use crate::network::{HostDefinition, Network, NetworkDefinition};
 use crate::{HashMap, dicom_err, ensure, error::Result};
@@ -113,7 +113,7 @@ impl YamlLoader {
         // error, a missing key has no source position, so this carries no
         // `line:column`.
         check_required(self.registry, &values).map_err(|m| dicom_err!(Configuration, "{m}"))?;
-        Ok(Object::new(CONFIG_LAYER_ID, self.registry, values))
+        Ok(Object::new(self.registry, values))
     }
 }
 
@@ -192,7 +192,11 @@ fn branch_descend<'a, 'n>(
 fn insert_leaf<'a>(root: &mut IndexNode<'a>, segments: &[&str], km: &'a KeyMeta) -> Result<()> {
     let (last, parents) = segments.split_last().expect("non-empty path");
     let map = branch_descend(root, parents)?;
-    ensure!(!map.contains_key(*last), Configuration, "duplicate configuration path {last:?}");
+    ensure!(
+        !map.contains_key(*last),
+        Configuration,
+        "duplicate configuration path {last:?}"
+    );
     map.insert((*last).to_string(), IndexNode::Leaf(km));
     Ok(())
 }
@@ -218,7 +222,11 @@ fn insert_conditional<'a>(root: &mut IndexNode<'a>, segments: &[&str], km: &'a K
         .or_insert_with(|| IndexNode::CondList(HashMap::new()));
     match entry {
         IndexNode::CondList(keys) => {
-            ensure!(!keys.contains_key(*key_seg), Configuration, "duplicate conditional key {key_seg:?}");
+            ensure!(
+                !keys.contains_key(*key_seg),
+                Configuration,
+                "duplicate conditional key {key_seg:?}"
+            );
             keys.insert((*key_seg).to_string(), km);
             Ok(())
         }
@@ -558,7 +566,7 @@ impl<'de, 'a> Visitor<'de> for MetaVisitor<'a> {
     }
 
     fn visit_unit<E: de::Error>(self) -> std::result::Result<Value, E> {
-        if self.meta.is_nullable() {
+        if self.meta.is_optional() {
             Ok(Value::Null)
         } else {
             Err(de::Error::custom("value must not be null"))
@@ -586,6 +594,17 @@ impl<'de, 'a> Visitor<'de> for MetaVisitor<'a> {
             ValueMeta::Map { meta, .. } => visit_value_map(meta, map),
             ValueMeta::File { .. } => visit_file_map(map),
             _ => Err(self.mismatch("an object")),
+        }
+    }
+
+    fn visit_bytes<E: de::Error>(self, v: &[u8]) -> std::prelude::v1::Result<Self::Value, E> {
+        self.visit_byte_buf(v.to_vec())
+    }
+
+    fn visit_byte_buf<E: de::Error>(self, v: Vec<u8>) -> std::prelude::v1::Result<Self::Value, E> {
+        match self.meta {
+            ValueMeta::File { allow_content, .. } if *allow_content => Ok(Value::File(File::Content(v))),
+            _ => Err(self.mismatch("a byte array")),
         }
     }
 }
@@ -642,10 +661,19 @@ fn scalar_str(meta: &ValueMeta, v: &str) -> std::result::Result<Value, ScalarErr
             .parse()
             .map(Value::Uuid)
             .map_err(|e| ScalarErr::Custom(format!("invalid UUID {v:?}: {e}"))),
-        ValueMeta::File { .. } => Ok(Value::File(ConfiguredFile::Name {
+        ValueMeta::File {
+            allow_dir,
+            allow_file,
+            allow_glob,
+            hot_reload,
+            ..
+        } if *allow_dir || *allow_file || *allow_glob => Ok(Value::File(File::Name {
             path: v.to_string(),
-            hot_reload: false,
+            hot_reload: *hot_reload,
         })),
+        ValueMeta::File { allow_content, .. } if *allow_content => {
+            Ok(Value::File(File::Content(v.as_bytes().to_vec())))
+        }
         ValueMeta::Network { .. } => v
             .parse::<NetworkDefinition>()
             .and_then(|d| d.resolve_sync())
@@ -671,26 +699,30 @@ fn scalar_str(meta: &ValueMeta, v: &str) -> std::result::Result<Value, ScalarErr
 }
 
 /// Builds a nested [`Value::Object`] from a YAML map routed by `items`.
-fn visit_object<'de, A: MapAccess<'de>>(items: &'static ObjectMeta, mut map: A) -> std::result::Result<Value, A::Error> {
+fn visit_object<'de, A: MapAccess<'de>>(
+    items: &'static ObjectMeta,
+    mut map: A,
+) -> std::result::Result<Value, A::Error> {
     let mut nested = Map::new();
     while let Some(key) = map.next_key::<String>()? {
-        let km = items.key_meta_str(&key)
+        let km = items
+            .key_meta_str(&key)
             .ok_or_else(|| de::Error::custom(format!("unknown field {key:?}")))?;
         let value = map.next_value_seed(ValueSeed::new(&km.value_meta))?;
         validate_leaf(km, &value).map_err(de::Error::custom)?;
         nested.add(km.key, value, None);
     }
     check_required(items, &nested).map_err(de::Error::custom)?;
-    Ok(Value::Object(Object::new(OBJECT_LAYER_ID, items, nested)))
+    Ok(Value::Object(Object::new(items, nested)))
 }
 
 /// Enforces presence of required keys once an object has been fully read.
 ///
-/// A key is *required* when it is non-nullable and has no usable default (its
+/// A key is *required* when it is non-optional and has no usable default (its
 /// default resolves to [`Value::Null`]): such a key must appear in the object,
 /// since nothing else can supply a value. A key with a real default may be
 /// omitted — it resolves through [`ObjectMeta::default_of`] at read time —
-/// and an explicit `null` for a non-nullable key is rejected earlier, when the
+/// and an explicit `null` for a non-optional key is rejected earlier, when the
 /// value itself is read.
 ///
 /// Runtime keys are never read from a file, and conditional keys are
@@ -701,7 +733,7 @@ fn check_required(items: &'static ObjectMeta, present: &Map) -> std::result::Res
         if km.runtime || km.conditional || present.0.contains_key(&km.key) {
             continue;
         }
-        if !km.value_meta.is_nullable() && matches!(items.default_of(&km.key), None | Some(Value::Null)) {
+        if !km.value_meta.is_optional() && matches!(items.default_of(&km.key), None | Some(Value::Null)) {
             return Err(format!("missing required key {:?}", km.key.0));
         }
     }
@@ -732,11 +764,11 @@ fn visit_file_map<'de, A: MapAccess<'de>>(mut map: A) -> std::result::Result<Val
         }
     }
     match (path, content) {
-        (Some(p), None) => Ok(Value::File(ConfiguredFile::Name {
+        (Some(p), None) => Ok(Value::File(File::Name {
             path: p,
             hot_reload: reload,
         })),
-        (None, Some(c)) => Ok(Value::File(ConfiguredFile::Content(c.into_bytes()))),
+        (None, Some(c)) => Ok(Value::File(File::Content(c.into_bytes()))),
         (Some(_), Some(_)) => Err(de::Error::custom("file has both a path and inline content")),
         (None, None) => Err(de::Error::custom("file has neither a path nor content")),
     }
@@ -749,39 +781,37 @@ fn visit_file_map<'de, A: MapAccess<'de>>(mut map: A) -> std::result::Result<Val
 
 #[cfg(test)]
 mod tests {
-    use crate::{Arc, config_object_meta};
     use super::*;
-    use crate::config::meta::{EditName, Choices, KeyMetaBuilder, build};
+    use crate::config::meta::{Choices, EnumVisual, KeyMetaBuilder, build};
     use crate::config::{ConfigValues, Key};
     use crate::network::AssocDescription;
+    use crate::{Arc, config_object_meta};
 
     static STRING_ITEM: ValueMeta = build::String::new().build();
 
     static LISTEN_ITEMS: [KeyMeta; 2] = [
         KeyMetaBuilder::new(Key::new("addr"), build::String::new().build()).build(),
-        KeyMetaBuilder::new(Key::new("port"), build::Int::new().min(0).max(65535).nullable().build()).build(),
+        KeyMetaBuilder::new(Key::new("port"), build::Int::new().min(0).max(65535).optional().build()).build(),
     ];
 
-    config_object_meta!{ fn listen_meta() = &LISTEN_ITEMS }
+    config_object_meta! { fn listen_meta() = &LISTEN_ITEMS }
 
     static LISTEN_OBJ: ValueMeta = build::Object::new(listen_meta).build();
 
-    static ENC_CHOICES: [(u32, &str, Option<EditName>); 2] = [
+    static ENC_CHOICES: [(u32, &str, Option<EnumVisual>); 2] = [
         (
             0,
             "deny",
-            Some(EditName {
+            Some(EnumVisual {
                 display_name: "Deny",
-                brief: None,
                 help: None,
             }),
         ),
         (
             1,
             "fix",
-            Some(EditName {
+            Some(EnumVisual {
                 display_name: "Fix",
-                brief: None,
                 help: None,
             }),
         ),
@@ -795,8 +825,12 @@ mod tests {
     const K_DELIM: Key = Key::new("delimiters");
 
     static METAS: [KeyMeta; 6] = [
-        KeyMetaBuilder::new(K_ARTIM, build::Duration::new().build()).conditional().build(),
-        KeyMetaBuilder::new(K_MAX, build::Int::new().min(0).build()).conditional().build(),
+        KeyMetaBuilder::new(K_ARTIM, build::Duration::new().build())
+            .conditional()
+            .build(),
+        KeyMetaBuilder::new(K_MAX, build::Int::new().min(0).build())
+            .conditional()
+            .build(),
         KeyMetaBuilder::new(K_LOCAL_AET, build::Vec::new(&STRING_ITEM).build())
             .default(|| Value::Vec(Vec::new()))
             .build(),
@@ -810,7 +844,7 @@ mod tests {
             .default(|| Value::Map(Default::default()))
             .build(),
     ];
-    config_object_meta!{ fn meta() = &METAS }
+    config_object_meta! { fn meta() = &METAS }
 
     fn loader() -> YamlLoader {
         YamlLoader::new(meta())
@@ -847,7 +881,7 @@ dicom:
             other => panic!("local_aet: {other:?}"),
         }
 
-        // Vec of objects with a nullable field omitted in the 2nd element.
+        // Vec of objects with a optional field omitted in the 2nd element.
         match cfg.config_get(&K_LISTEN, None) {
             Some(Value::Vec(v)) => assert_eq!(v.len(), 2),
             other => panic!("listen: {other:?}"),
@@ -905,20 +939,18 @@ dicom:
         assert!(msg.contains("bogus"), "missing key: {msg}");
     }
 
-    // A `listen` element requires `addr` (non-nullable, no default); `port` is
-    // nullable, so it may be omitted.
+    // A `listen` element requires `addr` (non-optional, no default); `port` is
+    // optional, so it may be omitted.
     #[test]
     fn object_missing_required_key_is_rejected() {
-        let err = loader()
-            .load_str("dicom:\n  listen:\n    - port: 104\n")
-            .unwrap_err();
+        let err = loader().load_str("dicom:\n  listen:\n    - port: 104\n").unwrap_err();
         let msg = format!("{err}");
         assert!(msg.contains("missing required key"), "unexpected: {msg}");
         assert!(msg.contains("addr"), "unexpected: {msg}");
     }
 
     #[test]
-    fn object_with_required_key_and_omitted_nullable_loads() {
+    fn object_with_required_key_and_omitted_optional_loads() {
         let cfg = loader()
             .load_str("dicom:\n  listen:\n    - addr: localhost\n")
             .expect("load");
@@ -932,8 +964,7 @@ dicom:
     // every file is rejected at finalize.
     #[test]
     fn root_missing_required_key_is_rejected() {
-        static REQUIRED: [KeyMeta; 1] =
-            [KeyMetaBuilder::new(Key::new("name"), build::String::new().build()).build()];
+        static REQUIRED: [KeyMeta; 1] = [KeyMetaBuilder::new(Key::new("name"), build::String::new().build()).build()];
         config_object_meta! { fn required_meta() = &REQUIRED }
 
         let err = YamlLoader::new(required_meta()).load_str("{}\n").unwrap_err();
@@ -957,7 +988,7 @@ dicom:
         assert!(format!("{err}").contains("bogus"));
     }
 
-    // A `null` element is accepted only when the item meta is itself nullable —
+    // A `null` element is accepted only when the item meta is itself optional —
     // the loader now derives nullability from the item `ValueMeta`, not a flag
     // hard-coded to `false`.
     #[test]
@@ -976,7 +1007,7 @@ dicom:
 
         SubstVars::install(Arc::new(SubstVars::builder().var("WHO", "world").build()));
 
-        config_object_meta!{ fn subst_meta() = &SUBST_METAS }
+        config_object_meta! { fn subst_meta() = &SUBST_METAS }
 
         let cfg = YamlLoader::new(subst_meta())
             .load_str("greeting: hi $WHO\nnames: $WHO\n")
@@ -987,7 +1018,7 @@ dicom:
             other => panic!("names: {other:?}"),
         }
 
-        config_object_meta!{ fn plain_meta() = &PLAIN_METAS }
+        config_object_meta! { fn plain_meta() = &PLAIN_METAS }
 
         let cfg = YamlLoader::new(plain_meta())
             .load_str("greeting: hi $WHO\n")
@@ -1001,12 +1032,26 @@ dicom:
         static NET_HOST: [KeyMeta; 2] = [
             KeyMetaBuilder::new(
                 Key::new("bind"),
-                build::Network::new().domain().unix().ipv4().ipv6().subst().nullable().build(),
+                build::Network::new()
+                    .domain()
+                    .unix()
+                    .ipv4()
+                    .ipv6()
+                    .subst()
+                    .optional()
+                    .build(),
             )
             .build(),
             KeyMetaBuilder::new(
                 Key::new("peer"),
-                build::Host::new().domain().unix().ipv4().ipv6().default_port(104).nullable().build(),
+                build::Host::new()
+                    .domain()
+                    .unix()
+                    .ipv4()
+                    .ipv6()
+                    .default_port(104)
+                    .optional()
+                    .build(),
             )
             .build(),
         ];
@@ -1043,7 +1088,7 @@ dicom:
 
     #[test]
     fn vec_item_nullability_comes_from_item_meta() {
-        static NULLABLE_STR_ITEM: ValueMeta = build::String::new().nullable().build();
+        static NULLABLE_STR_ITEM: ValueMeta = build::String::new().optional().build();
         static NULL_LIST: [KeyMeta; 1] =
             [KeyMetaBuilder::new(Key::new("names"), build::Vec::new(&NULLABLE_STR_ITEM).build()).build()];
 
@@ -1059,7 +1104,7 @@ dicom:
             other => panic!("names: {other:?}"),
         }
 
-        // A non-nullable item rejects `null`.
+        // A non-optional item rejects `null`.
         static PLAIN_LIST: [KeyMeta; 1] =
             [KeyMetaBuilder::new(Key::new("names"), build::Vec::new(&STRING_ITEM).build()).build()];
         config_object_meta!( fn plain_list_meta() = &PLAIN_LIST );
@@ -1081,13 +1126,17 @@ dicom:
                 "port"
             }
             fn decode(&self, node: &serde_json::Value) -> crate::error::Result<Arc<dyn Any + Send + Sync>> {
-                let n = node.as_i64().ok_or_else(|| dicom_err!(InvalidData, "port expects an integer"))?;
+                let n = node
+                    .as_i64()
+                    .ok_or_else(|| dicom_err!(InvalidData, "port expects an integer"))?;
                 Ok(Arc::new(Port(
                     u16::try_from(n).map_err(|_| dicom_err!(InvalidData, "port out of range"))?,
                 )))
             }
             fn encode(&self, value: &dyn Any) -> crate::error::Result<serde_json::Value> {
-                let p = value.downcast_ref::<Port>().ok_or_else(|| dicom_err!(Internal, "wrong type"))?;
+                let p = value
+                    .downcast_ref::<Port>()
+                    .ok_or_else(|| dicom_err!(Internal, "wrong type"))?;
                 Ok(serde_json::Value::from(p.0))
             }
         }
@@ -1146,12 +1195,18 @@ custom: 104
         assert!(matches!(cfg.config_get(&Key::new("tag"), None), Some(Value::Tag(_))));
         assert!(matches!(cfg.config_get(&Key::new("vr"), None), Some(Value::Vr(_))));
         assert!(matches!(cfg.config_get(&Key::new("file"), None), Some(Value::File(_))));
-        assert!(matches!(cfg.config_get(&Key::new("net"), None), Some(Value::Network(_))));
+        assert!(matches!(
+            cfg.config_get(&Key::new("net"), None),
+            Some(Value::Network(_))
+        ));
         assert!(matches!(cfg.config_get(&Key::new("host"), None), Some(Value::Host(_))));
         assert!(matches!(cfg.config_get(&Key::new("obj"), None), Some(Value::Object(_))));
         assert!(matches!(cfg.config_get(&Key::new("vec"), None), Some(Value::Vec(v)) if v.len() == 2));
         assert!(matches!(cfg.config_get(&Key::new("map"), None), Some(Value::Map(m)) if m.len() == 1));
-        assert!(matches!(cfg.config_get(&Key::new("custom"), None), Some(Value::Custom(_))));
+        assert!(matches!(
+            cfg.config_get(&Key::new("custom"), None),
+            Some(Value::Custom(_))
+        ));
     }
 
     // A `serde`-deriving type, adapted via `Serde<T>`, loads from YAML and is
@@ -1170,7 +1225,8 @@ custom: 104
         static ENDPOINT: crate::config::Serde<Endpoint> = crate::config::Serde::new("endpoint");
 
         static EP_ITEM: ValueMeta = build::Custom::new(&ENDPOINT).build();
-        static INNER: &[KeyMeta] = &[KeyMetaBuilder::new(Key::new("ep"), build::Custom::new(&ENDPOINT).build()).build()];
+        static INNER: &[KeyMeta] =
+            &[KeyMetaBuilder::new(Key::new("ep"), build::Custom::new(&ENDPOINT).build()).build()];
         config_object_meta! { fn inner_meta() = INNER }
 
         static ROOT: &[KeyMeta] = &[
@@ -1215,7 +1271,10 @@ map:
         // Root.
         assert_eq!(
             endpoint(cfg.config_get(&Key::new("ep"), None).expect("root ep")),
-            &Endpoint { host: "root".into(), port: 104 }
+            &Endpoint {
+                host: "root".into(),
+                port: 104
+            }
         );
 
         // Nested object.
@@ -1225,7 +1284,10 @@ map:
         };
         assert_eq!(
             endpoint(obj.config_get(&Key::new("ep"), None).expect("nested ep")),
-            &Endpoint { host: "nested".into(), port: 1 }
+            &Endpoint {
+                host: "nested".into(),
+                port: 1
+            }
         );
 
         // Array.
@@ -1234,15 +1296,33 @@ map:
             other => panic!("expected Value::Vec, got {other:?}"),
         };
         assert_eq!(arr.len(), 2);
-        assert_eq!(endpoint(&arr[0]), &Endpoint { host: "a".into(), port: 11 });
-        assert_eq!(endpoint(&arr[1]), &Endpoint { host: "b".into(), port: 22 });
+        assert_eq!(
+            endpoint(&arr[0]),
+            &Endpoint {
+                host: "a".into(),
+                port: 11
+            }
+        );
+        assert_eq!(
+            endpoint(&arr[1]),
+            &Endpoint {
+                host: "b".into(),
+                port: 22
+            }
+        );
 
         // Map.
         let map = match cfg.config_get(&Key::new("map"), None).expect("map") {
             Value::Map(m) => m,
             other => panic!("expected Value::Map, got {other:?}"),
         };
-        assert_eq!(endpoint(map.get("k1").expect("map k1")), &Endpoint { host: "m".into(), port: 33 });
+        assert_eq!(
+            endpoint(map.get("k1").expect("map k1")),
+            &Endpoint {
+                host: "m".into(),
+                port: 33
+            }
+        );
     }
 
     // A `serde` decode failure (here: a required field missing) is surfaced as a
@@ -1261,9 +1341,7 @@ map:
         static ROOT: &[KeyMeta] = &[KeyMetaBuilder::new(Key::new("ep"), build::Custom::new(&ENDPOINT).build()).build()];
         config_object_meta! { fn root_meta() = ROOT }
 
-        let err = YamlLoader::new(root_meta())
-            .load_str("ep:\n  port: 104\n")
-            .unwrap_err();
+        let err = YamlLoader::new(root_meta()).load_str("ep:\n  port: 104\n").unwrap_err();
         assert!(format!("{err}").contains("host"), "unexpected error: {err}");
     }
 
