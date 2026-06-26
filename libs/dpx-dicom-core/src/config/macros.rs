@@ -227,9 +227,9 @@ macro_rules! declare_config_objects {
             #[allow(unused_imports)]
             use super::*;
             // const typed_key = $crate::config::typed::TypedKey;
-            $crate::declare_config_objects!{ @declare_keys @p[] $($tree)* }
+            $crate::declare_config_objects!{ @declare_keys @m[] @p[] $($tree)* }
             // const KEY_META: &[$crate::config::meta::KeyMeta] = &[];
-            $crate::declare_config_objects!{ @key_meta_list @acc[] @p[] @a[] $($tree)* }
+            $crate::declare_config_objects!{ @key_meta_list @acc[] @m[] @p[] @a[] $($tree)* }
 
             ::place_macro::place! {
                 static OBJECT_META: ::std::sync::OnceLock<$crate::config::meta::ObjectMeta> = ::std::sync::OnceLock::new();
@@ -243,21 +243,26 @@ macro_rules! declare_config_objects {
     )* };
 
     // ---- write recursively: const key = MetaKey; ------
-    (@declare_keys @p[$($parent_names:ident)*]
+    (@declare_keys @m[$($group_cfg_attr:ident)*] @p[$($parent_names:ident)*]
         $(#[doc = $doc_name:literal]
             $(#[doc = $doc_brief:literal]
                 $(#[doc = $doc_help_first:literal] $(#[doc = $doc_help_rest:literal])*)?)?
         )?
         $(#[section = $doc_section:literal])?
-        $(#[config($($config_attr:ident),* $(,)?)])?
+        $(#[config($($key_cfg_attr:ident),* $(,)?)])?
         $(#[cfg($inner:meta)])*
         $name:ident: $meta_type:ident $([$($construct:tt)*])? $(($($attr:ident $(= $value:expr)?),* $(,)?))? $(= $default:expr)?
         $(, $($rest:tt)*)?
     ) => {
         ::place_macro::place! {
-            #[doc =
-                $crate::declare_config_objects!(@key_doc_string [__str__("**Id**: `" $($parent_names ".")* $name "`")] [$($doc_section)?] [$($doc_name)?] [$($($doc_brief)?)?] [$($($(__str__($doc_help_first $( "\n" $doc_help_rest )*))?)?)?])
-            ]
+            #[doc = $crate::declare_config_objects!(@key_doc_string 
+                [__str__("**Id**: `" $($parent_names ".")* $name "`")]
+                [$($doc_section)?]
+                [$($doc_name)?]
+                [$($($doc_brief)?)?]
+                [$($($(__str__($doc_help_first $( "\n" $doc_help_rest )*))?)?)?]
+                [$($($key_cfg_attr)*)? $($group_cfg_attr)*]
+            )]
             $(#[cfg($inner)])*
             #[allow(non_upper_case_globals)]
             pub const $name: $crate::config::typed::TypedKey<
@@ -265,32 +270,44 @@ macro_rules! declare_config_objects {
                     $crate::declare_config_objects!(@optional_selector $($($attr $(= $value)?),*)?)
                 > = $crate::config::typed::TypedKey::new(__str__($($parent_names ".")* $name));
         }
-        $crate::declare_config_objects!{@declare_keys @p[$($parent_names)*] $($($rest)*)?}
+        $crate::declare_config_objects!{@declare_keys @m[$($group_cfg_attr)*] @p[$($parent_names)*] $($($rest)*)?}
     };
-    (@declare_keys @p[$($parent_names:ident)*] $(#[cfg($inner:meta)])* $name:ident { $($ns_content:tt)* } $(, $($rest:tt)*)?) => {
+    (@declare_keys @m[$($group_cfg_attr:ident)*] @p[$($parent_names:ident)*] 
+        $(#[config($($this_group_config:ident),* $(,)?)])?
+        $(#[cfg($inner:meta)])*
+        $name:ident { 
+            $($ns_content:tt)*
+        } 
+        $(, $($rest:tt)*)?
+    ) => {
         $(#[cfg($inner)])*
         pub mod $name {
             #[allow(unused_imports)]
             use super::*;
-            $crate::declare_config_objects!{@declare_keys @p[$($parent_names)* $name] $($ns_content)*}
+            $crate::declare_config_objects!{@declare_keys @m[$($($this_group_config)*)?] @p[$($parent_names)* $name] $($ns_content)*}
         }
-        $crate::declare_config_objects!{@declare_keys @p[$($parent_names)*] $($($rest)*)?}
+        $crate::declare_config_objects!{@declare_keys @m[$($group_cfg_attr)*] @p[$($parent_names)*] $($($rest)*)?}
     };
 
-    (@declare_keys @p[$($parent_names:ident)*] $(,)?) => {};
+    (@declare_keys @m[$($group_cfg_attr:ident)*] @p[$($parent_names:ident)*] $(,)?) => {};
 
     // ---- Writes doc string if "Name" is not empty
-    (@key_doc_string [$fl:literal] [$($doc_section:literal)?] [$doc_name:literal] [$($doc_brief:literal)?] [$($doc_help:literal)?] ) => {
+    (@key_doc_string [$fl:literal] [$($doc_section:literal)?] [$doc_name:literal] [$($doc_brief:literal)?] [$($doc_help:literal)?] [$($config_attr:ident)*] ) => {
         ::place_macro::place! {__str__(
             $fl
             $("<br>**Section:** " $doc_section)?
             "<br>**Name:** `" $doc_name "`"
             $("<br>**Brief:**" $doc_brief )?
             $("<br>**Help:**" $doc_help )?
+            "<br>**Config:** " $($config_attr " ")*
         )}
     };
-    (@key_doc_string [$fl:literal] [$($doc_section:literal)?] [] [$($doc_brief:literal)?] [$($doc_help:literal)?] ) => {
-        concat!($fl, "<br>**Name:** &lt;no edit support&gt;")
+    (@key_doc_string [$fl:literal] [$($doc_section:literal)?] [] [$($doc_brief:literal)?] [$($doc_help:literal)?] [$($config_attr:ident)*] ) => {
+        ::place_macro::place! {__str__(
+            $fl
+            "<br>**Name:** &lt;no edit support&gt;"
+            "<br>**Config:** " $($config_attr " ")*
+        )}
     };
 
     // ---- Template arg `Req` or `Opt` selector based on "optional" flag ------
@@ -341,61 +358,94 @@ macro_rules! declare_config_objects {
 
     // ---- builds a constant "const KEY_META = [KeyMeta]" with a flat list of all keys ------
     // No more tokens to parse. Return the accumulated flat list.
-    ( @key_meta_list @acc[ $($acc:tt)* ] @p[$($_dummy1:tt)*] @a[$($_dummy2:tt)*] $(,)? ) => {
+    ( @key_meta_list @acc[ $($acc:tt)* ] @m[$($_dummy1:tt)*] @p[$($_dummy2:tt)*] @a[$($_dummy3:tt)*] $(,)? ) => {
         // Output the flat tokens inside your desired final expression wrapper
         pub const KEY_META: &[$crate::config::meta::KeyMeta] = &[$($acc)*];
     };
 
+    // Restore previous state after subgroup leave
+    ( @key_meta_list @acc[ $($acc:tt)* ] @m[$($group_cfg_attr:ident)*] @p[$($parents:ident)*] @a[$(#[cfg($section:meta)])*]
+        $(,)? @restore{ [$($prev_cfg_attr:ident)*] [$($prev_parent:ident)*] [$(#[cfg($prev_section:meta)])*] }
+        $(, $($tail:tt)*)?
+    ) => {
+        $crate::declare_config_objects! { @key_meta_list @acc[ $($acc)* ]
+            @m[$($prev_cfg_attr)*] @p[$($prev_parent)*] @a[$(#[cfg($prev_section)])*]
+            $($($tail)*)? }
+    };
+
     // Recursive step: Sub-tree match. Found a nested bracket group `group {...}`.
     // It pops the group, flattens it first, and pushes remaining tokens to the tail.
-    ( @key_meta_list @acc[ $($acc:tt)* ] @p[ $($parents:ident)* ] @a[$(#[cfg($section:meta)])*] $(#[cfg($inner:meta)])* $name:ident { $($sub_tree:tt)* } $(, $($tail:tt)*)? ) => {
-        $crate::declare_config_objects! { @key_meta_list @acc[ $($acc)* ] @p[ $($parents)* $name ] @a[$(#[cfg($section)])* $(#[cfg($inner)])*] $($sub_tree)* $(, $($tail)*)? }
+    ( @key_meta_list @acc[ $($acc:tt)* ] @m[$($group_cfg_attr:ident)*] @p[$($parents:ident)*] @a[$(#[cfg($section:meta)])*] 
+        $(#[config($($this_group_cfg_attr:ident),* $(,)?)])?
+        $(#[cfg($inner:meta)])*
+        $name:ident { 
+            $($sub_tree:tt)*
+        }
+        $(, $($tail:tt)*)? 
+    ) => {
+        $crate::declare_config_objects! { @key_meta_list @acc[ $($acc)* ] 
+            @m[$($($this_group_cfg_attr)*)?] @p[$($parents)* $name] @a[$(#[cfg($section)])* $(#[cfg($inner)])*] 
+            $($sub_tree)*
+            ,@restore{ [$($group_cfg_attr)*] [$($parents)*] [$(#[cfg($section)])*]}
+            $(, $($tail)*)? }
     };
 
     // Recursive step: Leaf node match. Found a single key description.
     // Pushes the item to the accumulator and processes the remaining tail.
-    ( @key_meta_list @acc[ $($acc:tt)* ] @p[ $($parents:ident)* ] @a[$(#[cfg($section:meta)])*]
+    ( @key_meta_list @acc[ $($acc:tt)* ] @m[$($group_cfg_attr:ident)*] @p[$($parents:ident)*] @a[$(#[cfg($section:meta)])*]
         $(#[doc = $doc_name:literal]
             $(#[doc = $doc_brief:literal]
                 $(#[doc = $doc_help_first:literal] $(#[doc = $doc_help_rest:literal])*)?)?
         )?
         $(#[section = $doc_section:literal])?
-        $(#[config($($config_attr:ident),* $(,)?)])?
+        $(#[config($($key_cfg_attr:ident),* $(,)?)])?
         $(#[cfg($inner:meta)])*
         $name:ident: $meta_type:ident $([$($construct:tt)*])? $(($($attr:ident $(= $value:expr)?),* $(,)?))? $(= $default:expr)?
         $(, $($tail:tt)*)?
     ) => {
         ::place_macro::place!{
-            $crate::declare_config_objects! { @key_meta_list @acc[ $($acc)*
+            $crate::declare_config_objects! { @key_meta_list @acc[
+                $($acc)*
                 $(#[cfg($inner)])*
                 $(#[cfg($section)])*
                 $crate::declare_config_objects!(@config_attrs @acc[
                     $crate::config::meta::KeyMetaBuilder::new(
-                            $($parents ::)* $name.key(),
-                            $crate::declare_config_objects!( @mk_meta_value @acc[] $meta_type $([$($construct)*])? $($(($attr $(= $value)?))*)?)
-                        )
-                        $( .default(|| $crate::declare_config_objects!(@default __ident__($meta_type) __id__($default))) )?
-                        $( .display_name($doc_name)
-                            $( .brief(::dedent::dedent!($doc_brief))
-                                $(.help(::dedent::dedent!(__str__($doc_help_first $("\n" $doc_help_rest)*))) )?
-                            )?
+                        $($parents ::)* $name.key(),
+                        $crate::declare_config_objects!( @mk_meta_value @acc[] $meta_type $([$($construct)*])? $($(($attr $(= $value)?))*)?)
+                    )
+                    // $( .default(|| $crate::declare_config_objects!(@default @c[$($construct)*] $meta_type $default)) )?
+                    $( .display_name($doc_name)
+                        $( .brief(::dedent::dedent!($doc_brief))
+                            $(.help(::dedent::dedent!(__str__($doc_help_first $("\n" $doc_help_rest)*))) )?
                         )?
-                        $( .section($doc_section) )?
-                ] $($([$config_attr])*)?)
-                    .build(),
-            ] @p[ $($parents)* ] @a[$(#[cfg($section)])*] $( $($tail)* )? }
+                    )?
+                    $( .section($doc_section) )?
+                ] 
+                @d[ [$($($construct)*)?] [$meta_type] [$($default)?]]
+                $($([$key_cfg_attr])*)? $([$group_cfg_attr])* ).build(),
+            ] @m[$($group_cfg_attr)*] @p[ $($parents)* ] @a[$(#[cfg($section)])*] $( $($tail)* )? }
         }
     };
 
     // ---- Select default value
-    ( @default $meta_type:ident Null ) => { $crate::config::Value::Null };
-    ( @default Object Default ) => { $crate::config::Value::Object($crate::config::Object::new_empty(object_meta())) };
-    ( @default $meta_type:ident Default ) => { ::place_macro::place!{ $crate::config::Value::__ident__($meta_type)(Default::default()) } };
-    ( @default $meta_type:ident $raw:expr ) => { ::place_macro::place!{ $crate::config::Value::__ident__($meta_type)(($raw).into()) } };
+    ( @default [$($construct:tt)*] [$meta_type:ident] [] ) => { };
+    ( @default [$($construct:tt)*] [$meta_type:ident] [Null] ) => { $crate::config::Value::Null };
+    ( @default [$($construct:tt)*] [Object] [Default] ) => { $crate::config::Value::Object($crate::config::Object::new_empty($($construct)* :: object_meta())) };
+    ( @default [$($construct:tt)*] [$meta_type:ident] [Default] ) => { ::place_macro::place!{ $crate::config::Value::__ident__($meta_type)(Default::default()) } };
+    ( @default [$($construct:tt)*] [$meta_type:ident] [$raw:expr] ) => { ::place_macro::place!{ $crate::config::Value::__ident__($meta_type)(($raw).into()) } };
 
     // ---- Set KeyMetaBuilder config attributes
-    ( @config_attrs @acc[$($acc:tt)*] ) => { $($acc)* };
-    ( @config_attrs @acc[$($acc:tt)*] [$attr:ident] $([$rest:ident])* ) => { $crate::declare_config_objects!(@config_attrs @acc[$($acc)* .$attr()] $([$rest])*) };
+    ( @config_attrs @acc[$($acc:tt)*] @d[] ) => { $($acc)* };
+    ( @config_attrs @acc[$($acc:tt)*] @d[ [$($construct:tt)*] [$meta_type:ident] []] ) => { $($acc)* };
+    ( @config_attrs @acc[$($acc:tt)*] @d[ [$($construct:tt)*] [$meta_type:ident] [$($default:tt)+]] ) => { 
+        $crate::declare_config_objects!(@config_attrs @acc[
+            $($acc)*
+            .default(|| $crate::declare_config_objects!(@default [$($construct)*] [$meta_type] [$($default)+]))
+        ]  @d[]) 
+    };
+    ( @config_attrs @acc[$($acc:tt)*] @d[ [$($construct:tt)*] [$meta_type:ident] [$($default:tt)*]] [$attr:ident] $([$rest:ident])* ) => { 
+        $crate::declare_config_objects!(@config_attrs @acc[$($acc)* .$attr()]  @d[ [$($construct)*] [$meta_type] [$($default)*]] $([$rest])*) 
+    };
 
     // ---- Submit to inventory if #[root] ------
     ( @submit $name:ident #[root $($root_gate:tt)?]) => {
@@ -423,19 +473,29 @@ declare_config_objects! {
         param3: String(min = 10, subst) = "test",
         param4: Enum[TestEnum] = TestEnum::SecondValue,
 
+        #[config(conditional)] // #[config()] propagated only on direct children. #[cfg()] propagates to all children.
         nested {
             param: String(optional),
             nested {
                 param: String(optional)
             }
-        }
+        },
+        // #[cfg(feature = "uuid")]
+        // uuid_only {
+        //     nested {
+        //         param: Uuid
+        //     }
+        // }
     }
 
     #[root]
     pub other = {
         param: Vec[String(min = 10)] = Default,
         nested {
-            param: Object[app_config] = Null,
-        }
+            param: Object[app_config] = Default,
+        },
+        nested2 {
+            param: Int = 42,
+        },
     }
 }
