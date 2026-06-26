@@ -132,7 +132,7 @@ fn write_tags_to_file<'a>(
                 Source::Retired => " RETIRED!\n#[deprecated(note = \"Retired DICOM tag\")]\n",
                 _ => "\n",
             },
-            &meta.keyword,
+            meta.keyword,
             tag_to_text(&meta.tag),
         )
         .to_dicom_err("could not write file")?;

@@ -580,6 +580,7 @@ impl Vr {
     /// );
     /// ```
     #[rustfmt::skip]
+    #[allow(clippy::byte_char_slices)]
     pub const fn all() -> &'static [Meta] {
         use Vr::*;
         const LIST: [Meta; MAX_VR as usize + 1] = [
@@ -856,6 +857,7 @@ mod benches {
     use test::{Bencher, black_box};
 
     // Implementation of vr::Meta -like structure, but with "code" referenced in a constant memory.
+    #[allow(dead_code)]
     struct Meta2 {
         vr: Vr,
         code: &'static str,

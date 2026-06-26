@@ -1,5 +1,5 @@
 use crate::network::AssocDescription;
-use crate::{config::ConfigIter, config::ConfigValues, *};
+use crate::{config::ConfigIter, config::ConfigValues, config::TypedKey, *};
 use arc_swap::ArcSwap;
 use std::{cell::Cell, fmt, future::Future, pin::Pin, ptr::NonNull, sync::LazyLock, task};
 
@@ -220,17 +220,6 @@ impl Context {
             .expect("Context chain missing config — global root must have one")
     }
 
-    pub fn config_get_current(&self, key: &config::Key) -> Option<&config::Value> {
-        self.config_get(key, self.assoc().map(|a| a.as_ref()))
-    }
-
-    pub fn config_get_current_as<'a, T: config::ValueRef>(
-        &'a self,
-        key: &config::Key,
-    ) -> Option<<T as config::ValueRef>::Ref<'a>> {
-        self.config_get_as::<T>(key, self.assoc().map(|a| a.as_ref()))
-    }
-
     // ── Internal ──────────────────────────────────────────────────────────────
 
     fn find<'a, T>(&'a self, f: impl Fn(&'a Context) -> Option<T>) -> Option<T> {
@@ -239,10 +228,7 @@ impl Context {
             if let Some(v) = f(node) {
                 return Some(v);
             }
-            match &node.prev {
-                Some(prev) => node = prev,
-                None => return None,
-            }
+            node = node.prev.as_deref()?;
         }
     }
 
@@ -267,7 +253,7 @@ pub struct ContextConfigIter<'a> {
 
 impl<'a> Iterator for ContextConfigIter<'a> {
     type Item = (
-        &'a config::Key,
+        config::KeyId<'a>,
         &'a config::Value,
         Option<&'a config::Condition>,
         &'a config::LayerId,
@@ -284,7 +270,7 @@ impl<'a> Iterator for ContextConfigIter<'a> {
             self.node = node.prev.as_deref();
             if let Some(cfg) = node.config.as_deref() {
                 let parent_layer_id = self.node.and_then(|n| n.detect_parent_config_layer_id());
-                self.cfg_iter = Some(cfg.config_iter(parent_layer_id));
+                self.cfg_iter = Some(cfg.values_iter(parent_layer_id));
             }
         }
     }
@@ -296,22 +282,22 @@ impl ConfigValues for Context {
     where
         Self: 'a;
 
-    fn config_iter<'a>(&'a self, parent_layer_id: Option<&'a config::LayerId>) -> Self::Iter<'a>
+    fn values_iter<'a>(&'a self, parent_layer_id: Option<&'a config::LayerId>) -> Self::Iter<'a>
     where
         Self: 'a,
     {
         let parent_layer_id = parent_layer_id.or_else(|| self.detect_parent_config_layer_id());
         ContextConfigIter {
             node: Some(self),
-            cfg_iter: self.config.as_deref().map(|cfg| cfg.config_iter(parent_layer_id)),
+            cfg_iter: self.config.as_deref().map(|cfg| cfg.values_iter(parent_layer_id)),
         }
     }
 
-    fn config_default_of(&self, key: &config::Key) -> Option<&config::Value> {
+    fn value_default_for_id(&self, key: config::KeyId) -> Option<&config::Value> {
         let mut node = Some(self);
         while let Some(n) = node {
             if let Some(cfg) = n.config.as_deref()
-                && let Some(value) = cfg.default_of(key)
+                && let Some(value) = cfg.value_default_for_id(key)
             {
                 return Some(value);
             }
@@ -320,7 +306,7 @@ impl ConfigValues for Context {
         None
     }
 
-    fn config_get_explicit(&self, key: &config::Key, assoc: Option<&AssocDescription>) -> Option<&config::Value> {
+    fn value_for_id(&self, key: config::KeyId, assoc: Option<&AssocDescription>) -> Option<&config::Value> {
         let mut node = Some(self);
         while let Some(n) = node {
             if let Some(cfg) = n.config.as_deref()
@@ -332,6 +318,14 @@ impl ConfigValues for Context {
             node = n.prev.as_deref();
         }
         None
+    }
+
+    fn value<T: TypedKey>(&self, key: T) -> T::Out<'_> {
+        key.extract(self, self.assoc().map(|a| a.as_ref()))
+    }
+
+    fn some_value<T: TypedKey>(&self, key: T) -> T::SomeOut<'_> {
+        key.extract_some(self, self.assoc().map(|a| a.as_ref()))
     }
 }
 
@@ -406,8 +400,7 @@ impl ContextBuilder {
 
     /// Installs a configuration layer for this context layer and descendants.
     ///
-    /// Values not found here fall through to lower layers (see
-    /// [`Context::config_get`]).
+    /// Values not found here fall through to lower layers
     pub fn config(mut self, c: Arc<config::Object>) -> Self {
         self.ctx_mut().config = Some(c);
         self
@@ -598,18 +591,18 @@ mod tests {
     // ── Configuration layering ────────────────────────────────────────────────
 
     use crate::config::{
-        Condition, GlobalConfig, Key, Object, Value,
-        map::{Conditionals, Map},
+        Condition, GlobalConfig, Key, KeyId, Object, Value,
+        map::{Conditionals, ValueStore},
         meta,
     };
 
-    const KEY: Key = Key::new("test");
+    const KEY: KeyId = KeyId::new("test");
     const TEST_KEYS: &[meta::KeyMeta] = &[];
 
-    config_object_meta!( fn test_object_meta() = &TEST_KEYS );
+    config::macros::config_object_meta!( fn test_object_meta() = &TEST_KEYS );
 
-    fn config_with<const N: usize>(values: [(Key, Conditionals); N]) -> Arc<config::Object> {
-        Arc::new(Object::new(test_object_meta(), Map::from_iter(values)))
+    fn config_with<const N: usize>(values: [(KeyId<'static>, Conditionals); N]) -> Arc<config::Object> {
+        Arc::new(Object::new(test_object_meta(), ValueStore::from_iter(values)))
     }
 
     #[test]
@@ -618,7 +611,7 @@ mod tests {
 
         Context::extend().config(cfg).provide(|| {
             Context::with_current(|ctx| {
-                assert_matches!(ctx.config_get_current(&KEY), Some(Value::Int(7)));
+                assert_matches!(ctx.value(Key::<i64>::new(KEY)), 7);
             });
         });
     }
@@ -627,7 +620,7 @@ mod tests {
     fn config_get_any_missing_key_is_none() {
         let cfg = config_with([]);
         Context::extend().config(cfg).provide(|| {
-            Context::with_current(|ctx| assert!(ctx.config_get_current(&KEY).is_none()));
+            Context::with_current(|ctx| assert!(ctx.value(Key::<Option<i64>>::new(KEY)).is_none()));
         });
     }
 
@@ -651,7 +644,7 @@ mod tests {
 
         Context::extend().assoc(assoc).config(cfg).provide(|| {
             Context::with_current(|ctx| {
-                assert!(matches!(ctx.config_get_current(&KEY), Some(Value::Int(1))));
+                assert!(matches!(ctx.value(Key::<i64>::new(KEY)), 1));
             });
         });
     }
@@ -665,7 +658,7 @@ mod tests {
         Context::extend().config(outer).provide(|| {
             Context::extend().config(inner).provide(|| {
                 Context::with_current(|ctx| {
-                    assert!(matches!(ctx.config_get_current(&KEY), Some(Value::Int(1))));
+                    assert!(matches!(ctx.value(Key::<i64>::new(KEY)), 1));
                 });
             });
         });

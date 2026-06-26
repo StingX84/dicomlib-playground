@@ -3,7 +3,7 @@ use crate::{Vr, dicom_err, utils::unescape::unescape_with_validator};
 use std::borrow::Cow;
 use std::fmt::Display;
 
-// cSpell:ignore strtok тест
+// cSpell:ignore strtok тест xxxo
 
 /// This structure contains information about a specific DICOM [`Tag`]
 ///
@@ -678,7 +678,7 @@ impl Meta {
                 vm2 > 0,
                 vm2_text,
                 0,
-                format!("zero second VM number. expected number in range 1-255")
+                "zero second VM number. expected number in range 1-255"
             );
             parse_ensure!(
                 vm1 <= vm2,
@@ -693,7 +693,7 @@ impl Meta {
                 vm1 > 0,
                 vm1_text,
                 0,
-                format!("zero first VM number. expected number in range 1-255")
+                "zero first VM number. expected number in range 1-255"
             );
             Ok((vm1, vm1, 1))
         }

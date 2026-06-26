@@ -1,4 +1,136 @@
-#[macro_export]
+// cspell:ignore rfield
+
+/// Local macro, that declares "ValueMeta", "Value" and "build" module with builders for each
+/// ValueMeta variant.
+///
+/// See syntax in `config/meta.rs` for details.
+macro_rules! declare_value_meta {
+    ($(
+        $(#[doc = $doc:tt])*
+        $(#[cfg($cfg:meta)])*
+        $name:ident { $(required: { $($rfield:ident : $rty:ty),* } $(,)?)? $(flags: { $($flag:ident),* } $(,)?)? $(limits: { $($field:ident : $ty:ty),* })? } = $native:ty),* $(,)
+    ?) => {::place_macro::place! {
+        /// Describes the type, constraints and flags of a [`Value`].
+        #[derive(Debug, Clone)]
+        pub enum ValueMeta {$(
+            #[doc = __str__("Native: `" $native "`")]
+            $(#[doc = $doc])*
+            $(#[cfg($cfg)])*
+            $name {
+                $($($rfield: $rty,)*)?
+                $($($flag: bool,)*)?
+                $($($field: Option<$ty>,)*)?
+                optional: bool
+            },
+        )*}
+        impl ValueMeta {
+            pub const fn kind_name(&self) -> &'static str {
+                match self {
+                    $($(#[cfg($cfg)])* Self::__ident__($name) { .. } => stringify!($name),)*
+                }
+            }
+            pub const fn is_optional(&self) -> bool {
+                match self {
+                    $($(#[cfg($cfg)])* Self::__ident__($name) { optional, .. } => *optional,)*
+                }
+            }
+            pub const fn is_support_subst(&self) -> bool {
+                declare_value_meta!(@subst_match (self) () $( $(#[cfg($cfg)])* __ident__($name) [ $($($flag)*)? ] )* )
+            }
+        }
+        #[derive(Debug, Clone)]
+        pub enum Value {
+            Null,
+            $(
+                $(#[doc = $doc])*
+                $(#[cfg($cfg)])*
+                __ident__($name)($native),
+            )*
+        }
+        impl Value {
+            pub const fn kind_name(&self) -> &'static str {
+                match self {
+                    Self::Null => "Null",
+                    $($(#[cfg($cfg)])* Self::__ident__($name) { .. } => stringify!($name),)*
+                }
+            }
+        }
+        pub mod build {
+            #![allow(unused_imports)]
+            use super::*;
+            pub trait Native {
+               type T;
+            }
+            $(
+                declare_value_meta!{@doc_selector,
+                    concat!("Builder for [`ValueMeta::", stringify!($name), "`]"),
+                    $(#[cfg($cfg)])*,
+                pub struct __ident__($name) {
+                    $($($rfield: $rty,)*)?
+                    $($($flag: bool,)*)?
+                    $($($field: Option<$ty>,)*)?
+                    optional: bool,
+                }
+            }
+            $(#[cfg($cfg)])*
+            impl __ident__($name) {
+                pub const fn new($($($rfield : $rty),*)?) -> Self {
+                    Self {
+                        $($($rfield,)*)?
+                        $($($flag: false,)*)?
+                        $($($field: None,)*)?
+                        optional: false
+                    }
+                }
+                $($(pub const fn $field(mut self, value: $ty) -> Self {
+                    self.$field = Some(value);
+                    self
+                })*)?
+                $($(pub const fn $flag(mut self) -> Self {
+                    self.$flag = true;
+                    self
+                })*)?
+                pub const fn optional(mut self) -> Self {
+                    self.optional = true;
+                    self
+                }
+                pub const fn build(self) -> super::ValueMeta {
+                    super::ValueMeta::$name {
+                        $($($rfield: self.$rfield,)*)?
+                        $($($flag: self.$flag,)*)?
+                        $($($field: self.$field,)*)?
+                        optional: self.optional,
+                    }
+                }
+            }
+            $(#[cfg($cfg)])*
+            impl Native for __ident__($name) { type T = $native; }
+        )*}
+    }};
+    // Build the `is_support_subst` match by recursing over variants and their
+    // flags, emitting a real arm only for variants that carry a `subst` flag.
+    (@subst_match ($s:expr) ($($arm:tt)*)) => {
+        match $s { $($arm)* #[allow(unreachable_patterns)] _ => false }
+    };
+    (@subst_match ($s:expr) ($($arm:tt)*) $(#[cfg($cfg:meta)])* $name:ident [ ] $($rest:tt)*) => {
+        declare_value_meta!(@subst_match ($s) ($($arm)*) $($rest)*)
+    };
+    (@subst_match ($s:expr) ($($arm:tt)*) $(#[cfg($cfg:meta)])* $name:ident [ subst $($f:ident)* ] $($rest:tt)*) => {
+        declare_value_meta!(@subst_match ($s) ($($arm)* $(#[cfg($cfg)])* Self::$name { subst, .. } => *subst,) $($rest)*)
+    };
+    (@subst_match ($s:expr) ($($arm:tt)*) $(#[cfg($cfg:meta)])* $name:ident [ $other:ident $($f:ident)* ] $($rest:tt)*) => {
+        declare_value_meta!(@subst_match ($s) ($($arm)*) $(#[cfg($cfg)])* $name [ $($f)* ] $($rest)*)
+    };
+
+    (@doc_selector,$def_doc:expr,$(#[$inner:meta])+,$($c:tt)+) => { $(#[$inner])+ $($c)+ };
+    (@doc_selector,$def_doc:expr,,$($c:tt)+) => { #[doc=$def_doc] $($c)+ };
+}
+
+pub(crate) use declare_value_meta;
+
+/// Crate local macro to declare a static `ObjectMeta` for a config object.
+/// Used in test code only
+#[cfg(test)]
 macro_rules! config_object_meta {
     ($(#[$outer:meta])* $pub:vis fn $name:ident() = $items:expr ) => {
         ::place_macro::place! {
@@ -10,6 +142,9 @@ macro_rules! config_object_meta {
         }
     };
 }
+
+#[cfg(test)]
+pub(crate) use config_object_meta;
 
 /// Declares one or more `#[repr(u32)]` config enums and wires them into the
 /// config metadata system.
@@ -25,7 +160,8 @@ macro_rules! config_object_meta {
 ///
 /// Explicit discriminants (`= 42`), `#[cfg(...)]`, and `#[default]` are passed through.
 ///
-/// ```ignore
+/// ```
+/// # use dpx_dicom_core::{declare_config_enums, config::ConfigEnum};
 /// declare_config_enums! {
 ///     /// Transfer syntax preference
 ///     #[derive(Default)]
@@ -48,7 +184,7 @@ macro_rules! config_object_meta {
 /// }
 /// ```
 ///
-/// [`ConfigEnum`]: crate::config::meta::ConfigEnum
+/// [`ConfigEnum`]: crate::config::ConfigEnum
 #[macro_export]
 macro_rules! declare_config_enums {
     // Entry point: *( [ DOCS ] ["pub"] enum NAME "{" *( [ DOCS ] VARIANT [ = VALUE ] ",") "}" ).
@@ -80,7 +216,7 @@ macro_rules! declare_config_enums {
                 ,)*
             }
 
-            impl $crate::config::meta::ConfigEnum for __ident__($name) {
+            impl $crate::config::ConfigEnum for __ident__($name) {
                 const CHOICES: $crate::config::meta::Choices<(u32, &'static str, Option<$crate::config::meta::EnumVisual>)> =
                     $crate::config::meta::Choices::Static(
                         &[$(
@@ -121,7 +257,7 @@ macro_rules! declare_config_enums {
 
             impl ::std::fmt::Display for __ident__($name) {
                 fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-                    use $crate::config::meta::ConfigEnum;
+                    use $crate::config::ConfigEnum;
                     write!(f, "{}({})", self.name(), self.as_u32())
                 }
             }
@@ -141,7 +277,7 @@ macro_rules! declare_config_enums {
             impl TryFrom<u32> for __ident__($name) {
                 type Error = $crate::DicomError;
                 fn try_from(value: u32) -> Result<Self, Self::Error> {
-                    use $crate::config::meta::ConfigEnum;
+                    use $crate::config::ConfigEnum;
                     Self::from_u32(value)
                         .ok_or_else(|| $crate::dicom_err!(
                             Configuration,
@@ -153,7 +289,7 @@ macro_rules! declare_config_enums {
             impl ::std::str::FromStr for __ident__($name) {
                 type Err = $crate::DicomError;
                 fn from_str(s: &str) -> Result<Self, Self::Err> {
-                    use $crate::config::meta::ConfigEnum;
+                    use $crate::config::ConfigEnum;
                     Self::from_name(s)
                         .ok_or_else(|| $crate::dicom_err!(
                             Configuration,
@@ -182,51 +318,96 @@ macro_rules! declare_config_enums {
     };
 }
 
-crate::declare_config_enums! {
-    /// Line1 *test*
-    #[derive(Default)]
-    pub enum TestEnum {
-        NoComment,
-        /// Line 1 with *test*
-        #[cfg(feature = "uuid")]
-        First,
-        /// Line 1
-        /// Line 2
-        #[default]
-        SecondValue =44,
-        /// Line 1
-        /// Line 2
-        /// ``` example ```
-        /// Line 3
-        ThirdValue = 55,
-        /// Line 1
-        /// Line 2
-        /// Line 3
-        ///
-        /// Line 4
-        FourValue = 66,
-    }
-    pub enum Test2 {
-        A,
-        B,
-    }
-}
-
+/// Declares one or more configuration objects, each as a module of typed keys
+/// plus its [`ObjectMeta`].
+///
+/// For every top-level object `NAME { ... }` the macro emits a `mod NAME`
+/// containing:
+/// - one `pub const` [`Key`] per leaf key, named after the key and typed
+///   from its meta type and `optional` flag (`Option<T>` / `T`);
+/// - a flat `KEY_META: &[KeyMeta]` describing every key (nested keys included);
+/// - `pub fn object_meta() -> &'static ObjectMeta`.
+///
+/// Marking a top-level object `#[root]` additionally submits its `object_meta`
+/// to the [`inventory`](crate::__inventory) so it is folded into
+/// [`collected_global_meta`](crate::config::meta::collected_global_meta).
+///
+/// # Entry grammar
+///
+/// Inside the braces, comma-separated entries are either **leaf keys** or
+/// nested **groups**:
+///
+/// ```text
+/// name: MetaType [Construct] (attr = value, flag, ...) = default
+/// group { ...nested entries... }
+/// ```
+///
+/// - **`MetaType`** is a builder from [`config::meta::build`](crate::config::meta::build)
+///   (`Bool`, `String`, `Int`, `Enum`, `Vec`, `Object`, `Custom`, ...).
+/// - **`[Construct]`** supplies a required constructor argument: `Enum[MyEnum]`,
+///   `Object[other_object]`, `Custom[&MY_TYPE]`, or an element meta for
+///   containers, e.g. `Vec[String(min = 10)]`.
+/// - **`(...)`** is mapped onto the builder: `flag` calls `.flag()`,
+///   `name = value` calls `.name(value)`. The `optional` flag additionally
+///   forces reads to return `Option<T>`.
+/// - **`= default`** sets the key default: `Default`, `Null`, or any expression
+///   (e.g. `"text"`, `MyEnum::Variant`, `IntRange { lo: 1, hi: 2 }`).
+///
+/// Nested groups become submodules and extend the dotted key path
+/// (`nested { param: ... }` → key `nested.param`).
+///
+/// # Attributes
+///
+/// - Key doc comments map by line: first line → `display_name`, second →
+///   `brief`, the rest → `help`.
+/// - `#[section = "..."]` sets the UI section of a key.
+/// - `#[config(read_only, is_advanced, conditional, runtime)]` sets
+///   [`KeyMeta`] flags. On a group it propagates to **direct** children only.
+/// - `#[cfg(...)]` is passed through and propagates to **all** descendants.
+///
+/// ```
+/// # use dpx_dicom_core::{declare_config_objects, declare_config_enums, config::ConfigEnum};
+/// # declare_config_enums! {
+/// #   pub enum TestEnum {
+/// #       SecondValue,
+/// #   }
+/// # }
+/// declare_config_objects! {
+///     #[root]
+///     pub app_config {
+///         /// Listen address
+///         /// One-line brief.
+///         /// Longer help text.
+///         #[section = "Network"]
+///         #[config(read_only)]
+///         param: Vec[String(min = 10)] = Default,
+///         enabled: Bool = true,
+///         level: Enum[TestEnum] = TestEnum::SecondValue,
+///         nested {
+///             opt: String(optional),
+///         },
+///     }
+/// }
+/// # fn main() {}
+/// ```
+///
+/// [`ObjectMeta`]: crate::config::meta::ObjectMeta
+/// [`KeyMeta`]: crate::config::meta::KeyMeta
+/// [`Key`]: crate::config::Key
 #[macro_export]
 macro_rules! declare_config_objects {
     // Main entry point
     ( $(
-        $(#[doc = $docs:meta])*
+        $(#[doc = $docs:literal])*
         $(#[cfg($cfg:meta)])*
         $(#[root $($root_gate:tt)?])?
-        $vis:vis $name:ident = { $($tree:tt)* }
+        $vis:vis $name:ident { $($tree:tt)* }
     )* ) => { $(
         $(#[doc = $docs])*
         $(#[cfg($cfg)])*
         $vis mod $name {
             #[allow(unused_imports)]
             use super::*;
-            // const typed_key = $crate::config::typed::TypedKey;
             $crate::declare_config_objects!{ @declare_keys @m[] @p[] $($tree)* }
             // const KEY_META: &[$crate::config::meta::KeyMeta] = &[];
             $crate::declare_config_objects!{ @key_meta_list @acc[] @m[] @p[] @a[] $($tree)* }
@@ -255,7 +436,7 @@ macro_rules! declare_config_objects {
         $(, $($rest:tt)*)?
     ) => {
         ::place_macro::place! {
-            #[doc = $crate::declare_config_objects!(@key_doc_string 
+            #[doc = $crate::declare_config_objects!(@key_doc_string
                 [__str__("**Id**: `" $($parent_names ".")* $name "`")]
                 [$($doc_section)?]
                 [$($doc_name)?]
@@ -265,19 +446,18 @@ macro_rules! declare_config_objects {
             )]
             $(#[cfg($inner)])*
             #[allow(non_upper_case_globals)]
-            pub const $name: $crate::config::typed::TypedKey<
-                    <$crate::config::meta::build::$meta_type as $crate::config::meta::build::Native>::T,
-                    $crate::declare_config_objects!(@optional_selector $($($attr $(= $value)?),*)?)
-                > = $crate::config::typed::TypedKey::new(__str__($($parent_names ".")* $name));
+            pub const $name: $crate::config::Key<
+                    $crate::declare_config_objects!(@optional_selector [$meta_type] [$($($construct)*)?] $($($attr $(= $value)?),*)?)
+                > = $crate::config::Key::new($crate::config::KeyId::new(__str__($($parent_names ".")* $name)));
         }
         $crate::declare_config_objects!{@declare_keys @m[$($group_cfg_attr)*] @p[$($parent_names)*] $($($rest)*)?}
     };
-    (@declare_keys @m[$($group_cfg_attr:ident)*] @p[$($parent_names:ident)*] 
+    (@declare_keys @m[$($group_cfg_attr:ident)*] @p[$($parent_names:ident)*]
         $(#[config($($this_group_config:ident),* $(,)?)])?
         $(#[cfg($inner:meta)])*
-        $name:ident { 
+        $name:ident {
             $($ns_content:tt)*
-        } 
+        }
         $(, $($rest:tt)*)?
     ) => {
         $(#[cfg($inner)])*
@@ -310,11 +490,23 @@ macro_rules! declare_config_objects {
         )}
     };
 
-    // ---- Template arg `Req` or `Opt` selector based on "optional" flag ------
-    (@optional_selector) => { $crate::config::typed::Req };
-    (@optional_selector optional $(,$($rest:tt)*)? ) => { $crate::config::typed::Opt };
-    (@optional_selector $_flag:ident $( = $_value:expr)? $(,$($rest:tt)*)? ) => {
-        $crate::declare_config_objects!(@optional_selector $($($rest)*)?)
+    // ---- Key type selector based on Enum or any other type ------
+    (@key_type_selector [Enum] [$construct:path]) => {
+        $construct
+    };
+    (@key_type_selector [$meta_type:ident] [$($construct:tt)*]) => {
+        <$crate::config::meta::build::$meta_type as $crate::config::meta::build::Native>::T
+    };
+
+    // ---- Template arg `T` or `Option<T>` selector based on "optional" flag ------
+    (@optional_selector [$meta_type:ident] [$($construct:tt)*]) => {
+        $crate::declare_config_objects!(@key_type_selector [$meta_type] [$($construct)*])
+    };
+    (@optional_selector [$meta_type:ident] [$($construct:tt)*] optional $(,$($rest:tt)*)? ) => {
+        Option<$crate::declare_config_objects!(@key_type_selector [$meta_type] [$($construct)*])>
+     };
+    (@optional_selector [$meta_type:ident] [$($construct:tt)*] $_flag:ident $( = $_value:expr)? $(,$($rest:tt)*)? ) => {
+        $crate::declare_config_objects!(@optional_selector [$meta_type] [$($construct:)*] $($($rest)*)?)
     };
 
     // ---- MetaValue builder ------
@@ -341,7 +533,7 @@ macro_rules! declare_config_objects {
 
     // ---- Convert constructor supporting sub-types
     ( @construct Enum $construct:path ) => {
-        ::place_macro::place!( { use $crate::config::meta::ConfigEnum; $construct::CHOICES } )
+        ::place_macro::place!( { use $crate::config::ConfigEnum; $construct::CHOICES } )
     };
     ( @construct Object $construct:path ) => {
         ::place_macro::place!( $construct::object_meta )
@@ -351,6 +543,9 @@ macro_rules! declare_config_objects {
     };
     ( @construct Map $meta_type:ident $([$($construct:tt)*])? $(($($attr:ident $(= $value:expr)?),* $(,)?))?) => {
         &$crate::declare_config_objects!(@mk_meta_value @acc[] $meta_type $([$($construct)*])? $($(($attr $(= $value)?))*)?)
+    };
+    ( @construct Custom $construct:expr) => {
+        $construct
     };
     ( @construct $any_type:tt $($args:tt)*) => {
         THIS_TYPE_DOES_NOT_SUPPORT_CONSTRUCTORS
@@ -375,16 +570,16 @@ macro_rules! declare_config_objects {
 
     // Recursive step: Sub-tree match. Found a nested bracket group `group {...}`.
     // It pops the group, flattens it first, and pushes remaining tokens to the tail.
-    ( @key_meta_list @acc[ $($acc:tt)* ] @m[$($group_cfg_attr:ident)*] @p[$($parents:ident)*] @a[$(#[cfg($section:meta)])*] 
+    ( @key_meta_list @acc[ $($acc:tt)* ] @m[$($group_cfg_attr:ident)*] @p[$($parents:ident)*] @a[$(#[cfg($section:meta)])*]
         $(#[config($($this_group_cfg_attr:ident),* $(,)?)])?
         $(#[cfg($inner:meta)])*
-        $name:ident { 
+        $name:ident {
             $($sub_tree:tt)*
         }
-        $(, $($tail:tt)*)? 
+        $(, $($tail:tt)*)?
     ) => {
-        $crate::declare_config_objects! { @key_meta_list @acc[ $($acc)* ] 
-            @m[$($($this_group_cfg_attr)*)?] @p[$($parents)* $name] @a[$(#[cfg($section)])* $(#[cfg($inner)])*] 
+        $crate::declare_config_objects! { @key_meta_list @acc[ $($acc)* ]
+            @m[$($($this_group_cfg_attr)*)?] @p[$($parents)* $name] @a[$(#[cfg($section)])* $(#[cfg($inner)])*]
             $($sub_tree)*
             ,@restore{ [$($group_cfg_attr)*] [$($parents)*] [$(#[cfg($section)])*]}
             $(, $($tail)*)? }
@@ -410,17 +605,16 @@ macro_rules! declare_config_objects {
                 $(#[cfg($section)])*
                 $crate::declare_config_objects!(@config_attrs @acc[
                     $crate::config::meta::KeyMetaBuilder::new(
-                        $($parents ::)* $name.key(),
+                        $($parents ::)* $name.id,
                         $crate::declare_config_objects!( @mk_meta_value @acc[] $meta_type $([$($construct)*])? $($(($attr $(= $value)?))*)?)
                     )
-                    // $( .default(|| $crate::declare_config_objects!(@default @c[$($construct)*] $meta_type $default)) )?
                     $( .display_name($doc_name)
                         $( .brief(::dedent::dedent!($doc_brief))
                             $(.help(::dedent::dedent!(__str__($doc_help_first $("\n" $doc_help_rest)*))) )?
                         )?
                     )?
                     $( .section($doc_section) )?
-                ] 
+                ]
                 @d[ [$($($construct)*)?] [$meta_type] [$($default)?]]
                 $($([$key_cfg_attr])*)? $([$group_cfg_attr])* ).build(),
             ] @m[$($group_cfg_attr)*] @p[ $($parents)* ] @a[$(#[cfg($section)])*] $( $($tail)* )? }
@@ -432,19 +626,20 @@ macro_rules! declare_config_objects {
     ( @default [$($construct:tt)*] [$meta_type:ident] [Null] ) => { $crate::config::Value::Null };
     ( @default [$($construct:tt)*] [Object] [Default] ) => { $crate::config::Value::Object($crate::config::Object::new_empty($($construct)* :: object_meta())) };
     ( @default [$($construct:tt)*] [$meta_type:ident] [Default] ) => { ::place_macro::place!{ $crate::config::Value::__ident__($meta_type)(Default::default()) } };
+    ( @default [$($construct:tt)*] [Custom] [$raw:expr] ) => { ::place_macro::place!{ $crate::config::Value::Custom(std::sync::Arc::new($raw)) } };
     ( @default [$($construct:tt)*] [$meta_type:ident] [$raw:expr] ) => { ::place_macro::place!{ $crate::config::Value::__ident__($meta_type)(($raw).into()) } };
 
     // ---- Set KeyMetaBuilder config attributes
     ( @config_attrs @acc[$($acc:tt)*] @d[] ) => { $($acc)* };
     ( @config_attrs @acc[$($acc:tt)*] @d[ [$($construct:tt)*] [$meta_type:ident] []] ) => { $($acc)* };
-    ( @config_attrs @acc[$($acc:tt)*] @d[ [$($construct:tt)*] [$meta_type:ident] [$($default:tt)+]] ) => { 
+    ( @config_attrs @acc[$($acc:tt)*] @d[ [$($construct:tt)*] [$meta_type:ident] [$($default:tt)+]] ) => {
         $crate::declare_config_objects!(@config_attrs @acc[
             $($acc)*
             .default(|| $crate::declare_config_objects!(@default [$($construct)*] [$meta_type] [$($default)+]))
-        ]  @d[]) 
+        ]  @d[])
     };
-    ( @config_attrs @acc[$($acc:tt)*] @d[ [$($construct:tt)*] [$meta_type:ident] [$($default:tt)*]] [$attr:ident] $([$rest:ident])* ) => { 
-        $crate::declare_config_objects!(@config_attrs @acc[$($acc)* .$attr()]  @d[ [$($construct)*] [$meta_type] [$($default)*]] $([$rest])*) 
+    ( @config_attrs @acc[$($acc:tt)*] @d[ [$($construct:tt)*] [$meta_type:ident] [$($default:tt)*]] [$attr:ident] $([$rest:ident])* ) => {
+        $crate::declare_config_objects!(@config_attrs @acc[$($acc)* .$attr()]  @d[ [$($construct)*] [$meta_type] [$($default)*]] $([$rest])*)
     };
 
     // ---- Submit to inventory if #[root] ------
@@ -454,48 +649,123 @@ macro_rules! declare_config_objects {
     ( @submit $($rest:tt)* ) => {};
 }
 
-declare_config_objects! {
-    pub app_config = {
-        /// First line
-        /// Second line
-        /// Third line
-        ///
-        /// Last line
-        #[section = "Section 1"]
-        #[config(read_only, is_advanced, conditional, runtime)]
-        param: Vec[String(min = 10)] = Default,
+#[cfg(test)]
+mod tests {
+    #![allow(dead_code)]
+    use crate::Context;
+    use crate::config::ConfigValues;
+    use crate::config::subst::lock_global_for_test;
 
-        /// First Line
-        param2: Bool = false && true,
-
-        /// First Line
-        /// Second Line
-        param3: String(min = 10, subst) = "test",
-        param4: Enum[TestEnum] = TestEnum::SecondValue,
-
-        #[config(conditional)] // #[config()] propagated only on direct children. #[cfg()] propagates to all children.
-        nested {
-            param: String(optional),
-            nested {
-                param: String(optional)
-            }
-        },
-        // #[cfg(feature = "uuid")]
-        // uuid_only {
-        //     nested {
-        //         param: Uuid
-        //     }
-        // }
+    crate::declare_config_enums! {
+        /// Line1 *test*
+        #[derive(Default)]
+        pub enum TestEnum {
+            NoComment,
+            /// Line 1 with *test*
+            #[cfg(feature = "uuid")]
+            First,
+            /// Line 1
+            /// Line 2
+            #[default]
+            SecondValue =44,
+            /// Line 1
+            /// Line 2
+            /// ``` example ```
+            /// Line 3
+            ThirdValue = 55,
+            /// Line 1
+            /// Line 2
+            /// Line 3
+            ///
+            /// Line 4
+            FourValue = 66,
+        }
+        pub enum Test2 {
+            A,
+            B,
+        }
     }
 
-    #[root]
-    pub other = {
-        param: Vec[String(min = 10)] = Default,
-        nested {
-            param: Object[app_config] = Default,
-        },
-        nested2 {
-            param: Int = 42,
-        },
+    #[cfg(feature = "serde")]
+    #[derive(Debug, PartialEq, serde::Serialize, serde::Deserialize, Default)]
+    struct IntRange {
+        lo: i32,
+        hi: i32,
+    }
+    #[cfg(feature = "serde")]
+    static INT_RANGE: crate::config::custom::Serde<IntRange> = crate::config::custom::Serde::new("IntRange");
+
+    declare_config_objects! {
+        pub app_config {
+            /// First line
+            /// Second line
+            /// Third line
+            ///
+            /// Last line
+            #[section = "Section 1"]
+            #[config(read_only, is_advanced, conditional, runtime)]
+            param: Vec[String(min = 10)] = Default,
+
+            /// First Line
+            param2: Bool = false,
+
+            /// First Line
+            /// Second Line
+            param3: String(min = 10, subst) = "test",
+
+            param4: Enum[TestEnum](optional) = TestEnum::SecondValue,
+
+            #[config(conditional)] // #[config()] propagated only on direct children. #[cfg()] propagates to all children.
+            nested {
+                param: String(optional),
+                nested {
+                    param: String(optional)
+                }
+            },
+            #[cfg(feature = "uuid")]
+            uuid_only {
+                nested {
+                    param: Uuid
+                }
+            },
+
+            #[cfg(feature = "serde")]
+            custom: Custom[&INT_RANGE] = IntRange { lo: 1, hi: 2 },
+            #[cfg(feature = "serde")]
+            custom2: Custom[&INT_RANGE] = IntRange::default(),
+        }
+
+        #[root]
+        pub other {
+            param: Vec[String(min = 10)] = Default,
+            nested {
+                param: Object[app_config] = Default,
+            },
+            nested2 {
+                param: Int = 42,
+            },
+        }
+    }
+
+    #[test]
+    fn value_reads_chained_nested_object_and_optional_enum() {
+        let _guard = lock_global_for_test();
+        Context::with_current(|ctx| {
+            assert_eq!(
+                ctx.value(other::nested::param).value(app_config::param4),
+                Some(TestEnum::SecondValue)
+            );
+        });
+    }
+
+    #[test]
+    #[cfg(feature = "serde")]
+    fn value_reads_custom() {
+        let _guard = lock_global_for_test();
+        Context::with_current(|ctx| {
+            let app = ctx.value(other::nested::param);
+            let custom = app.value(app_config::custom);
+            assert_eq!(custom.downcast_ref::<IntRange>(), Some(&IntRange { lo: 1, hi: 2 }));
+        });
     }
 }

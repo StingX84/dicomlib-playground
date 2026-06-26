@@ -34,7 +34,7 @@ use std::marker::PhantomData;
 /// use std::sync::Arc;
 /// use std::net::Ipv4Addr;
 /// use serde_json::Value as JsonValue;
-/// use dpx_dicom_core::config::CustomType;
+/// use dpx_dicom_core::config::custom::CustomType;
 /// use dpx_dicom_core::{dicom_err, error::Result};
 ///
 /// #[derive(Debug, PartialEq)]
@@ -101,7 +101,7 @@ impl std::fmt::Debug for dyn CustomType {
 /// ```
 /// use serde::{Serialize, Deserialize};
 /// use std::net::Ipv4Addr;
-/// use dpx_dicom_core::config::Serde;
+/// use dpx_dicom_core::config::custom::Serde;
 ///
 /// #[derive(Debug, Serialize, Deserialize)]
 /// struct IpRange { lo: Ipv4Addr, hi: Ipv4Addr }

@@ -12,7 +12,7 @@ repository.workspace = true
 version.workspace = true
 
 [features]
-default = ["serde"]
+default = []
 tokio = ["dep:tokio"]
 serde = ["dep:serde", "dep:serde_json", "dep:serde-saphyr", "dep:humantime"]
 uuid = [ "dep:uuid" ]

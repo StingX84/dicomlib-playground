@@ -34,10 +34,10 @@
 //!       when: { peer_aet: PEER }
 //! ```
 
-use super::map::{Condition, Map};
+use super::map::{Condition, ValueStore};
 use super::meta::{KeyMeta, ObjectMeta, ValueMeta};
 use super::value::File;
-use super::{LayerId, Object, SubstVars, Value};
+use super::{KeyId, LayerId, Object, SubstVars, Value};
 use crate::IntoDicomErr;
 use crate::network::{HostDefinition, Network, NetworkDefinition};
 use crate::{HashMap, dicom_err, ensure, error::Result};
@@ -77,7 +77,7 @@ impl YamlLoader {
 
         let index = build_index(self.registry)?;
         let acc = Accumulator {
-            map: RefCell::new(Map::new()),
+            map: RefCell::new(ValueStore::new()),
         };
 
         for file in &files {
@@ -96,7 +96,7 @@ impl YamlLoader {
     pub fn load_str(&self, text: &str) -> Result<Object> {
         let index = build_index(self.registry)?;
         let acc = Accumulator {
-            map: RefCell::new(Map::new()),
+            map: RefCell::new(ValueStore::new()),
         };
         let ctx = LoadCtx {
             index: &index,
@@ -240,7 +240,7 @@ fn insert_conditional<'a>(root: &mut IndexNode<'a>, segments: &[&str], km: &'a K
 // ── Load context ────────────────────────────────────────────────────────────
 
 struct Accumulator {
-    map: RefCell<Map>,
+    map: RefCell<ValueStore>,
 }
 
 struct LoadCtx<'a> {
@@ -703,10 +703,10 @@ fn visit_object<'de, A: MapAccess<'de>>(
     items: &'static ObjectMeta,
     mut map: A,
 ) -> std::result::Result<Value, A::Error> {
-    let mut nested = Map::new();
+    let mut nested = ValueStore::new();
     while let Some(key) = map.next_key::<String>()? {
         let km = items
-            .key_meta_str(&key)
+            .key_meta(KeyId::new(key.as_str()))
             .ok_or_else(|| de::Error::custom(format!("unknown field {key:?}")))?;
         let value = map.next_value_seed(ValueSeed::new(&km.value_meta))?;
         validate_leaf(km, &value).map_err(de::Error::custom)?;
@@ -728,12 +728,12 @@ fn visit_object<'de, A: MapAccess<'de>>(
 /// Runtime keys are never read from a file, and conditional keys are
 /// association-matched and resolve through their own fallback; both are skipped.
 /// Applies equally to a nested object and to the root document.
-fn check_required(items: &'static ObjectMeta, present: &Map) -> std::result::Result<(), String> {
+fn check_required(items: &'static ObjectMeta, present: &ValueStore) -> std::result::Result<(), String> {
     for km in items.iter() {
         if km.runtime || km.conditional || present.0.contains_key(&km.key) {
             continue;
         }
-        if !km.value_meta.is_optional() && matches!(items.default_of(&km.key), None | Some(Value::Null)) {
+        if !km.value_meta.is_optional() && matches!(items.default_of(km.key), None | Some(Value::Null)) {
             return Err(format!("missing required key {:?}", km.key.0));
         }
     }
@@ -782,16 +782,22 @@ fn visit_file_map<'de, A: MapAccess<'de>>(mut map: A) -> std::result::Result<Val
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::meta::{Choices, EnumVisual, KeyMetaBuilder, build};
-    use crate::config::{ConfigValues, Key};
+    use crate::Arc;
+    use crate::config::{
+        ConfigValues, KeyId, macros::config_object_meta, meta::Choices, meta::EnumVisual, meta::KeyMetaBuilder,
+        meta::build,
+    };
     use crate::network::AssocDescription;
-    use crate::{Arc, config_object_meta};
 
     static STRING_ITEM: ValueMeta = build::String::new().build();
 
     static LISTEN_ITEMS: [KeyMeta; 2] = [
-        KeyMetaBuilder::new(Key::new("addr"), build::String::new().build()).build(),
-        KeyMetaBuilder::new(Key::new("port"), build::Int::new().min(0).max(65535).optional().build()).build(),
+        KeyMetaBuilder::new(KeyId::new("addr"), build::String::new().build()).build(),
+        KeyMetaBuilder::new(
+            KeyId::new("port"),
+            build::Int::new().min(0).max(65535).optional().build(),
+        )
+        .build(),
     ];
 
     config_object_meta! { fn listen_meta() = &LISTEN_ITEMS }
@@ -817,12 +823,12 @@ mod tests {
         ),
     ];
 
-    const K_ARTIM: Key = Key::new("dicom.association.artim_timeout");
-    const K_MAX: Key = Key::new("dicom.association.max");
-    const K_LOCAL_AET: Key = Key::new("dicom.local_aet");
-    const K_LISTEN: Key = Key::new("dicom.listen");
-    const K_MODE: Key = Key::new("mode");
-    const K_DELIM: Key = Key::new("delimiters");
+    const K_ARTIM: KeyId = KeyId::new("dicom.association.artim_timeout");
+    const K_MAX: KeyId = KeyId::new("dicom.association.max");
+    const K_LOCAL_AET: KeyId = KeyId::new("dicom.local_aet");
+    const K_LISTEN: KeyId = KeyId::new("dicom.listen");
+    const K_MODE: KeyId = KeyId::new("mode");
+    const K_DELIM: KeyId = KeyId::new("delimiters");
 
     static METAS: [KeyMeta; 6] = [
         KeyMetaBuilder::new(K_ARTIM, build::Duration::new().build())
@@ -873,35 +879,35 @@ dicom:
         let cfg = loader().load_str(DOC).expect("load");
 
         // Enum mapped by store name.
-        assert!(matches!(cfg.config_get(&K_MODE, None), Some(Value::Enum(1))));
+        assert!(matches!(cfg.value_for_id(K_MODE, None), Some(Value::Enum(1))));
 
         // Scalar-or-list: explicit list of strings.
-        match cfg.config_get(&K_LOCAL_AET, None) {
+        match cfg.value_for_id(K_LOCAL_AET, None) {
             Some(Value::Vec(v)) => assert_eq!(v.len(), 2),
             other => panic!("local_aet: {other:?}"),
         }
 
         // Vec of objects with a optional field omitted in the 2nd element.
-        match cfg.config_get(&K_LISTEN, None) {
+        match cfg.value_for_id(K_LISTEN, None) {
             Some(Value::Vec(v)) => assert_eq!(v.len(), 2),
             other => panic!("listen: {other:?}"),
         }
 
         // Conditional duration (unconditional entry).
         assert!(matches!(
-            cfg.config_get(&K_ARTIM, None),
+            cfg.value_for_id(K_ARTIM, None),
             Some(Value::Duration(d)) if d.as_secs() == 10
         ));
 
         // Conditional int: base entry without `when`.
-        assert!(matches!(cfg.config_get(&K_MAX, None), Some(Value::Int(5))));
+        assert!(matches!(cfg.value_for_id(K_MAX, None), Some(Value::Int(5))));
 
         // Conditional int: peer-specific override wins for matching peer.
         let peer = AssocDescription {
             peer_aet: Some("PEER".into()),
             ..Default::default()
         };
-        assert!(matches!(cfg.config_get(&K_MAX, Some(&peer)), Some(Value::Int(50))));
+        assert!(matches!(cfg.value_for_id(K_MAX, Some(&peer)), Some(Value::Int(50))));
     }
 
     #[test]
@@ -909,7 +915,7 @@ dicom:
         let cfg = loader()
             .load_str("delimiters:\n  PN: \"^\"\n  DA: \".\"\n")
             .expect("load");
-        match cfg.config_get(&K_DELIM, None) {
+        match cfg.value_for_id(K_DELIM, None) {
             Some(Value::Map(m)) => {
                 assert_eq!(m.len(), 2);
                 assert!(matches!(m.get("PN"), Some(Value::String(s)) if s == "^"));
@@ -922,7 +928,7 @@ dicom:
     #[test]
     fn scalar_coerces_to_single_element_list() {
         let cfg = loader().load_str("dicom:\n  local_aet: SOLE\n").expect("load");
-        match cfg.config_get(&K_LOCAL_AET, None) {
+        match cfg.value_for_id(K_LOCAL_AET, None) {
             Some(Value::Vec(v)) => {
                 assert_eq!(v.len(), 1);
                 assert!(matches!(&v[0], Value::String(s) if s == "SOLE"));
@@ -954,7 +960,7 @@ dicom:
         let cfg = loader()
             .load_str("dicom:\n  listen:\n    - addr: localhost\n")
             .expect("load");
-        match cfg.config_get(&K_LISTEN, None) {
+        match cfg.value_for_id(K_LISTEN, None) {
             Some(Value::Vec(v)) => assert_eq!(v.len(), 1),
             other => panic!("listen: {other:?}"),
         }
@@ -964,7 +970,7 @@ dicom:
     // every file is rejected at finalize.
     #[test]
     fn root_missing_required_key_is_rejected() {
-        static REQUIRED: [KeyMeta; 1] = [KeyMetaBuilder::new(Key::new("name"), build::String::new().build()).build()];
+        static REQUIRED: [KeyMeta; 1] = [KeyMetaBuilder::new(KeyId::new("name"), build::String::new().build()).build()];
         config_object_meta! { fn required_meta() = &REQUIRED }
 
         let err = YamlLoader::new(required_meta()).load_str("{}\n").unwrap_err();
@@ -996,14 +1002,14 @@ dicom:
         let _guard = super::super::subst::lock_global_for_test();
         static SUBST_ITEM: ValueMeta = build::String::new().subst().build();
         static SUBST_METAS: [KeyMeta; 2] = [
-            KeyMetaBuilder::new(Key::new("greeting"), build::String::new().subst().build()).build(),
+            KeyMetaBuilder::new(KeyId::new("greeting"), build::String::new().subst().build()).build(),
             // List whose items opt into substitution; coercion of a bare scalar
             // must still expand via the item meta.
-            KeyMetaBuilder::new(Key::new("names"), build::Vec::new(&SUBST_ITEM).build()).build(),
+            KeyMetaBuilder::new(KeyId::new("names"), build::Vec::new(&SUBST_ITEM).build()).build(),
         ];
         // A non-subst field must be left untouched.
         static PLAIN_METAS: [KeyMeta; 1] =
-            [KeyMetaBuilder::new(Key::new("greeting"), build::String::new().build()).build()];
+            [KeyMetaBuilder::new(KeyId::new("greeting"), build::String::new().build()).build()];
 
         SubstVars::install(Arc::new(SubstVars::builder().var("WHO", "world").build()));
 
@@ -1012,8 +1018,8 @@ dicom:
         let cfg = YamlLoader::new(subst_meta())
             .load_str("greeting: hi $WHO\nnames: $WHO\n")
             .expect("load");
-        assert!(matches!(cfg.config_get(&Key::new("greeting"), None), Some(Value::String(s)) if s == "hi world"));
-        match cfg.config_get(&Key::new("names"), None) {
+        assert!(matches!(cfg.value_for_id(KeyId::new("greeting"), None), Some(Value::String(s)) if s == "hi world"));
+        match cfg.value_for_id(KeyId::new("names"), None) {
             Some(Value::Vec(v)) => assert!(matches!(&v[0], Value::String(s) if s == "world")),
             other => panic!("names: {other:?}"),
         }
@@ -1023,7 +1029,7 @@ dicom:
         let cfg = YamlLoader::new(plain_meta())
             .load_str("greeting: hi $WHO\n")
             .expect("load");
-        assert!(matches!(cfg.config_get(&Key::new("greeting"), None), Some(Value::String(s)) if s == "hi $WHO"));
+        assert!(matches!(cfg.value_for_id(KeyId::new("greeting"), None), Some(Value::String(s)) if s == "hi $WHO"));
     }
 
     #[test]
@@ -1031,7 +1037,7 @@ dicom:
         let _guard = super::super::subst::lock_global_for_test();
         static NET_HOST: [KeyMeta; 2] = [
             KeyMetaBuilder::new(
-                Key::new("bind"),
+                KeyId::new("bind"),
                 build::Network::new()
                     .domain()
                     .unix()
@@ -1043,7 +1049,7 @@ dicom:
             )
             .build(),
             KeyMetaBuilder::new(
-                Key::new("peer"),
+                KeyId::new("peer"),
                 build::Host::new()
                     .domain()
                     .unix()
@@ -1064,12 +1070,12 @@ dicom:
             .expect("load");
 
         // Network: substituted then parsed.
-        match cfg.config_get(&Key::new("bind"), None) {
+        match cfg.value_for_id(KeyId::new("bind"), None) {
             Some(Value::Network(n)) => assert_eq!(format!("{}", n.definition), "127.0.0.1/24"),
             other => panic!("bind: {other:?}"),
         }
         // Host: default_port from the meta is applied when omitted.
-        match cfg.config_get(&Key::new("peer"), None) {
+        match cfg.value_for_id(KeyId::new("peer"), None) {
             Some(Value::Host(h)) => {
                 assert!(matches!(
                     h.definition,
@@ -1090,12 +1096,12 @@ dicom:
     fn vec_item_nullability_comes_from_item_meta() {
         static NULLABLE_STR_ITEM: ValueMeta = build::String::new().optional().build();
         static NULL_LIST: [KeyMeta; 1] =
-            [KeyMetaBuilder::new(Key::new("names"), build::Vec::new(&NULLABLE_STR_ITEM).build()).build()];
+            [KeyMetaBuilder::new(KeyId::new("names"), build::Vec::new(&NULLABLE_STR_ITEM).build()).build()];
 
         config_object_meta!( fn null_list_meta() = &NULL_LIST );
         let loader = YamlLoader::new(null_list_meta());
         let cfg = loader.load_str("names:\n  - A\n  - null\n").expect("load");
-        match cfg.config_get(&Key::new("names"), None) {
+        match cfg.value_for_id(KeyId::new("names"), None) {
             Some(Value::Vec(v)) => {
                 assert_eq!(v.len(), 2);
                 assert!(matches!(&v[0], Value::String(s) if s == "A"));
@@ -1106,7 +1112,7 @@ dicom:
 
         // A non-optional item rejects `null`.
         static PLAIN_LIST: [KeyMeta; 1] =
-            [KeyMetaBuilder::new(Key::new("names"), build::Vec::new(&STRING_ITEM).build()).build()];
+            [KeyMetaBuilder::new(KeyId::new("names"), build::Vec::new(&STRING_ITEM).build()).build()];
         config_object_meta!( fn plain_list_meta() = &PLAIN_LIST );
         let loader = YamlLoader::new(plain_list_meta());
         assert!(loader.load_str("names:\n  - A\n  - null\n").is_err());
@@ -1121,7 +1127,7 @@ dicom:
         #[derive(Debug)]
         struct Port(u16);
         struct PortType;
-        impl crate::config::CustomType for PortType {
+        impl crate::config::custom::CustomType for PortType {
             fn name(&self) -> &'static str {
                 "port"
             }
@@ -1143,24 +1149,24 @@ dicom:
         static PORT_TYPE: PortType = PortType;
 
         static STR_ITEM: ValueMeta = build::String::new().build();
-        static INNER: &[KeyMeta] = &[KeyMetaBuilder::new(Key::new("inner"), build::String::new().build()).build()];
+        static INNER: &[KeyMeta] = &[KeyMetaBuilder::new(KeyId::new("inner"), build::String::new().build()).build()];
         config_object_meta! { fn inner_meta() = INNER }
 
         static ALL: &[KeyMeta] = &[
-            KeyMetaBuilder::new(Key::new("b"), build::Bool::new().build()).build(),
-            KeyMetaBuilder::new(Key::new("s"), build::String::new().build()).build(),
-            KeyMetaBuilder::new(Key::new("i"), build::Int::new().build()).build(),
-            KeyMetaBuilder::new(Key::new("e"), build::Enum::new(Choices::Static(&ENC_CHOICES)).build()).build(),
-            KeyMetaBuilder::new(Key::new("dur"), build::Duration::new().build()).build(),
-            KeyMetaBuilder::new(Key::new("tag"), build::Tag::new().build()).build(),
-            KeyMetaBuilder::new(Key::new("vr"), build::Vr::new().build()).build(),
-            KeyMetaBuilder::new(Key::new("file"), build::File::new().allow_content().build()).build(),
-            KeyMetaBuilder::new(Key::new("net"), build::Network::new().ipv4().build()).build(),
-            KeyMetaBuilder::new(Key::new("host"), build::Host::new().ipv4().default_port(104).build()).build(),
-            KeyMetaBuilder::new(Key::new("obj"), build::Object::new(inner_meta).build()).build(),
-            KeyMetaBuilder::new(Key::new("vec"), build::Vec::new(&STR_ITEM).build()).build(),
-            KeyMetaBuilder::new(Key::new("map"), build::Map::new(&STR_ITEM).build()).build(),
-            KeyMetaBuilder::new(Key::new("custom"), build::Custom::new(&PORT_TYPE).build()).build(),
+            KeyMetaBuilder::new(KeyId::new("b"), build::Bool::new().build()).build(),
+            KeyMetaBuilder::new(KeyId::new("s"), build::String::new().build()).build(),
+            KeyMetaBuilder::new(KeyId::new("i"), build::Int::new().build()).build(),
+            KeyMetaBuilder::new(KeyId::new("e"), build::Enum::new(Choices::Static(&ENC_CHOICES)).build()).build(),
+            KeyMetaBuilder::new(KeyId::new("dur"), build::Duration::new().build()).build(),
+            KeyMetaBuilder::new(KeyId::new("tag"), build::Tag::new().build()).build(),
+            KeyMetaBuilder::new(KeyId::new("vr"), build::Vr::new().build()).build(),
+            KeyMetaBuilder::new(KeyId::new("file"), build::File::new().allow_content().build()).build(),
+            KeyMetaBuilder::new(KeyId::new("net"), build::Network::new().ipv4().build()).build(),
+            KeyMetaBuilder::new(KeyId::new("host"), build::Host::new().ipv4().default_port(104).build()).build(),
+            KeyMetaBuilder::new(KeyId::new("obj"), build::Object::new(inner_meta).build()).build(),
+            KeyMetaBuilder::new(KeyId::new("vec"), build::Vec::new(&STR_ITEM).build()).build(),
+            KeyMetaBuilder::new(KeyId::new("map"), build::Map::new(&STR_ITEM).build()).build(),
+            KeyMetaBuilder::new(KeyId::new("custom"), build::Custom::new(&PORT_TYPE).build()).build(),
         ];
         config_object_meta! { fn all_meta() = ALL }
 
@@ -1187,24 +1193,36 @@ custom: 104
 ";
         let cfg = YamlLoader::new(all_meta()).load_str(doc).expect("load");
 
-        assert!(matches!(cfg.config_get(&Key::new("b"), None), Some(Value::Bool(true))));
-        assert!(matches!(cfg.config_get(&Key::new("s"), None), Some(Value::String(s)) if s == "hello"));
-        assert!(matches!(cfg.config_get(&Key::new("i"), None), Some(Value::Int(42))));
-        assert!(matches!(cfg.config_get(&Key::new("e"), None), Some(Value::Enum(1))));
-        assert!(matches!(cfg.config_get(&Key::new("dur"), None), Some(Value::Duration(d)) if d.as_secs() == 10));
-        assert!(matches!(cfg.config_get(&Key::new("tag"), None), Some(Value::Tag(_))));
-        assert!(matches!(cfg.config_get(&Key::new("vr"), None), Some(Value::Vr(_))));
-        assert!(matches!(cfg.config_get(&Key::new("file"), None), Some(Value::File(_))));
         assert!(matches!(
-            cfg.config_get(&Key::new("net"), None),
+            cfg.value_for_id(KeyId::new("b"), None),
+            Some(Value::Bool(true))
+        ));
+        assert!(matches!(cfg.value_for_id(KeyId::new("s"), None), Some(Value::String(s)) if s == "hello"));
+        assert!(matches!(cfg.value_for_id(KeyId::new("i"), None), Some(Value::Int(42))));
+        assert!(matches!(cfg.value_for_id(KeyId::new("e"), None), Some(Value::Enum(1))));
+        assert!(matches!(cfg.value_for_id(KeyId::new("dur"), None), Some(Value::Duration(d)) if d.as_secs() == 10));
+        assert!(matches!(cfg.value_for_id(KeyId::new("tag"), None), Some(Value::Tag(_))));
+        assert!(matches!(cfg.value_for_id(KeyId::new("vr"), None), Some(Value::Vr(_))));
+        assert!(matches!(
+            cfg.value_for_id(KeyId::new("file"), None),
+            Some(Value::File(_))
+        ));
+        assert!(matches!(
+            cfg.value_for_id(KeyId::new("net"), None),
             Some(Value::Network(_))
         ));
-        assert!(matches!(cfg.config_get(&Key::new("host"), None), Some(Value::Host(_))));
-        assert!(matches!(cfg.config_get(&Key::new("obj"), None), Some(Value::Object(_))));
-        assert!(matches!(cfg.config_get(&Key::new("vec"), None), Some(Value::Vec(v)) if v.len() == 2));
-        assert!(matches!(cfg.config_get(&Key::new("map"), None), Some(Value::Map(m)) if m.len() == 1));
         assert!(matches!(
-            cfg.config_get(&Key::new("custom"), None),
+            cfg.value_for_id(KeyId::new("host"), None),
+            Some(Value::Host(_))
+        ));
+        assert!(matches!(
+            cfg.value_for_id(KeyId::new("obj"), None),
+            Some(Value::Object(_))
+        ));
+        assert!(matches!(cfg.value_for_id(KeyId::new("vec"), None), Some(Value::Vec(v)) if v.len() == 2));
+        assert!(matches!(cfg.value_for_id(KeyId::new("map"), None), Some(Value::Map(m)) if m.len() == 1));
+        assert!(matches!(
+            cfg.value_for_id(KeyId::new("custom"), None),
             Some(Value::Custom(_))
         ));
     }
@@ -1222,18 +1240,18 @@ custom: 104
             host: String,
             port: u16,
         }
-        static ENDPOINT: crate::config::Serde<Endpoint> = crate::config::Serde::new("endpoint");
+        static ENDPOINT: crate::config::custom::Serde<Endpoint> = crate::config::custom::Serde::new("endpoint");
 
         static EP_ITEM: ValueMeta = build::Custom::new(&ENDPOINT).build();
         static INNER: &[KeyMeta] =
-            &[KeyMetaBuilder::new(Key::new("ep"), build::Custom::new(&ENDPOINT).build()).build()];
+            &[KeyMetaBuilder::new(KeyId::new("ep"), build::Custom::new(&ENDPOINT).build()).build()];
         config_object_meta! { fn inner_meta() = INNER }
 
         static ROOT: &[KeyMeta] = &[
-            KeyMetaBuilder::new(Key::new("ep"), build::Custom::new(&ENDPOINT).build()).build(),
-            KeyMetaBuilder::new(Key::new("obj"), build::Object::new(inner_meta).build()).build(),
-            KeyMetaBuilder::new(Key::new("arr"), build::Vec::new(&EP_ITEM).build()).build(),
-            KeyMetaBuilder::new(Key::new("map"), build::Map::new(&EP_ITEM).build()).build(),
+            KeyMetaBuilder::new(KeyId::new("ep"), build::Custom::new(&ENDPOINT).build()).build(),
+            KeyMetaBuilder::new(KeyId::new("obj"), build::Object::new(inner_meta).build()).build(),
+            KeyMetaBuilder::new(KeyId::new("arr"), build::Vec::new(&EP_ITEM).build()).build(),
+            KeyMetaBuilder::new(KeyId::new("map"), build::Map::new(&EP_ITEM).build()).build(),
         ];
         config_object_meta! { fn root_meta() = ROOT }
 
@@ -1270,7 +1288,7 @@ map:
 
         // Root.
         assert_eq!(
-            endpoint(cfg.config_get(&Key::new("ep"), None).expect("root ep")),
+            endpoint(cfg.value_for_id(KeyId::new("ep"), None).expect("root ep")),
             &Endpoint {
                 host: "root".into(),
                 port: 104
@@ -1278,12 +1296,12 @@ map:
         );
 
         // Nested object.
-        let obj = match cfg.config_get(&Key::new("obj"), None).expect("obj") {
+        let obj = match cfg.value_for_id(KeyId::new("obj"), None).expect("obj") {
             Value::Object(o) => o,
             other => panic!("expected Value::Object, got {other:?}"),
         };
         assert_eq!(
-            endpoint(obj.config_get(&Key::new("ep"), None).expect("nested ep")),
+            endpoint(obj.value_for_id(KeyId::new("ep"), None).expect("nested ep")),
             &Endpoint {
                 host: "nested".into(),
                 port: 1
@@ -1291,7 +1309,7 @@ map:
         );
 
         // Array.
-        let arr = match cfg.config_get(&Key::new("arr"), None).expect("arr") {
+        let arr = match cfg.value_for_id(KeyId::new("arr"), None).expect("arr") {
             Value::Vec(items) => items,
             other => panic!("expected Value::Vec, got {other:?}"),
         };
@@ -1312,7 +1330,7 @@ map:
         );
 
         // Map.
-        let map = match cfg.config_get(&Key::new("map"), None).expect("map") {
+        let map = match cfg.value_for_id(KeyId::new("map"), None).expect("map") {
             Value::Map(m) => m,
             other => panic!("expected Value::Map, got {other:?}"),
         };
@@ -1336,9 +1354,10 @@ map:
             host: String,
             port: u16,
         }
-        static ENDPOINT: crate::config::Serde<Endpoint> = crate::config::Serde::new("endpoint");
+        static ENDPOINT: crate::config::custom::Serde<Endpoint> = crate::config::custom::Serde::new("endpoint");
 
-        static ROOT: &[KeyMeta] = &[KeyMetaBuilder::new(Key::new("ep"), build::Custom::new(&ENDPOINT).build()).build()];
+        static ROOT: &[KeyMeta] =
+            &[KeyMetaBuilder::new(KeyId::new("ep"), build::Custom::new(&ENDPOINT).build()).build()];
         config_object_meta! { fn root_meta() = ROOT }
 
         let err = YamlLoader::new(root_meta()).load_str("ep:\n  port: 104\n").unwrap_err();
@@ -1349,13 +1368,13 @@ map:
     #[test]
     fn loads_uuid_value() {
         static UUID_META: &[KeyMeta] =
-            &[KeyMetaBuilder::new(Key::new("id"), build::Uuid::new().non_zero().build()).build()];
+            &[KeyMetaBuilder::new(KeyId::new("id"), build::Uuid::new().non_zero().build()).build()];
         config_object_meta! { fn uuid_meta() = UUID_META }
 
         let cfg = YamlLoader::new(uuid_meta())
             .load_str("id: 550e8400-e29b-41d4-a716-446655440000\n")
             .expect("load");
-        assert!(matches!(cfg.config_get(&Key::new("id"), None), Some(Value::Uuid(_))));
+        assert!(matches!(cfg.value_for_id(KeyId::new("id"), None), Some(Value::Uuid(_))));
 
         // The nil UUID is rejected under the `non_zero` flag.
         let err = YamlLoader::new(uuid_meta())

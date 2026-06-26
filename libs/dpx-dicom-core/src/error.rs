@@ -1,5 +1,7 @@
 use std::fmt;
 
+//cspell:ignore DICM
+
 /// Factual classification of what caused the error.
 ///
 /// Callers branch on this discriminant. The library makes no assumptions about
@@ -259,11 +261,16 @@ impl<T> ErrContext<T> for Result<T> {
 ///
 /// ```
 /// use dpx_dicom_core::error::{IntoDicomErr, ErrorKind};
+/// # #[cfg(not(miri))] // touches the real filesystem, which Miri blocks under isolation
+/// # fn main() {
 /// let path = std::path::Path::new("/nonexistent");
 /// let err = std::fs::File::open(path)
 ///     .to_dicom_err_with(|| format!("opening {}", path.display()))
 ///     .unwrap_err();
 /// assert_eq!(err.kind, ErrorKind::NotFound);
+/// # }
+/// # #[cfg(miri)]
+/// # fn main() {}
 /// ```
 pub trait IntoDicomErr<T> {
     /// Convert into [`DicomError`], deriving kind via [`ToErrorKind`].
@@ -342,9 +349,14 @@ where
 /// With a chained source error:
 /// ```
 /// use dpx_dicom_core::dicom_err;
+/// # #[cfg(not(miri))] // touches the real filesystem, which Miri blocks under isolation
+/// # fn main() {
 /// let _e = std::fs::read("/nonexistent")
 ///     .map_err(|e| dicom_err!(Io, "cannot read file").with_source(e))
 ///     .unwrap_err();
+/// # }
+/// # #[cfg(miri)]
+/// # fn main() {}
 /// ```
 #[macro_export]
 macro_rules! dicom_err {

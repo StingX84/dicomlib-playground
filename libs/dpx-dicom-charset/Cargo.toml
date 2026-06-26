@@ -25,5 +25,5 @@ encoding_rs = { version = "0.8", optional = true }
 tracing = "0.1"
 
 [dev-dependencies]
-# Captures tracing spans/events during unit tests for assertion
-tracing-test = "0.2"
+# Registry to host the in-test event-capture layer (see `tests::capture` in codec.rs).
+tracing-subscriber = { version = "0.3", default-features = false, features = ["registry"] }

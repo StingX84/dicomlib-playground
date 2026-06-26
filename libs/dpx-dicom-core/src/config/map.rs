@@ -1,6 +1,6 @@
 //! Configuration values map.
 
-use super::{Key, Value};
+use super::{KeyId, Value};
 use crate::network::{AssocDescription, Network};
 use std::borrow::Cow;
 
@@ -26,7 +26,7 @@ pub const DEFAULT_CONDITION: Condition = Condition {
 };
 
 #[derive(Debug, Clone)]
-pub struct Conditionals(pub(crate) Vec<(Value, Condition)>);
+pub struct Conditionals(pub Vec<(Value, Condition)>);
 
 impl From<(Value, Condition)> for Conditionals {
     fn from((value, condition): (Value, Condition)) -> Self {
@@ -39,17 +39,21 @@ impl From<Value> for Conditionals {
     }
 }
 
+/// Per-object store of configuration values keyed by [`KeyId`], each key
+/// holding one or more [`Condition`]-tagged candidates resolved by
+/// [`get_ranked`](ValueStore::get_ranked). This is the runtime data half of an
+/// [`Object`](super::Object); the schema half is its `ObjectMeta`.
 #[derive(Debug, Clone, Default)]
-pub struct Map(pub(crate) crate::HashMap<Key, Conditionals>);
+pub struct ValueStore(pub crate::HashMap<KeyId<'static>, Conditionals>);
 
-impl Map {
-    pub fn new() -> Map {
-        Map(crate::HashMap::new())
+impl ValueStore {
+    pub fn new() -> ValueStore {
+        ValueStore(crate::HashMap::new())
     }
 
     /// Adds a new possibly value for `key` possibly with condition attached.
     /// Newer values with a same rank will win over previous values.
-    pub fn add(&mut self, key: Key, value: Value, cond: Option<Condition>) {
+    pub fn add(&mut self, key: KeyId<'static>, value: Value, cond: Option<Condition>) {
         let entry = self.0.entry(key);
         match entry {
             std::collections::hash_map::Entry::Occupied(mut existing) => {
@@ -61,15 +65,15 @@ impl Map {
         }
     }
 
-    pub fn get_ranked(&self, key: &Key, assoc: Option<&AssocDescription>) -> Option<(&Value, u32)> {
+    pub fn get_ranked<'a>(&'a self, key: KeyId<'_>, assoc: Option<&AssocDescription>) -> Option<(&'a Value, u32)> {
         if let Some(assoc) = assoc {
-            self.0.get(key).and_then(|cv| {
+            self.0.get(key.0).and_then(|cv| {
                 cv.0.iter()
                     .filter_map(|(v, condition)| Self::rank_conditional(condition, assoc).map(|score| (v, score)))
                     .max_by(|l, r| l.1.cmp(&r.1))
             })
         } else {
-            self.0.get(key).and_then(|cv| {
+            self.0.get(key.0).and_then(|cv| {
                 cv.0.iter()
                     .filter_map(|(v, condition)| {
                         if *condition == DEFAULT_CONDITION {
@@ -83,7 +87,7 @@ impl Map {
         }
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (&Key, &Conditionals)> {
+    pub fn iter(&self) -> impl Iterator<Item = (&KeyId<'static>, &Conditionals)> {
         self.0.iter()
     }
 
@@ -145,23 +149,23 @@ impl Map {
     }
 }
 
-impl IntoIterator for Map {
-    type Item = (Key, Conditionals);
-    type IntoIter = <crate::HashMap<Key, Conditionals> as IntoIterator>::IntoIter;
+impl IntoIterator for ValueStore {
+    type Item = (KeyId<'static>, Conditionals);
+    type IntoIter = <crate::HashMap<KeyId<'static>, Conditionals> as IntoIterator>::IntoIter;
     fn into_iter(self) -> Self::IntoIter {
         self.0.into_iter()
     }
 }
 
-impl FromIterator<(Key, Conditionals)> for Map {
-    fn from_iter<T: IntoIterator<Item = (Key, Conditionals)>>(values: T) -> Self {
-        Map(crate::HashMap::from_iter(values))
+impl FromIterator<(KeyId<'static>, Conditionals)> for ValueStore {
+    fn from_iter<T: IntoIterator<Item = (KeyId<'static>, Conditionals)>>(values: T) -> Self {
+        ValueStore(crate::HashMap::from_iter(values))
     }
 }
 
-impl FromIterator<(Key, Value)> for Map {
-    fn from_iter<T: IntoIterator<Item = (Key, Value)>>(values: T) -> Self {
-        Map(crate::HashMap::from_iter(
+impl FromIterator<(KeyId<'static>, Value)> for ValueStore {
+    fn from_iter<T: IntoIterator<Item = (KeyId<'static>, Value)>>(values: T) -> Self {
+        ValueStore(crate::HashMap::from_iter(
             values
                 .into_iter()
                 .map(|(k, v)| (k, Conditionals(vec![(v, DEFAULT_CONDITION)]))),
@@ -169,9 +173,9 @@ impl FromIterator<(Key, Value)> for Map {
     }
 }
 
-impl FromIterator<(Key, Value, Condition)> for Map {
-    fn from_iter<T: IntoIterator<Item = (Key, Value, Condition)>>(iter: T) -> Self {
-        let mut map = Map::new();
+impl FromIterator<(KeyId<'static>, Value, Condition)> for ValueStore {
+    fn from_iter<T: IntoIterator<Item = (KeyId<'static>, Value, Condition)>>(iter: T) -> Self {
+        let mut map = ValueStore::new();
         for (k, v, c) in iter {
             map.add(k, v, Some(c));
         }
@@ -203,8 +207,8 @@ mod tests {
 
     #[test]
     fn network_conditions_rank_and_fall_back() {
-        let key = Key::new("k");
-        let mut cs = Map::new();
+        let key = KeyId::new("k");
+        let mut cs = ValueStore::new();
         cs.add(key, Value::Int(0), None);
         cs.add(
             key,
@@ -229,7 +233,7 @@ mod tests {
             local_addr: Some(peer("172.16.1.1:104")),
             ..Default::default()
         };
-        assert_matches!(cs.get_ranked(&key, Some(&both)), Some((Value::Int(2), ..)));
+        assert_matches!(cs.get_ranked(key, Some(&both)), Some((Value::Int(2), ..)));
 
         // Only the local network matches.
         let local_only = AssocDescription {
@@ -237,7 +241,7 @@ mod tests {
             local_addr: Some(peer("172.16.1.1:104")),
             ..Default::default()
         };
-        assert_matches!(cs.get_ranked(&key, Some(&local_only)), Some((Value::Int(1), ..)));
+        assert_matches!(cs.get_ranked(key, Some(&local_only)), Some((Value::Int(1), ..)));
 
         // Neither network matches — fall back to the unconditional value.
         let neither = AssocDescription {
@@ -245,17 +249,17 @@ mod tests {
             local_addr: Some(peer("8.8.4.4:104")),
             ..Default::default()
         };
-        assert_matches!(cs.get_ranked(&key, Some(&neither)), Some((Value::Int(0), ..)));
+        assert_matches!(cs.get_ranked(key, Some(&neither)), Some((Value::Int(0), ..)));
 
         // A network condition with no corresponding address can never match.
         let no_addr = AssocDescription::default();
-        assert_matches!(cs.get_ranked(&key, Some(&no_addr)), Some((Value::Int(0), ..)));
+        assert_matches!(cs.get_ranked(key, Some(&no_addr)), Some((Value::Int(0), ..)));
     }
 
     #[test]
     fn equal_rank_prefers_newer_value() {
-        let key = Key::new("k");
-        let mut cs = Map::new();
+        let key = KeyId::new("k");
+        let mut cs = ValueStore::new();
         let cond = || Condition {
             peer_aet: Some("PEER".into()),
             ..Default::default()
@@ -267,13 +271,13 @@ mod tests {
             peer_aet: Some("PEER".into()),
             ..Default::default()
         };
-        assert_matches!(cs.get_ranked(&key, Some(&assoc)), Some((Value::Int(2), ..)));
+        assert_matches!(cs.get_ranked(key, Some(&assoc)), Some((Value::Int(2), ..)));
     }
 
     #[test]
     fn unconditional_lookup_ignores_conditional_entries() {
-        let key = Key::new("k");
-        let mut cs = Map::new();
+        let key = KeyId::new("k");
+        let mut cs = ValueStore::new();
         cs.add(
             key,
             Value::Int(1),
@@ -283,19 +287,19 @@ mod tests {
             }),
         );
         // No unconditional value exists, so a no-assoc lookup finds nothing.
-        assert!(cs.get_ranked(&key, None).is_none());
+        assert!(cs.get_ranked(key, None).is_none());
         // A missing key yields nothing in either mode.
-        assert!(cs.get_ranked(&Key::new("absent"), None).is_none());
+        assert!(cs.get_ranked(KeyId::new("absent"), None).is_none());
         assert!(
-            cs.get_ranked(&Key::new("absent"), Some(&AssocDescription::default()))
+            cs.get_ranked(KeyId::new("absent"), Some(&AssocDescription::default()))
                 .is_none()
         );
     }
 
     #[test]
     fn conditional_lookup_prefers_most_specific() {
-        let key = Key::new("test.lookup");
-        let mut cs = Map::new();
+        let key = KeyId::new("test.lookup");
+        let mut cs = ValueStore::new();
 
         // Generic fallback (unconditional).
         cs.add(key, Value::Int(0), None);
@@ -325,7 +329,7 @@ mod tests {
             local_aet: Some("LOCAL".into()),
             ..Default::default()
         };
-        assert_matches!(cs.get_ranked(&key, Some(&assoc)), Some((Value::Int(2), ..)));
+        assert_matches!(cs.get_ranked(key, Some(&assoc)), Some((Value::Int(2), ..)));
 
         // Less specific match
         let assoc = AssocDescription {
@@ -333,7 +337,7 @@ mod tests {
             local_aet: Some("LOCAL_OTHER".into()),
             ..Default::default()
         };
-        assert_matches!(cs.get_ranked(&key, Some(&assoc)), Some((Value::Int(1), ..)));
+        assert_matches!(cs.get_ranked(key, Some(&assoc)), Some((Value::Int(1), ..)));
 
         // Non-specific match
         let assoc = AssocDescription {
@@ -341,10 +345,10 @@ mod tests {
             local_aet: Some("LOCAL_OTHER".into()),
             ..Default::default()
         };
-        assert_matches!(cs.get_ranked(&key, Some(&assoc)), Some((Value::Int(0), ..)));
+        assert_matches!(cs.get_ranked(key, Some(&assoc)), Some((Value::Int(0), ..)));
 
         let assoc = AssocDescription { ..Default::default() };
-        assert_matches!(cs.get_ranked(&key, Some(&assoc)), Some((Value::Int(0), ..)));
-        assert_matches!(cs.get_ranked(&key, None), Some((Value::Int(0), ..)));
+        assert_matches!(cs.get_ranked(key, Some(&assoc)), Some((Value::Int(0), ..)));
+        assert_matches!(cs.get_ranked(key, None), Some((Value::Int(0), ..)));
     }
 }

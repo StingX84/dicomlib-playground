@@ -100,14 +100,14 @@ impl GlobalConfig {
 
 #[cfg(test)]
 mod tests {
-    use super::super::subst::lock_global_for_test;
-    use super::super::{ConfigValues, Key, Map, Value, meta::*};
     use super::*;
+    use crate::config::subst::lock_global_for_test;
+    use crate::config::{ConfigValues, Key, KeyId, Value, ValueStore, macros::config_object_meta, meta::*};
+    use crate::ensure;
     use crate::event::Subscription;
-    use crate::{config_object_meta, ensure};
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    static VERSION_KEY: Key = Key::new("version");
+    static VERSION_KEY: KeyId = KeyId::new("version");
     static VERSION_METAS: &[KeyMeta] = &[KeyMetaBuilder::new(VERSION_KEY, build::Int::new().build())
         .runtime()
         .build()];
@@ -117,14 +117,12 @@ mod tests {
     fn config_object(version: i64) -> Arc<Object> {
         Arc::new(Object::new(
             object_meta(),
-            Map::from_iter([(VERSION_KEY, Value::Int(version))]),
+            ValueStore::from_iter([(VERSION_KEY, Value::Int(version))]),
         ))
     }
 
     fn current_version() -> i64 {
-        GlobalConfig::current()
-            .config_get_as::<i64>(&VERSION_KEY, None)
-            .expect("version should be int")
+        GlobalConfig::current().value(Key::<i64>::new(VERSION_KEY))
     }
 
     #[derive(Default)]

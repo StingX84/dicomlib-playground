@@ -4,7 +4,7 @@
 //! [`Key`](super::Key). Its concrete shape is described and constrained by the
 //! corresponding [`ValueMeta`](super::meta::ValueMeta) in the [`ObjectMeta`](super::meta::ObjectMeta).
 
-use super::{Object, meta::ConfigEnum, meta::Value};
+use super::{ConfigEnum, Object, meta::Value};
 
 /// Compile-time `Duration` of `n` seconds, for use as a `config!` default.
 pub const fn secs(n: u64) -> std::time::Duration {
@@ -114,7 +114,7 @@ impl PartialOrd for Value {
 ///
 /// The associated [`Ref`](ValueRef::Ref) is the type a read yields: a `Copy`
 /// scalar projects to itself, a heap value to a borrow.
-pub trait ValueRef {
+pub trait ValueRef: Clone + std::fmt::Debug + Send + Sync {
     type Ref<'a>;
     fn project(v: &Value) -> Option<Self::Ref<'_>>;
 }
@@ -145,6 +145,31 @@ impl ValueRef for bool {
     }
 }
 
+// ── Value::String ──────────────────────────────────────────
+
+impl From<String> for Value {
+    fn from(value: String) -> Self {
+        Value::String(value)
+    }
+}
+
+impl From<&str> for Value {
+    fn from(value: &str) -> Self {
+        Value::String(value.into())
+    }
+}
+
+impl ValueRef for String {
+    type Ref<'a> = &'a str;
+    fn project(v: &Value) -> Option<&str> {
+        if let Value::String(s) = v {
+            Some(s.as_str())
+        } else {
+            None
+        }
+    }
+}
+
 // ── Value::Int ──────────────────────────────────────────
 
 impl From<i64> for Value {
@@ -172,31 +197,6 @@ impl<T: ConfigEnum> ValueRef for T {
     type Ref<'a> = T;
     fn project(v: &Value) -> Option<T> {
         T::from_value(v)
-    }
-}
-
-// ── Value::String ──────────────────────────────────────────
-
-impl From<String> for Value {
-    fn from(value: String) -> Self {
-        Value::String(value)
-    }
-}
-
-impl From<&str> for Value {
-    fn from(value: &str) -> Self {
-        Value::String(value.into())
-    }
-}
-
-impl ValueRef for String {
-    type Ref<'a> = &'a str;
-    fn project(v: &Value) -> Option<&str> {
-        if let Value::String(s) = v {
-            Some(s.as_str())
-        } else {
-            None
-        }
     }
 }
 
@@ -262,6 +262,21 @@ impl ValueRef for uuid::Uuid {
     }
 }
 
+// ── Value::File ──────────────────────────────────────────
+
+impl From<File> for Value {
+    fn from(value: File) -> Self {
+        Value::File(value)
+    }
+}
+
+impl ValueRef for File {
+    type Ref<'a> = &'a File;
+    fn project(v: &Value) -> Option<&File> {
+        if let Value::File(d) = v { Some(d) } else { None }
+    }
+}
+
 // ── Value::Network ──────────────────────────────────────────
 
 impl From<crate::network::Network> for Value {
@@ -321,7 +336,7 @@ impl<const N: usize, T: Into<Value>> From<[T; N]> for Value {
     }
 }
 
-impl<X: 'static> ValueRef for Vec<X> {
+impl ValueRef for Vec<Value> {
     type Ref<'a> = &'a [Value];
     fn project(v: &Value) -> Option<&[Value]> {
         if let Value::Vec(items) = v {
@@ -332,11 +347,49 @@ impl<X: 'static> ValueRef for Vec<X> {
     }
 }
 
+// ── Value::Map ──────────────────────────────────────────
+
+impl<K: Into<String>, V: Into<Value>> From<crate::Map<K, V>> for Value {
+    fn from(value: crate::Map<K, V>) -> Self {
+        Value::Map(value.into_iter().map(|(k, e)| (k.into(), e.into())).collect())
+    }
+}
+
+impl<const N: usize, K: Into<String>, V: Into<Value>> From<[(K, V); N]> for Value {
+    fn from(value: [(K, V); N]) -> Self {
+        Value::Map(value.into_iter().map(|(k, v)| (k.into(), v.into())).collect())
+    }
+}
+
+impl ValueRef for crate::Map<String, Value> {
+    type Ref<'a> = &'a crate::Map<String, Value>;
+    fn project(v: &Value) -> Option<&crate::Map<String, Value>> {
+        if let Value::Map(items) = v { Some(items) } else { None }
+    }
+}
+
+// ── Value::Custom ──────────────────────────────────────────
+
+#[cfg(feature = "serde")]
+impl From<crate::Arc<dyn std::any::Any + Send + Sync>> for Value {
+    fn from(value: crate::Arc<dyn std::any::Any + Send + Sync>) -> Self {
+        Value::Custom(value)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl ValueRef for crate::Arc<dyn std::any::Any + Send + Sync> {
+    type Ref<'a> = &'a crate::Arc<dyn std::any::Any + Send + Sync>;
+    fn project(v: &Value) -> Option<&crate::Arc<dyn std::any::Any + Send + Sync>> {
+        if let Value::Custom(c) = v { Some(c) } else { None }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{ConfigValues, Key, Map, meta};
-    use crate::{config_object_meta, declare_config_enums};
+    use crate::config::{ConfigValues, Key, KeyId, ValueStore, macros::config_object_meta, meta};
+    use crate::declare_config_enums;
 
     declare_config_enums!(
         pub enum TestEnum {
@@ -346,7 +399,7 @@ mod tests {
         }
     );
 
-    static ENUM_KEY: Key = Key::new("my_enum");
+    static ENUM_KEY: KeyId = KeyId::new("my_enum");
     static OBJECT_META: &[meta::KeyMeta] =
         &[
             meta::KeyMetaBuilder::new(ENUM_KEY, meta::build::Enum::new(TestEnum::CHOICES).build())
@@ -358,28 +411,24 @@ mod tests {
 
     #[test]
     fn can_set_and_get_enums() {
-        let values = Map::from_iter([(ENUM_KEY, TestEnum::C.as_value())]);
+        let values = ValueStore::from_iter([(ENUM_KEY, TestEnum::C.as_value())]);
         let mut object = Object::new(object_meta(), values);
-        let value = object
-            .config_get_as::<TestEnum>(&ENUM_KEY, None)
-            .expect("should get enum value");
+        let value = object.value(Key::<TestEnum>::new(ENUM_KEY));
         assert!(value == TestEnum::C);
 
         object.values_mut().add(ENUM_KEY, TestEnum::B.as_value(), None);
-        let value = object
-            .config_get_as::<TestEnum>(&ENUM_KEY, None)
-            .expect("should get enum value");
+        let value = object.value(Key::<TestEnum>::new(ENUM_KEY));
         assert!(value == TestEnum::B);
 
         object.values_mut().add(ENUM_KEY, 666.into(), None);
         assert!(
-            object.config_get_as::<TestEnum>(&ENUM_KEY, None).is_none(),
+            object.value(Key::<Option<TestEnum>>::new(ENUM_KEY)).is_none(),
             "should not get enum value for invalid int"
         );
 
         object.values_mut().add(ENUM_KEY, Value::Null, None);
         assert!(
-            object.config_get_as::<TestEnum>(&ENUM_KEY, None).is_none(),
+            object.value(Key::<Option<TestEnum>>::new(ENUM_KEY)).is_none(),
             "should not get enum value for null"
         );
     }

@@ -7,131 +7,8 @@
 
 #![allow(clippy::new_without_default)]
 
-use super::Key;
-use std::{any::Any, sync::OnceLock};
-
-// cspell:ignore rfield
-macro_rules! declare_value_meta {
-    ($(
-        $(#[doc = $doc:tt])*
-        $(#[cfg($cfg:meta)])*
-        $name:ident { $(required: { $($rfield:ident : $rty:ty),* } $(,)?)? $(flags: { $($flag:ident),* } $(,)?)? $(limits: { $($field:ident : $ty:ty),* })? } = $native:ty),* $(,)
-    ?) => {::place_macro::place! {
-        /// Describes the type, constraints and flags of a [`Value`].
-        #[derive(Debug, Clone)]
-        pub enum ValueMeta {$(
-            #[doc = __str__("Native: `" $native "`")]
-            $(#[doc = $doc])*
-            $(#[cfg($cfg)])*
-            $name {
-                $($($rfield: $rty,)*)?
-                $($($flag: bool,)*)?
-                $($($field: Option<$ty>,)*)?
-                optional: bool
-            },
-        )*}
-        impl ValueMeta {
-            pub const fn kind_name(&self) -> &'static str {
-                match self {
-                    $($(#[cfg($cfg)])* Self::__ident__($name) { .. } => stringify!($name),)*
-                }
-            }
-            pub const fn is_optional(&self) -> bool {
-                match self {
-                    $($(#[cfg($cfg)])* Self::__ident__($name) { optional, .. } => *optional,)*
-                }
-            }
-            pub const fn is_support_subst(&self) -> bool {
-                declare_value_meta!(@subst_match (self) () $( $(#[cfg($cfg)])* __ident__($name) [ $($($flag)*)? ] )* )
-            }
-        }
-        #[derive(Debug, Clone)]
-        pub enum Value {
-            Null,
-            $(
-                $(#[doc = $doc])*
-                $(#[cfg($cfg)])*
-                __ident__($name)($native),
-            )*
-        }
-        impl Value {
-            pub const fn kind_name(&self) -> &'static str {
-                match self {
-                    Self::Null => "Null",
-                    $($(#[cfg($cfg)])* Self::__ident__($name) { .. } => stringify!($name),)*
-                }
-            }
-        }
-        pub mod build {
-            #![allow(unused_imports)]
-            use super::*;
-            pub trait Native {
-               type T;
-            }
-            $(
-                declare_value_meta!{@doc_selector,
-                    concat!("Builder for [`ValueMeta::", stringify!($name), "`]"),
-                    $(#[cfg($cfg)])*,
-                pub struct __ident__($name) {
-                    $($($rfield: $rty,)*)?
-                    $($($flag: bool,)*)?
-                    $($($field: Option<$ty>,)*)?
-                    optional: bool,
-                }
-            }
-            $(#[cfg($cfg)])*
-            impl __ident__($name) {
-                pub const fn new($($($rfield : $rty),*)?) -> Self {
-                    Self {
-                        $($($rfield,)*)?
-                        $($($flag: false,)*)?
-                        $($($field: None,)*)?
-                        optional: false
-                    }
-                }
-                $($(pub const fn $field(mut self, value: $ty) -> Self {
-                    self.$field = Some(value);
-                    self
-                })*)?
-                $($(pub const fn $flag(mut self) -> Self {
-                    self.$flag = true;
-                    self
-                })*)?
-                pub const fn optional(mut self) -> Self {
-                    self.optional = true;
-                    self
-                }
-                pub const fn build(self) -> super::ValueMeta {
-                    super::ValueMeta::$name {
-                        $($($rfield: self.$rfield,)*)?
-                        $($($flag: self.$flag,)*)?
-                        $($($field: self.$field,)*)?
-                        optional: self.optional,
-                    }
-                }
-            }
-            $(#[cfg($cfg)])*
-            impl Native for __ident__($name) { type T = $native; }
-        )*}
-    }};
-    // Build the `is_support_subst` match by recursing over variants and their
-    // flags, emitting a real arm only for variants that carry a `subst` flag.
-    (@subst_match ($s:expr) ($($arm:tt)*)) => {
-        match $s { $($arm)* #[allow(unreachable_patterns)] _ => false }
-    };
-    (@subst_match ($s:expr) ($($arm:tt)*) $(#[cfg($cfg:meta)])* $name:ident [ ] $($rest:tt)*) => {
-        declare_value_meta!(@subst_match ($s) ($($arm)*) $($rest)*)
-    };
-    (@subst_match ($s:expr) ($($arm:tt)*) $(#[cfg($cfg:meta)])* $name:ident [ subst $($f:ident)* ] $($rest:tt)*) => {
-        declare_value_meta!(@subst_match ($s) ($($arm)* $(#[cfg($cfg)])* Self::$name { subst, .. } => *subst,) $($rest)*)
-    };
-    (@subst_match ($s:expr) ($($arm:tt)*) $(#[cfg($cfg:meta)])* $name:ident [ $other:ident $($f:ident)* ] $($rest:tt)*) => {
-        declare_value_meta!(@subst_match ($s) ($($arm)*) $(#[cfg($cfg)])* $name [ $($f)* ] $($rest)*)
-    };
-
-    (@doc_selector,$def_doc:expr,$(#[$inner:meta])+,$($c:tt)+) => { $(#[$inner])+ $($c)+ };
-    (@doc_selector,$def_doc:expr,,$($c:tt)+) => { #[doc=$def_doc] $($c)+ };
-}
+use super::{KeyId, macros::declare_value_meta};
+use std::sync::OnceLock;
 
 declare_value_meta!(
     /// Boolean value, `true` or `false`.
@@ -282,6 +159,7 @@ declare_value_meta!(
     /// - `min`: the map must have at least this many entries.
     /// - `max`: the map must have at most this many entries.
     Map { required: { meta: &'static ValueMeta }, limits: { min: usize, max: usize } } = crate::Map<String, crate::config::Value>,
+
     /// Application-defined value, a type-erased value with a known type identity. See [`Value::Custom`].
     ///
     /// Required:
@@ -290,7 +168,7 @@ declare_value_meta!(
     /// Flags:
     /// - `optional`: the value may be [`Value::Null`].
     #[cfg(feature = "serde")]
-    Custom { required: { ty: &'static dyn crate::config::CustomType} } = crate::Arc<dyn std::any::Any + Send + Sync>
+    Custom { required: { ty: &'static dyn crate::config::custom::CustomType} } = crate::Arc<dyn std::any::Any + Send + Sync>
 );
 
 /// A statically- or dynamically-sourced list of choices.
@@ -312,26 +190,6 @@ impl<T: Clone> Choices<T> {
         match self {
             Choices::Static(s) => Box::new(s.iter().cloned()),
             Choices::Dynamic(f) => f(),
-        }
-    }
-}
-
-pub trait ConfigEnum:
-    Clone + Copy + PartialEq + Eq + std::fmt::Debug + std::fmt::Display + Into<Value> + Send + Sync + 'static
-{
-    const CHOICES: Choices<(u32, &'static str, Option<EnumVisual>)>;
-
-    fn name(&self) -> &'static str;
-    fn from_name(name: &str) -> Option<Self>;
-    fn as_u32(&self) -> u32;
-    fn from_u32(v: u32) -> Option<Self>;
-    fn as_value(&self) -> crate::config::Value {
-        crate::config::Value::Enum(self.as_u32())
-    }
-    fn from_value(v: &crate::config::Value) -> Option<Self> {
-        match v {
-            crate::config::Value::Enum(u) => Self::from_u32(*u),
-            _ => None,
         }
     }
 }
@@ -364,7 +222,7 @@ pub struct EnumVisual {
 /// Full metadata for one configuration key.
 #[derive(Debug)]
 pub struct KeyMeta {
-    pub key: Key,
+    pub key: KeyId<'static>,
     pub visual: Option<KeyVisual>,
     /// When `true`, the value is association-matched: it is stored in YAML as a
     /// `when`-filtered list entry and resolved against the active
@@ -391,7 +249,7 @@ impl std::fmt::Display for KeyMeta {
 pub enum ObjectMeta {
     Single {
         meta: &'static [KeyMeta],
-        defaults: Vec<(Key, Value)>,
+        defaults: Vec<(KeyId<'static>, Value)>,
     },
     Combined(Vec<&'static ObjectMeta>),
 }
@@ -400,16 +258,7 @@ impl ObjectMeta {
     /// Creates a new `ObjectMeta` from a static slice of `KeyMeta`, precomputing default values for each key.
     ///
     /// Used to construct a global static entry.
-    ///
-    /// Example:
-    /// ```rust
-    /// # use dpx_dicom_core::{config_object_meta, config::Key, config::meta::{KeyMeta, KeyMetaBuilder, build}};
-    /// static KEYS: &[KeyMeta] = &[
-    ///     KeyMetaBuilder::new(Key::new("some_string"), build::String::new().build()).build(),
-    ///     KeyMetaBuilder::new(Key::new("some_int"), build::Int::new().build()).build(),
-    /// ];
-    /// config_object_meta!( fn meta() = KEYS );
-    /// ```
+    /// See [`declare_config_objects!`](crate::declare_config_objects) for a macro that generates this automatically.
     pub fn new(meta: &'static [KeyMeta]) -> Self {
         let mut defaults = Vec::new();
         defaults.reserve_exact(meta.len());
@@ -439,18 +288,10 @@ impl ObjectMeta {
     }
 
     /// Returns the `KeyMeta` for a given key, if it exists in this `ObjectMeta`.
-    pub fn key_meta(&self, key: &Key) -> Option<&KeyMeta> {
+    pub fn key_meta(&self, key_id: KeyId) -> Option<&KeyMeta> {
         match self {
-            Self::Single { meta, .. } => meta.iter().find(|m| m.key == *key),
-            Self::Combined(metas) => metas.iter().find_map(|m| m.key_meta(key)),
-        }
-    }
-
-    /// Returns the `KeyMeta` for a given key, if it exists in this `ObjectMeta`.
-    pub fn key_meta_str(&self, key: &str) -> Option<&KeyMeta> {
-        match self {
-            Self::Single { meta, .. } => meta.iter().find(|m| m.key.0 == key),
-            Self::Combined(metas) => metas.iter().find_map(|m| m.key_meta_str(key)),
+            Self::Single { meta, .. } => meta.iter().find(|m| m.key == key_id),
+            Self::Combined(metas) => metas.iter().find_map(|m| m.key_meta(key_id)),
         }
     }
 
@@ -465,9 +306,9 @@ impl ObjectMeta {
     }
 
     /// Returns the default value for a given key, if it exists in this `ObjectMeta`.
-    pub fn default_of(&self, key: &Key) -> Option<&Value> {
+    pub fn default_of(&self, key: KeyId) -> Option<&Value> {
         match self {
-            Self::Single { defaults, .. } => defaults.iter().find(|(k, _)| k == key).map(|(_, v)| v),
+            Self::Single { defaults, .. } => defaults.iter().find(|(k, _)| *k == key).map(|(_, v)| v),
             Self::Combined(metas) => metas.iter().find_map(|m| m.default_of(key)),
         }
     }
@@ -493,8 +334,6 @@ impl ObjectMeta {
             (ValueMeta::Object { .. }, Value::Object(_)) => true,
             (ValueMeta::Vec { .. }, Value::Vec(_)) => true,
             (ValueMeta::Map { .. }, Value::Map(_)) => true,
-            #[cfg(feature = "serde")]
-            (ValueMeta::Custom { ty, .. }, Value::Custom(v)) => v.type_id() == ty.type_id(),
             #[cfg(feature = "serde")]
             (ValueMeta::Custom { .. }, _) => true, // Allow custom readers to produce any type
             _ => false,
@@ -534,19 +373,11 @@ impl<'a> Iterator for ObjectMetaKeyIter<'a> {
 }
 
 /// A provider of `ObjectMeta` for global static registration.
+///
 /// Every submitted `ObjectMetaProvider` is collected into a global [`ObjectMeta`] by [`collected_global_meta()`].
 ///
-/// Example:
-/// ```rust
-/// # use dpx_dicom_core::{config_object_meta, config::Key, config::meta::{KeyMeta, KeyMetaBuilder, build, ObjectMetaProvider}};
-/// static APP_CONF_KEYS: &[KeyMeta] = &[
-///     KeyMetaBuilder::new(Key::new("some_string"), build::String::new().build()).build(),
-///     KeyMetaBuilder::new(Key::new("some_int"), build::Int::new().build()).build(),
-/// ];
-/// config_object_meta!( fn app_conf_meta() = APP_CONF_KEYS );
-///
-/// inventory::submit!( ObjectMetaProvider(app_conf_meta) );
-/// ```
+/// See [`declare_config_objects!`](crate::declare_config_objects) for a macro that generates
+/// this automatically. In particular, when `#[root]` is used on a object.
 pub struct ObjectMetaProvider(pub fn() -> &'static ObjectMeta);
 inventory::collect!(ObjectMetaProvider);
 
@@ -559,7 +390,7 @@ pub fn collected_global_meta() -> &'static ObjectMeta {
 }
 
 pub struct KeyMetaBuilder {
-    key: Key,
+    key: KeyId<'static>,
     section: Option<&'static str>,
     display_name: Option<&'static str>,
     brief: Option<&'static str>,
@@ -572,7 +403,7 @@ pub struct KeyMetaBuilder {
     value_meta: ValueMeta,
 }
 impl KeyMetaBuilder {
-    pub const fn new(key: Key, value_meta: ValueMeta) -> Self {
+    pub const fn new(key: KeyId<'static>, value_meta: ValueMeta) -> Self {
         Self {
             key,
             section: None,
@@ -682,44 +513,45 @@ impl EnumVisualBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config_object_meta;
+    use crate::declare_config_objects;
 
-    static A_KEYS: &[KeyMeta] = &[
-        KeyMetaBuilder::new(Key::new("a1"), build::Int::new().build())
-            .default(|| Value::Int(1))
-            .build(),
-        KeyMetaBuilder::new(Key::new("a2"), build::Int::new().build())
-            .default(|| Value::Int(2))
-            .build(),
-    ];
-    static B_KEYS: &[KeyMeta] = &[KeyMetaBuilder::new(Key::new("b1"), build::Int::new().build())
-        .default(|| Value::Int(3))
-        .build()];
-    static EMPTY_KEYS: &[KeyMeta] = &[];
-    config_object_meta!( fn a_meta() = A_KEYS );
-    config_object_meta!( fn b_meta() = B_KEYS );
-    config_object_meta!( fn empty_meta() = EMPTY_KEYS );
+    declare_config_objects! {
+        a {
+            a1: Int = 1,
+            a2: Int = 2,
+        }
+        b {
+            b1: Int = 3,
+        }
+        empty {
+        }
+    }
 
     #[test]
     fn combined_meta_flattens_and_resolves_across_parts() {
         // Empty parts interleaved to exercise the iterator's skip-empty path.
-        let combined = ObjectMeta::Combined(vec![empty_meta(), a_meta(), empty_meta(), b_meta()]);
+        let combined = ObjectMeta::Combined(vec![
+            empty::object_meta(),
+            a::object_meta(),
+            empty::object_meta(),
+            b::object_meta(),
+        ]);
 
-        let keys: Vec<Key> = combined.iter().map(|km| km.key).collect();
+        let keys: Vec<KeyId> = combined.iter().map(|km| km.key).collect();
         assert_eq!(keys.len(), 3);
-        assert!(keys.contains(&Key::new("a1")));
-        assert!(keys.contains(&Key::new("a2")));
-        assert!(keys.contains(&Key::new("b1")));
+        assert!(keys.contains(&a::a1.id));
+        assert!(keys.contains(&a::a2.id));
+        assert!(keys.contains(&b::b1.id));
 
         // Defaults resolve from either part; unknown keys yield nothing.
-        assert_eq!(combined.default_of(&Key::new("a1")), Some(&Value::Int(1)));
-        assert_eq!(combined.default_of(&Key::new("b1")), Some(&Value::Int(3)));
-        assert_eq!(combined.default_of(&Key::new("nope")), None);
+        assert_eq!(combined.default_of(a::a1.id), Some(&Value::Int(1)));
+        assert_eq!(combined.default_of(b::b1.id), Some(&Value::Int(3)));
+        assert_eq!(combined.default_of(KeyId::new("nope")), None);
 
         // Lookups search across every part.
-        assert!(combined.key_meta(&Key::new("b1")).is_some());
-        assert!(combined.key_meta_str("a2").is_some());
-        assert!(combined.key_meta(&Key::new("nope")).is_none());
+        assert!(combined.key_meta(b::b1.id).is_some());
+        assert!(combined.key_meta(a::a2.id).is_some());
+        assert!(combined.key_meta(KeyId::new("nope")).is_none());
     }
 
     #[test]
@@ -740,7 +572,7 @@ mod tests {
         }
 
         fn check_object_meta(meta: &ObjectMeta) {
-            fn check_single_meta(meta: &ObjectMeta, seen_keys: &mut std::collections::HashSet<Key>) {
+            fn check_single_meta(meta: &ObjectMeta, seen_keys: &mut std::collections::HashSet<KeyId>) {
                 match meta {
                     ObjectMeta::Single {
                         meta: key_meta_list, ..

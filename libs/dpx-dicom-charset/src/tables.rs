@@ -2,8 +2,7 @@ pub mod constants;
 pub mod multi_byte;
 pub mod single_byte;
 
-#[cfg(test)]
-#[cfg(not(miri))]
+#[cfg(all(test, not(miri)))]
 pub(crate) mod tests;
 
 /// Return type for byte-string to unicode conversion functions.

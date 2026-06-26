@@ -14,6 +14,8 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::LazyLock;
 
+//cspell:ignore peekable lossily
+
 /// A well-known application directory, addressable by constant.
 ///
 /// Each maps to a substitution variable of the same name, so `$CONF_DIR` in a
@@ -188,13 +190,37 @@ impl Builder {
 #[cfg(test)]
 pub(crate) static GLOBAL_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
-/// Locks [`GLOBAL_TEST_LOCK`], tolerating poisoning from a panicking sibling
-/// test so one failure does not cascade into spurious failures.
+/// Guards a test against process-global pollution: holds [`GLOBAL_TEST_LOCK`]
+/// for the duration of the test and snapshots the global
+/// [`Context`](crate::Context) root, restoring it on drop. Any swap a test
+/// performs (base config, tag/uid dictionaries) is therefore undone before the
+/// lock is released, so the next test always starts from a pristine global.
 #[cfg(test)]
-pub(crate) fn lock_global_for_test() -> std::sync::MutexGuard<'static, ()> {
-    GLOBAL_TEST_LOCK
+pub(crate) struct GlobalTestGuard {
+    _lock: std::sync::MutexGuard<'static, ()>,
+    prev: std::sync::Arc<crate::Context>,
+}
+
+#[cfg(test)]
+impl Drop for GlobalTestGuard {
+    fn drop(&mut self) {
+        crate::Context::global().store(self.prev.clone());
+    }
+}
+
+/// Locks [`GLOBAL_TEST_LOCK`], tolerating poisoning from a panicking sibling
+/// test so one failure does not cascade into spurious failures, and snapshots
+/// the global [`Context`](crate::Context) so it is restored when the returned
+/// guard is dropped.
+#[cfg(test)]
+pub(crate) fn lock_global_for_test() -> GlobalTestGuard {
+    let lock = GLOBAL_TEST_LOCK
         .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    GlobalTestGuard {
+        _lock: lock,
+        prev: crate::Context::global().load_full(),
+    }
 }
 
 #[cfg(test)]

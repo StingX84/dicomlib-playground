@@ -261,7 +261,7 @@ impl<'a> Validator<'a> {
                         Configuration,
                         "object has unexpected field {key:?}"
                     );
-                    let Some(key_meta) = obj.object_meta.key_meta(key) else {
+                    let Some(key_meta) = obj.object_meta.key_meta(*key) else {
                         return Err(dicom_err!(Configuration, "object has unexpected field {key:?}"));
                     };
 
@@ -392,17 +392,17 @@ impl<'a> Validator<'a> {
 
 #[cfg(test)]
 mod tests {
-    #[cfg(feature = "serde")]
-    use super::super::CustomType;
-    use super::super::{Key, meta::*};
     use super::*;
-    use crate::Arc;
+    use crate::config::{KeyId, meta::*};
+    #[cfg(feature = "serde")]
+    use crate::{Arc, config::custom::CustomType};
     #[cfg(feature = "serde")]
     use serde_json::Value as JsonValue;
+    #[cfg(feature = "serde")]
     use std::any::Any;
 
     fn validate(meta: &ValueMeta, value: &Value) -> crate::error::Result<()> {
-        let key_meta = KeyMetaBuilder::new(Key::new("test"), meta.clone()).runtime().build();
+        let key_meta = KeyMetaBuilder::new(KeyId::new("test"), meta.clone()).runtime().build();
         let stack = Validator {
             key_meta: &key_meta,
             value_meta: meta,
@@ -568,6 +568,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(miri))] // validator stats the path; Miri blocks fs syscalls under isolation
     fn file_hot_reload_requires_meta_permission() {
         // A value asking for hot-reload against a meta that forbids it.
         let no_reload = build::File::new().allow_dir().allow_file().build();
@@ -578,6 +579,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(miri))] // touches the real filesystem, which Miri blocks under isolation
     fn file_existence_constraints_are_enforced() {
         let dir = std::env::temp_dir().join(format!("dpx_file_validate_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);

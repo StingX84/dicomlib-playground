@@ -762,7 +762,7 @@ mod tests {
     }
 
     #[test]
-    fn is_dict_globally_acessible() {
+    fn is_dict_globally_accessible() {
         assert!(matches!(
             Uid::from(crate::uids::ts::ExplicitVRLittleEndian)
                 .meta()

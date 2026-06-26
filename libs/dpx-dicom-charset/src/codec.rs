@@ -940,28 +940,77 @@ impl Default for Codec {
 #[rustfmt::skip]
 mod tests {
     use super::*;
-    use tracing_test::traced_test;
 
-    #[traced_test]
+    /// Minimal in-test capture of `tracing` events, replacing the `tracing-test`
+    /// dev-dependency. It records each event's fields into a shared string and,
+    /// unlike a `fmt` subscriber, never reads the wall clock — so these tests run
+    /// under `cargo miri test` with isolation enabled.
+    mod capture {
+        use std::fmt::Write;
+        use std::sync::{Arc, Mutex};
+        use tracing::field::{Field, Visit};
+        use tracing::subscriber::with_default;
+        use tracing_subscriber::{Layer, layer::SubscriberExt, registry};
+
+        #[derive(Clone, Default)]
+        pub struct Logs(Arc<Mutex<String>>);
+
+        impl Logs {
+            pub fn contains(&self, needle: &str) -> bool {
+                self.0.lock().expect("log mutex poisoned").contains(needle)
+            }
+            pub fn is_empty(&self) -> bool {
+                self.0.lock().expect("log mutex poisoned").is_empty()
+            }
+        }
+
+        // Only `record_debug` is implemented: the other `record_*` methods default
+        // to delegating here, so every field kind (including `message`) funnels
+        // through one formatter.
+        struct Recorder<'a>(&'a mut String);
+        impl Visit for Recorder<'_> {
+            fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+                let _ = write!(self.0, "{}={value:?} ", field.name());
+            }
+        }
+
+        impl<S: tracing::Subscriber> Layer<S> for Logs {
+            fn on_event(&self, event: &tracing::Event<'_>, _: tracing_subscriber::layer::Context<'_, S>) {
+                let mut buf = self.0.lock().expect("log mutex poisoned");
+                event.record(&mut Recorder(&mut buf));
+            }
+        }
+
+        /// Runs `f` with event capture installed for the current thread and
+        /// returns its result alongside everything that was logged.
+        pub fn capture<R>(f: impl FnOnce() -> R) -> (R, Logs) {
+            let logs = Logs::default();
+            let out = with_default(registry().with(logs.clone()), f);
+            (out, logs)
+        }
+    }
+
     fn assert_warning(char_set: &str, config: Config, exp_terms: &[Term], exp_dpxkb: u16) -> Codec {
-        let codec = Codec::from_specific_character_set(char_set.as_bytes(), config);
-        assert_eq!(codec.terms().as_slice(), exp_terms);
         let exp_dpxkb_string = DPXKB_MAP.iter().find_map(|v| if v.0 == exp_dpxkb { Some(v.1) } else { None }).expect("Unknown dpxkb const");
-        assert!(logs_contain(exp_dpxkb_string));
+        let (codec, logs) = capture::capture(|| {
+            let codec = Codec::from_specific_character_set(char_set.as_bytes(), config);
+            assert_eq!(codec.terms().as_slice(), exp_terms);
+            codec
+        });
+        assert!(logs.contains(exp_dpxkb_string), "expected log to contain {exp_dpxkb_string:?}");
         codec
     }
     fn assert_error(char_set: &str, config: Config, exp_dpxkb: u16) {
         assert_warning(char_set, config, vec![Term::Unknown].as_slice(), exp_dpxkb);
     }
 
-    #[traced_test]
     fn assert_ok(char_set: &str, config: Config, exp_terms: &[Term]) -> Codec {
-        let codec = Codec::from_specific_character_set(char_set.as_bytes(), config);
-        assert_eq!(codec.terms().as_slice(), exp_terms);
-        assert!(
-            !logs_contain(""),
-            "Expected an empty log after function execution"
-        );
+        let (codec, logs) = capture::capture(|| {
+            let codec = Codec::from_specific_character_set(char_set.as_bytes(), config);
+            assert_eq!(codec.terms().as_slice(), exp_terms);
+            codec
+        });
+        assert!(logs.is_empty(), "Expected an empty log after function execution");
         codec
     }
 
