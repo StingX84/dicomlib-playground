@@ -89,38 +89,12 @@ pub enum UidType {
 
     SynchronizationFrameOfReference,
 
-    /// This [Uid] represents a Transfer Syntax
-    TransferSyntax {
-        /// Whether this Transfer Syntax uses little-endian (`true`) or big-endian
-        /// (`false`) byte ordering for numerics.
-        ///
-        /// For example:
-        /// - [ImplicitVRLittleEndian](crate::uids::ts::ImplicitVRLittleEndian) has this property set to `true`
-        /// - [ExplicitVRBigEndian](crate::uids::ts::ExplicitVRBigEndian) has this property set to `false`
-        is_little_endian: bool,
-
-        /// Whether this Transfer Syntax explicitly defines Value Representation
-        /// (`true`) or relies on a dictionary [Vr] lookup (`false`)
-        ///
-        /// For example:
-        /// - [ImplicitVRLittleEndian](crate::uids::ts::ImplicitVRLittleEndian) has this property set to `true`
-        /// - [ExplicitVRLittleEndian](crate::uids::ts::ExplicitVRLittleEndian) has this property set to `false`
-        is_explicit_vr: bool,
-
-        /// Whether the file requires decompression to read its attributes (`true`)
-        ///
-        /// For example:
-        /// - [DeflatedExplicitVRLittleEndian](crate::uids::ts::DeflatedExplicitVRLittleEndian) has this property set to `true`
-        /// - [ImplicitVRLittleEndian](crate::uids::ts::ImplicitVRLittleEndian) has this property set to `false`
-        is_compressed: bool,
-
-        /// Whether the pixel data is encapsulated with some codec (`true`)
-        ///
-        /// For example:
-        /// - [JPEGBaseline8Bit](crate::uids::ts::JPEGBaseline8Bit) has this property set to `true`
-        /// - [ImplicitVRLittleEndian](crate::uids::ts::ImplicitVRLittleEndian) has this property set to `false`
-        is_encapsulated: bool,
-    },
+    /// This [Uid] represents a Transfer Syntax.
+    ///
+    /// This is only a classifier; the stream properties (endianness, explicit
+    /// VR, compression, encapsulation) live in the
+    /// [transfer syntax registry](crate::transfer_syntax::TransferSyntax).
+    TransferSyntax,
 
     WellKnownSopInstance,
 }
@@ -384,7 +358,7 @@ impl<'a> Uid<'a> {
     /// use dpx_dicom_core::{Uid, uid::UidType, uids};
     /// assert!(matches!(
     ///     Uid::from(uids::ts::ExplicitVRLittleEndian).meta().unwrap().uid_type,
-    ///     UidType::TransferSyntax{..}
+    ///     UidType::TransferSyntax
     /// ));
     /// ```
     pub fn meta(&self) -> Option<Meta> {
@@ -768,7 +742,7 @@ mod tests {
                 .meta()
                 .unwrap()
                 .uid_type,
-            UidType::TransferSyntax { .. }
+            UidType::TransferSyntax
         ));
     }
 }

@@ -156,13 +156,13 @@ pub struct Config {
     /// Note, that [Term::Iso2022Ir87] and [Term::Iso2022Ir159] does not
     /// designate `G1` region. Better do not use them and leave `None` here.
     ///
-    /// Afterthoughts: `ISO_IR 6` term defined in The Standard leaves `G0` not
+    /// Afterthoughts: `ISO_IR 6` term defined in The Standard leaves `G1` not
     /// designated, which will lead to a data loss when processing text
     /// attributes created by some "encoding-unaware" application. This option
     /// makes the library deviate from The Standard, but it is better to retain
     /// a data, rather than lose it entirely. For example, this approach allows
     /// PACS server to post process and fix such "buggy" datasets later, when
-    /// the problem has been noticed by the personal.
+    /// the problem has been noticed by the personnel.
     pub set_g1_for_iso_ir_6: Option<Term>,
 
     /// Instructs a library to use more recent version of the code pages, then
@@ -859,6 +859,15 @@ impl Codec {
         if !self.terms.is_empty() {
             self.chosen_impl = Self::choose_impl(&self.terms, &self.config);
         }
+    }
+
+    /// Returns `true` if all the terms in this codec are ASCII compatible.
+    /// 
+    /// This allows to use fast "borrow" decoding and encoding of ASCII-only strings, without any
+    /// allocations. If any of the terms is not ASCII compatible, then decoding and encoding will
+    /// always allocate a new buffer.
+    pub fn is_ascii_compatible(&self) -> bool {
+        self.terms.iter().all(|t| t.meta().is_ascii_compatible)
     }
 
     /// Internal function, that selects a best suitable codec within

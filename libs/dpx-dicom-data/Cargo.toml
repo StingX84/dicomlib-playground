@@ -1,0 +1,42 @@
+[package]
+name = "dpx-dicom-data"
+description = "DICOM dataset model for dpx-dicom"
+keywords = ["dicom"]
+
+authors.workspace = true
+categories.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+version.workspace = true
+
+[features]
+default = []
+# Compile the standard tag dictionary into the binary (VR resolution without a
+# loaded dictionary). Passed through to dpx-dicom-core.
+static_dictionary = ["dpx-dicom-core/static_dictionary"]
+# Retain per-component file offsets (`TagHeader`) on parsed elements/items for
+# GUI inspection and hex dumps. Costs memory, so off by default.
+file_offsets = []
+
+[dependencies]
+
+# Core DICOM types (tags, VRs, date/time, error handling)
+dpx-dicom-core = { path = "../dpx-dicom-core" }
+# Character-set decoding/encoding for text VRs and the (0008,0005) cache
+dpx-dicom-charset = { path = "../dpx-dicom-charset" }
+# Reference-counted byte buffers with zero-copy slices over a memory-mapped file
+bytes = "1.7"
+# Memory-mapping files for zero-copy parsing, with a read-into-memory fallback
+memmap2 = "0.9"
+# Streaming raw-DEFLATE (RFC 1951) inflate for the Deflated Explicit VR LE
+# transfer syntax. The `zlib-rs` backend is a pure-Rust port of zlib-ng:
+# memory-safe like the default miniz_oxide, but markedly faster. The streaming
+# `Read` decoder leaves room for a future bytes-read progress callback.
+flate2 = { version = "1", default-features = false, features = ["zlib-rs"] }
+# Structured, async-aware logging and diagnostics
+tracing = "0.1"
+
+[dev-dependencies]
+# Tests resolve VRs through the standard tag dictionary.
+dpx-dicom-core = { path = "../dpx-dicom-core", features = ["static_dictionary"] }

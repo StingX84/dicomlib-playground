@@ -5,11 +5,13 @@
 // Module declarations
 pub mod config;
 pub mod context;
+pub mod datetime;
 pub mod error;
 pub mod event;
 pub mod tag;
 #[rustfmt::skip]
 pub mod tags;
+pub mod transfer_syntax;
 pub mod uid;
 #[rustfmt::skip]
 pub mod uids;
@@ -26,11 +28,18 @@ pub use inventory as __inventory;
 #[doc(no_inline)]
 pub use context::{Context, ContextBuilder, ContextScope};
 #[doc(no_inline)]
+pub use datetime::{
+    DicomDate, DicomDateRange, DicomDateTime, DicomDateTimeRange, DicomTime, DicomTimeRange,
+    DicomTimeZoneOffset,
+};
+#[doc(no_inline)]
 pub use error::{DicomError, ErrContext, ErrorKind, IntoDicomErr, KbEntry, Result, ToErrorKind};
 #[doc(no_inline)]
 pub use tag::Tag;
 #[doc(no_inline)]
 pub use tag::TagKey;
+#[doc(no_inline)]
+pub use transfer_syntax::TransferSyntax;
 #[doc(no_inline)]
 pub use uid::Uid;
 #[doc(no_inline)]

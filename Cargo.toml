@@ -14,6 +14,7 @@ members = [
     # Libraries
     "libs/dpx-dicom-charset",
     "libs/dpx-dicom-core",
+    "libs/dpx-dicom-data",
 
     # Utilities
     "utils/mk-dicom-tsv",
