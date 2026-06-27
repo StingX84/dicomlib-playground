@@ -1,5 +1,4 @@
-// #![allow(dead_code)]
-#![cfg_attr(feature = "unstable", feature(test))]
+#![cfg_attr(all(test, feature = "unstable"), feature(test))]
 #![cfg_attr(feature = "unstable", debugger_visualizer(natvis_file = "../dpx_dicom_core.natvis"))]
 #![deny(clippy::all)]
 
